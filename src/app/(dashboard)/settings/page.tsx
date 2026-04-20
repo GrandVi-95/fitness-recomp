@@ -14,13 +14,17 @@ import {
   Trash2,
   ShieldAlert,
   User,
+  Bell,
+  Lock,
+  LogOut,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 const AI_PROVIDERS = [
   { value: "anthropic", label: "Anthropic (Claude)" },
-  { value: "openai",    label: "OpenAI (GPT-4o)"   },
-  { value: "gemini",    label: "Google Gemini"      },
+  { value: "openai", label: "OpenAI (GPT-4o)" },
+  { value: "gemini", label: "Google Gemini" },
 ]
 
 interface SettingsData {
@@ -32,29 +36,60 @@ interface SettingsData {
   aiProvider: string
   aiApiKeySet: boolean
   autoProteinGoal: boolean
+  smartAlertsEnabled: boolean
+  showWeeklySummary: boolean
+}
+
+function Toggle({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <button
+      onClick={() => onChange(!enabled)}
+      className={cn(
+        "relative w-11 h-6 rounded-full transition-colors",
+        enabled ? "bg-indigo-600" : "bg-slate-700"
+      )}
+      aria-pressed={enabled}
+    >
+      <span
+        className={cn(
+          "absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all",
+          enabled ? "end-0.5 start-auto" : "start-0.5 end-auto"
+        )}
+      />
+    </button>
+  )
 }
 
 export default function SettingsPage() {
-  const [data, setData]           = useState<SettingsData | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [saving, setSaving]       = useState(false)
-  const [saved, setSaved]         = useState(false)
-  const [error, setError]         = useState<string | null>(null)
+  const router = useRouter()
+  const [data, setData] = useState<SettingsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [caloriesError, setCaloriesError] = useState<string | null>(null)
 
-  // Danger Zone state
+  // Danger Zone
   const [showResetModal, setShowResetModal] = useState(false)
   const [resetConfirmText, setResetConfirmText] = useState("")
   const [resetting, setResetting] = useState(false)
   const [resetDone, setResetDone] = useState(false)
 
-  // form fields
-  const [displayName, setDisplayName]         = useState("")
-  const [aiProvider, setAiProvider]           = useState("anthropic")
-  const [apiKey, setApiKey]                   = useState("")
-  const [autoProtein, setAutoProtein]         = useState(true)
-  const [manualProtein, setManualProtein]     = useState(185)
-  const [manualCalories, setManualCalories]   = useState(2600)
+  // Form fields
+  const [displayName, setDisplayName] = useState("")
+  const [aiProvider, setAiProvider] = useState("anthropic")
+  const [apiKey, setApiKey] = useState("")
+  const [autoProtein, setAutoProtein] = useState(true)
+  const [manualProtein, setManualProtein] = useState(185)
+  const [manualCalories, setManualCalories] = useState(2600)
+  const [smartAlertsEnabled, setSmartAlertsEnabled] = useState(true)
+  const [showWeeklySummary, setShowWeeklySummary] = useState(true)
 
   useEffect(() => {
     fetch("/api/settings")
@@ -66,6 +101,8 @@ export default function SettingsPage() {
         setAutoProtein(d.autoProteinGoal)
         setManualProtein(d.targetProtein)
         setManualCalories(d.targetCalories)
+        setSmartAlertsEnabled(d.smartAlertsEnabled ?? true)
+        setShowWeeklySummary(d.showWeeklySummary ?? true)
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -76,13 +113,11 @@ export default function SettingsPage() {
     : manualProtein
 
   const handleSave = async () => {
-    // Front-end calories validation
     if (manualCalories < 1000 || manualCalories > 10000 || !manualCalories) {
       setCaloriesError('יעד קלוריות חייב להיות בין 1,000 ל-10,000 קק"ל')
       return
     }
     setCaloriesError(null)
-
     setSaving(true)
     setError(null)
     try {
@@ -92,6 +127,8 @@ export default function SettingsPage() {
         autoProteinGoal: autoProtein,
         targetCalories: manualCalories,
         targetProtein: autoProtein ? effectiveProtein : manualProtein,
+        smartAlertsEnabled,
+        showWeeklySummary,
       }
       if (apiKey.trim()) body.aiApiKey = apiKey.trim()
 
@@ -128,6 +165,11 @@ export default function SettingsPage() {
     } finally {
       setResetting(false)
     }
+  }
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" })
+    router.replace("/login")
   }
 
   if (loading) {
@@ -187,7 +229,9 @@ export default function SettingsPage() {
               className="w-full appearance-none bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
             >
               {AI_PROVIDERS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
               ))}
             </select>
             <ChevronDown
@@ -234,21 +278,7 @@ export default function SettingsPage() {
                 : "(אין משקל מדווח)"}
             </p>
           </div>
-          <button
-            onClick={() => setAutoProtein((v) => !v)}
-            className={cn(
-              "relative w-11 h-6 rounded-full transition-colors",
-              autoProtein ? "bg-indigo-600" : "bg-slate-700"
-            )}
-            aria-pressed={autoProtein}
-          >
-            <span
-              className={cn(
-                "absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all",
-                autoProtein ? "end-0.5 start-auto" : "start-0.5 end-auto"
-              )}
-            />
-          </button>
+          <Toggle enabled={autoProtein} onChange={setAutoProtein} />
         </div>
 
         <div
@@ -265,7 +295,8 @@ export default function SettingsPage() {
               {autoProtein ? "יעד חלבון מחושב" : "יעד חלבון ידני"}
             </p>
             <p className="text-lg font-black text-indigo-300">
-              {effectiveProtein} <span className="text-sm font-normal text-slate-400">גר' / יום</span>
+              {effectiveProtein}{" "}
+              <span className="text-sm font-normal text-slate-400">גר' / יום</span>
             </p>
           </div>
         </div>
@@ -291,7 +322,10 @@ export default function SettingsPage() {
                 min={1000}
                 max={10000}
                 step={50}
-                onChange={(e) => { setManualCalories(Number(e.target.value)); setCaloriesError(null) }}
+                onChange={(e) => {
+                  setManualCalories(Number(e.target.value))
+                  setCaloriesError(null)
+                }}
                 className={cn(
                   "w-full bg-slate-800 border rounded-xl px-3 py-2.5 text-sm text-slate-100 text-center font-semibold focus:outline-none focus:border-indigo-500",
                   caloriesError ? "border-red-500" : "border-slate-700"
@@ -310,7 +344,10 @@ export default function SettingsPage() {
               min={1000}
               max={10000}
               step={50}
-              onChange={(e) => { setManualCalories(Number(e.target.value)); setCaloriesError(null) }}
+              onChange={(e) => {
+                setManualCalories(Number(e.target.value))
+                setCaloriesError(null)
+              }}
               className={cn(
                 "w-full bg-slate-800 border rounded-xl px-3 py-2.5 text-sm text-slate-100 text-center font-semibold focus:outline-none focus:border-indigo-500",
                 caloriesError ? "border-red-500" : "border-slate-700"
@@ -319,12 +356,63 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Inline calories validation error */}
         {caloriesError && (
           <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
             <AlertCircle size={13} className="shrink-0" /> {caloriesError}
           </div>
         )}
+      </section>
+
+      {/* ───── תצוגה והתראות ───── */}
+      <section className="bg-slate-900 rounded-2xl p-4 space-y-4">
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
+          <Bell size={15} className="text-indigo-400" /> תצוגה והתראות
+        </h2>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">הצג סיכום שבועי</p>
+            <p className="text-[11px] text-slate-500">כרטיס סיכום אימונים ותזונה בדשבורד</p>
+          </div>
+          <Toggle enabled={showWeeklySummary} onChange={setShowWeeklySummary} />
+        </div>
+
+        <div className="h-px bg-slate-800" />
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">אפשר התראות חכמות</p>
+            <p className="text-[11px] text-slate-500">
+              התראה אם התזונה נמוכה ביותר מ-20% ביומיים רצופים
+            </p>
+          </div>
+          <Toggle enabled={smartAlertsEnabled} onChange={setSmartAlertsEnabled} />
+        </div>
+      </section>
+
+      {/* ───── אבטחה ───── */}
+      <section className="bg-slate-900 rounded-2xl p-4 space-y-3">
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
+          <Lock size={15} className="text-indigo-400" /> אבטחה
+        </h2>
+
+        <div className="bg-slate-800 rounded-xl px-4 py-3 space-y-1.5">
+          <p className="text-sm font-medium">שינוי סיסמת כניסה</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            הסיסמה מנוהלת דרך משתנה הסביבה{" "}
+            <code className="bg-slate-700 text-indigo-300 px-1 py-0.5 rounded text-[11px]">
+              APP_MASTER_PASSWORD
+            </code>{" "}
+            בהגדרות Vercel. לשינוי — עדכן את הערך שם ופרוס מחדש.
+          </p>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 text-slate-400 hover:text-slate-200 text-sm transition-colors py-1"
+        >
+          <LogOut size={15} /> התנתק
+        </button>
       </section>
 
       {/* ───── שגיאה כללית ───── */}
@@ -353,11 +441,17 @@ export default function SettingsPage() {
         )}
       >
         {saving ? (
-          <><span className="animate-spin">◌</span> שומר…</>
+          <>
+            <span className="animate-spin">◌</span> שומר…
+          </>
         ) : saved ? (
-          <><CheckCircle2 size={20} /> נשמר בהצלחה!</>
+          <>
+            <CheckCircle2 size={20} /> נשמר בהצלחה!
+          </>
         ) : (
-          <><Save size={20} /> שמור הגדרות</>
+          <>
+            <Save size={20} /> שמור הגדרות
+          </>
         )}
       </button>
 
@@ -367,8 +461,10 @@ export default function SettingsPage() {
           <ShieldAlert size={15} /> אזור מסוכן
         </h2>
         <p className="text-xs text-slate-500 leading-relaxed">
-          <span className="text-red-400/80">נמחק:</span> סשנים, סטים, יומני תזונה, מדדי גוף ותמונות.
-          {" "}<span className="text-green-400/80">נשמר:</span> תוכניות אימון, ספריית תרגילים, מסד מזון והגדרות AI.
+          <span className="text-red-400/80">נמחק:</span> סשנים, סטים, יומני תזונה, מדדי גוף
+          ותמונות.{" "}
+          <span className="text-green-400/80">נשמר:</span> תוכניות אימון, ספריית תרגילים, מסד
+          מזון והגדרות AI.
         </p>
         {resetDone && (
           <p className="text-xs text-green-400 flex items-center gap-1.5">
@@ -376,14 +472,17 @@ export default function SettingsPage() {
           </p>
         )}
         <button
-          onClick={() => { setShowResetModal(true); setResetConfirmText("") }}
+          onClick={() => {
+            setShowResetModal(true)
+            setResetConfirmText("")
+          }}
           className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors"
         >
           <Trash2 size={15} /> איפוס נתוני מערכת
         </button>
       </section>
 
-      {/* ───── מודל אישור איפוס (redesigned) ───── */}
+      {/* ───── מודל אישור איפוס ───── */}
       {showResetModal && (
         <div
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
@@ -397,12 +496,9 @@ export default function SettingsPage() {
               <ShieldAlert size={20} />
               <h3 className="text-base font-bold">אישור איפוס</h3>
             </div>
-
             <p className="text-sm text-slate-300 leading-relaxed">
               פעולה זו תמחק לצמיתות את כל נתוני האימון, התזונה, ומדדי הגוף שלך.
             </p>
-
-            {/* Confirmation input — styled as a clear text field */}
             <div className="space-y-2">
               <label className="text-xs text-slate-400">
                 הקלד <span className="font-bold text-red-400">איפוס</span> לאישור:
@@ -417,19 +513,21 @@ export default function SettingsPage() {
                 dir="rtl"
               />
             </div>
-
-            {/* Reset button — full-width, below input, disabled until text matches */}
             <button
               onClick={handleReset}
               disabled={resetConfirmText !== "איפוס" || resetting}
               className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl py-3 text-sm font-bold text-white transition-colors"
             >
-              {resetting
-                ? <><span className="animate-spin">◌</span> מאפס…</>
-                : <><Trash2 size={14} /> אפס נתונים</>}
+              {resetting ? (
+                <>
+                  <span className="animate-spin">◌</span> מאפס…
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} /> אפס נתונים
+                </>
+              )}
             </button>
-
-            {/* Cancel */}
             <button
               onClick={() => setShowResetModal(false)}
               className="w-full bg-slate-800 hover:bg-slate-700 rounded-xl py-2.5 text-sm font-semibold text-slate-300 transition-colors"

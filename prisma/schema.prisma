@@ -54,6 +54,8 @@ model UserSettings {
   aiProvider           String  @default("anthropic") // anthropic | openai | gemini
   aiApiKey             String?                        // user-supplied key (stored in plain text for local dev)
   autoProteinGoal      Boolean @default(true)         // true = latestWeight × 2.1, false = manual
+  smartAlertsEnabled   Boolean @default(true)         // show smart nutrition alert banner
+  showWeeklySummary    Boolean @default(true)         // show weekly summary card on dashboard
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
