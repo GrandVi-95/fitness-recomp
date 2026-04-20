@@ -1,26 +1,56 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist);
+
+  /* Brand palette */
+  --color-brand:        #6366f1; /* indigo-500 — primary accent        */
+  --color-brand-light:  #818cf8; /* indigo-400                          */
+  --color-brand-dark:   #4f46e5; /* indigo-600                          */
+  --color-success:      #22c55e; /* green-500  — macro goals hit        */
+  --color-warning:      #f59e0b; /* amber-500  — alerts                 */
+  --color-danger:       #ef4444; /* red-500    — missed targets         */
+
+  /* Surfaces (dark-first) */
+  --color-surface-0:    #020617; /* slate-950  — page background        */
+  --color-surface-1:    #0f172a; /* slate-900  — card background        */
+  --color-surface-2:    #1e293b; /* slate-800  — elevated card          */
+  --color-surface-3:    #334155; /* slate-700  — borders / dividers     */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ── Base ────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-tap-highlight-color: transparent; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-surface-0);
+  color: #f1f5f9; /* slate-100 */
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* ── Scrollbar (thin, dark) ──────────────────────────────────── */
+
+::-webkit-scrollbar              { width: 6px; height: 6px; }
+::-webkit-scrollbar-track        { background: transparent; }
+::-webkit-scrollbar-thumb        { background: #334155; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover  { background: #475569; }
+
+/* ── Focus ring ──────────────────────────────────────────────── */
+
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+
+/* ── Utility: progress bar fills ─────────────────────────────── */
+
+.progress-fill-brand   { background: var(--color-brand); }
+.progress-fill-success { background: var(--color-success); }
+.progress-fill-warning { background: var(--color-warning); }
+.progress-fill-danger  { background: var(--color-danger); }
+
+/* ── Rest-timer ring animation ───────────────────────────────── */
+
+@keyframes timer-countdown {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 283; } /* 2π × 45 ≈ 283 */
 }

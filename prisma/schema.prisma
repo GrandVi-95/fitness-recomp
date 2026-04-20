@@ -1,0 +1,234 @@
+// Fitness & Nutrition Tracking App — Body Recomposition
+// Prisma schema for SQLite (development) / PostgreSQL (production)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection URL is configured in prisma.config.ts (Prisma v7 convention).
+  // Set DATABASE_URL in your .env / Vercel env vars.
+  // For PgBouncer (Supabase Transaction Mode), also set DIRECT_URL and add
+  // directUrl = env("DIRECT_URL") to the defineConfig() in prisma.config.ts.
+}
+
+// ─────────────────────────────────────────────
+// USER & PROFILE
+// ─────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  name            String   @default("Athlete")
+  // Recomp targets
+  targetCalories  Int      @default(2500)    // kcal/day
+  targetProtein   Int      @default(180)     // g/day
+  targetWeight    Float?                     // goal body weight kg
+  muscleMassGoal  Float    @default(5.0)     // +5 kg muscle target
+  startWeight     Float?                     // baseline body weight kg
+  startMuscleMass Float?                     // baseline muscle mass kg
+  // Preferences
+  splitType       String   @default("PPL")   // PPL | AB | FULL_BODY | CUSTOM
+  restSeconds     Int      @default(90)      // default rest timer
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workoutPlans    WorkoutPlan[]
+  workoutSessions WorkoutSession[]
+  nutritionLogs   NutritionLog[]
+  bodyMetrics     BodyMetric[]
+  progressPhotos  ProgressPhoto[]
+  userSettings    UserSettings?
+}
+
+model UserSettings {
+  id                   String  @id @default(cuid())
+  userId               String  @unique
+  darkMode             Boolean @default(true)
+  proteinAlertEnabled  Boolean @default(true)
+  proteinAlertTime     String  @default("14:00") // "HH:MM" — afternoon protein check
+  deloadThreshold      Int     @default(3)        // consecutive stalled weeks before deload
+  fatiguePacingEnabled Boolean @default(true)
+  // AI NLP settings
+  aiProvider           String  @default("anthropic") // anthropic | openai | gemini
+  aiApiKey             String?                        // user-supplied key (stored in plain text for local dev)
+  autoProteinGoal      Boolean @default(true)         // true = latestWeight × 2.1, false = manual
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// EXERCISE LIBRARY
+// ─────────────────────────────────────────────
+
+model Exercise {
+  id               String  @id @default(cuid())
+  name             String  @unique
+  primaryMuscle    String  // chest | back | shoulders | biceps | triceps | legs | core
+  secondaryMuscles String  @default("[]") // JSON array stored as string
+  equipment        String  @default("barbell") // barbell | dumbbell | cable | machine | bodyweight | kettlebell
+  instructions     String?
+  isCompound       Boolean @default(true)
+
+  workoutExercises WorkoutExercise[]
+  setLogs          SetLog[]
+}
+
+// ─────────────────────────────────────────────
+// WORKOUT PLANS & TEMPLATES
+// ─────────────────────────────────────────────
+
+model WorkoutPlan {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String                       // "My PPL Plan"
+  splitType String                       // PPL | AB | FULL_BODY | CUSTOM
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workouts Workout[]
+}
+
+model Workout {
+  id           String   @id @default(cuid())
+  planId       String
+  name         String                   // "Push Day A", "Pull Day B"
+  dayLabel     String                   // Push | Pull | Legs | A | B
+  order        Int
+  muscleGroups String   @default("[]")  // JSON array — ["chest","shoulders","triceps"]
+
+  plan      WorkoutPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+  sessions  WorkoutSession[]
+}
+
+model WorkoutExercise {
+  id          String  @id @default(cuid())
+  workoutId   String
+  exerciseId  String
+  order       Int
+  targetSets  Int     @default(3)
+  targetReps  String  @default("8-12")  // "8-12" | "5" | "AMRAP"
+  restSeconds Int     @default(90)
+  notes       String?
+
+  workout  Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// WORKOUT SESSIONS (live gym logs)
+// ─────────────────────────────────────────────
+
+model WorkoutSession {
+  id           String    @id @default(cuid())
+  userId       String
+  workoutId    String
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  durationMins Int?
+  // Recovery signals
+  fatigueLevel Int?      // 1–5 self-reported post-session
+  sleepHours   Float?    // hours slept before session
+  notes        String?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workout Workout @relation(fields: [workoutId], references: [id])
+  sets    SetLog[]
+}
+
+model SetLog {
+  id         String   @id @default(cuid())
+  sessionId  String
+  exerciseId String
+  setNumber  Int
+  reps       Int
+  weightKg   Float
+  rpe        Int?     // Rate of Perceived Exertion 1–10
+  isWarmup   Boolean  @default(false)
+  loggedAt   DateTime @default(now())
+
+  session  WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise Exercise       @relation(fields: [exerciseId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// NUTRITION
+// ─────────────────────────────────────────────
+
+// Vegetarian food database (seeded with common protein sources)
+model Food {
+  id           String  @id @default(cuid())
+  name         String  @unique
+  category     String  // legumes | dairy | egg | protein_supplement | grain | vegetable | nuts_seeds
+  isVegetarian Boolean @default(true)
+  // Per 100g macros
+  caloriesPer100 Float
+  proteinPer100  Float
+  carbsPer100    Float
+  fatPer100      Float
+  fiberPer100    Float  @default(0)
+  // Aliases for NLP matching: stored as JSON array string
+  aliases        String @default("[]")
+
+  nutritionItems NutritionFoodItem[]
+}
+
+model NutritionLog {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @default(now())
+  mealType  String   @default("snack") // breakfast | lunch | dinner | snack | pre_workout | post_workout
+  rawInput  String?  // original natural-language text from user
+  notes     String?
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodItems NutritionFoodItem[]
+}
+
+model NutritionFoodItem {
+  id       String  @id @default(cuid())
+  logId    String
+  foodId   String?
+  name     String  // display name (may differ from Food.name)
+  quantity Float   // amount in `unit`
+  unit     String  @default("g") // g | ml | piece | scoop | cup
+  // Computed macros (denormalized for quick aggregation)
+  calories Float
+  protein  Float
+  carbs    Float
+  fat      Float
+  fiber    Float   @default(0)
+
+  log  NutritionLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  food Food?        @relation(fields: [foodId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// BODY METRICS & PROGRESS
+// ─────────────────────────────────────────────
+
+model BodyMetric {
+  id         String   @id @default(cuid())
+  userId     String
+  date       DateTime @default(now())
+  weightKg   Float
+  bodyFatPct Float?   // % — from calipers / smart scale
+  muscleMassKg Float? // derived: bodyweight * (1 - bodyFatPct/100)
+  notes      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ProgressPhoto {
+  id     String   @id @default(cuid())
+  userId String
+  date   DateTime @default(now())
+  url    String   // local blob URL or /uploads path
+  angle  String   @default("front") // front | back | side_left | side_right
+  notes  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
