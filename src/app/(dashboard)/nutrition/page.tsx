@@ -4,14 +4,15 @@ import { useState, useEffect, useCallback } from "react"
 import {
   Send,
   Flame,
-  Beef,
-  Wheat,
-  Droplets,
   ChevronLeft,
   Plus,
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  Trash2,
+  Check,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -88,26 +89,9 @@ function MacroRing({
 
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <div
-        className="relative"
-        style={{ width: dim, height: dim }}
-      >
-        <svg
-          width={dim}
-          height={dim}
-          viewBox={`0 0 ${dim} ${dim}`}
-          className="-rotate-90"
-        >
-          {/* מסלול רקע */}
-          <circle
-            cx={dim / 2}
-            cy={dim / 2}
-            r={R}
-            fill="none"
-            stroke="#1e293b"
-            strokeWidth={SW}
-          />
-          {/* טבעת התקדמות */}
+      <div className="relative" style={{ width: dim, height: dim }}>
+        <svg width={dim} height={dim} viewBox={`0 0 ${dim} ${dim}`} className="-rotate-90">
+          <circle cx={dim / 2} cy={dim / 2} r={R} fill="none" stroke="#1e293b" strokeWidth={SW} />
           <circle
             cx={dim / 2}
             cy={dim / 2}
@@ -124,7 +108,6 @@ function MacroRing({
             }}
           />
         </svg>
-        {/* מרכז */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span
             className={cn(
@@ -148,6 +131,139 @@ function MacroRing({
 }
 
 // ─────────────────────────────────────────────────────────────
+// שורת מזון — עם עריכה ומחיקה
+// ─────────────────────────────────────────────────────────────
+
+function FoodItemRow({
+  item,
+  mealType,
+  isEditing,
+  isDeleting,
+  onEditStart,
+  onEditSave,
+  onEditCancel,
+  onDelete,
+}: {
+  item: FoodItem
+  mealType: string
+  isEditing: boolean
+  isDeleting: boolean
+  onEditStart: () => void
+  onEditSave: (qty: number) => void
+  onEditCancel: () => void
+  onDelete: () => void
+}) {
+  const [qtyStr, setQtyStr] = useState(String(item.quantity))
+
+  // Keep local input in sync if parent item changes
+  useEffect(() => {
+    if (!isEditing) setQtyStr(String(item.quantity))
+  }, [item.quantity, isEditing])
+
+  const qty = parseFloat(qtyStr) || 0
+  const ratio = qty > 0 && item.quantity > 0 ? qty / item.quantity : 0
+  const previewCal = Math.round(item.calories * ratio)
+  const previewProt = Math.round(item.protein * ratio * 10) / 10
+
+  if (isEditing) {
+    return (
+      <div className="py-2 space-y-2">
+        {/* שם + ביטול */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-slate-200 font-medium truncate flex-1 me-2">
+            {item.name}
+          </span>
+          <button
+            onClick={onEditCancel}
+            className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+            aria-label="ביטול"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* שדה כמות + שמירה */}
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={qtyStr}
+            min={0.1}
+            step={1}
+            onChange={(e) => setQtyStr(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && qty > 0) onEditSave(qty)
+              if (e.key === "Escape") onEditCancel()
+            }}
+            className="w-20 bg-slate-800 border border-indigo-500/60 rounded-lg px-2 py-1.5 text-sm text-center font-semibold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+            autoFocus
+            dir="ltr"
+          />
+          <span className="text-xs text-slate-500 shrink-0">{item.unit}</span>
+          {qty > 0 && (
+            <span className="text-xs text-slate-500 flex-1">
+              ≈{" "}
+              <span className="text-orange-400">{previewCal} קק"ל</span>
+              {" · "}
+              <span className="text-indigo-400">{previewProt} ח'</span>
+            </span>
+          )}
+          <button
+            onClick={() => qty > 0 && onEditSave(qty)}
+            disabled={qty <= 0}
+            className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white transition-colors shrink-0"
+            aria-label="שמור"
+          >
+            <Check size={13} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 py-1.5 transition-opacity",
+        isDeleting && "opacity-30 pointer-events-none"
+      )}
+    >
+      <div className="flex-1 min-w-0">
+        <span className="text-sm text-slate-300 truncate block">{item.name}</span>
+        <span className="text-xs text-slate-600">
+          {item.quantity} {item.unit}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-xs text-slate-500">{Math.round(item.calories)} קק"ל</span>
+        <span className="text-xs text-indigo-400 font-medium">{Math.round(item.protein)} ח'</span>
+
+        <button
+          onClick={onEditStart}
+          className="p-1 rounded text-slate-600 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+          aria-label="ערוך"
+        >
+          <Pencil size={12} />
+        </button>
+
+        <button
+          onClick={onDelete}
+          disabled={isDeleting}
+          className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          aria-label="מחק"
+        >
+          {isDeleting ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Trash2 size={12} />
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // עמוד תזונה
 // ─────────────────────────────────────────────────────────────
 
@@ -159,18 +275,21 @@ export default function NutritionPage() {
   const [selectedMeal, setSelectedMeal] = useState<MealType>("snack")
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
-  const [lastAdded, setLastAdded] = useState<{ items: FoodItem[]; totals: MacroTotals } | null>(null)
+  const [lastAdded, setLastAdded] = useState<{ items: FoodItem[]; totals: MacroTotals } | null>(
+    null
+  )
 
   const [openMeal, setOpenMeal] = useState<string | null>(null)
+
+  // Edit / delete state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
 
   // ── שליפת נתוני היום ────────────────────────────────────
   const fetchToday = useCallback(async () => {
     try {
       const res = await fetch("/api/nutrition/today")
-      if (res.ok) {
-        const data = await res.json()
-        setTodayData(data)
-      }
+      if (res.ok) setTodayData(await res.json())
     } catch (e) {
       console.error("Failed to fetch today's nutrition:", e)
     } finally {
@@ -178,7 +297,9 @@ export default function NutritionPage() {
     }
   }, [])
 
-  useEffect(() => { fetchToday() }, [fetchToday])
+  useEffect(() => {
+    fetchToday()
+  }, [fetchToday])
 
   // ── שליחת קלט NLP ───────────────────────────────────────
   const handleParse = async () => {
@@ -210,6 +331,85 @@ export default function NutritionPage() {
     }
   }
 
+  // ── עריכת פריט ──────────────────────────────────────────
+  const handleEditSave = async (item: FoodItem, mealType: string, newQty: number) => {
+    const ratio = newQty / item.quantity
+    const updated: FoodItem = {
+      ...item,
+      quantity: newQty,
+      calories: Math.round(item.calories * ratio),
+      protein:  Math.round(item.protein  * ratio * 10) / 10,
+      carbs:    Math.round(item.carbs    * ratio),
+      fat:      Math.round(item.fat      * ratio * 10) / 10,
+    }
+
+    setEditingId(null)
+
+    // Optimistic update
+    setTodayData((prev) => {
+      if (!prev) return prev
+      const newByMealType = { ...prev.byMealType }
+      newByMealType[mealType] = (newByMealType[mealType] ?? []).map((i) =>
+        i.id === item.id ? updated : i
+      )
+      const diff = {
+        calories: updated.calories - item.calories,
+        protein:  updated.protein  - item.protein,
+        carbs:    updated.carbs    - item.carbs,
+        fat:      updated.fat      - item.fat,
+      }
+      return {
+        ...prev,
+        byMealType: newByMealType,
+        totals: {
+          calories: Math.round(prev.totals.calories + diff.calories),
+          protein:  Math.round((prev.totals.protein + diff.protein) * 10) / 10,
+          carbs:    Math.round(prev.totals.carbs + diff.carbs),
+          fat:      Math.round((prev.totals.fat + diff.fat) * 10) / 10,
+        },
+      }
+    })
+
+    const res = await fetch(`/api/nutrition/items/${item.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity: newQty }),
+    })
+    if (!res.ok) await fetchToday() // revert on error
+  }
+
+  // ── מחיקת פריט ──────────────────────────────────────────
+  const handleDelete = async (item: FoodItem, mealType: string) => {
+    setDeletingIds((prev) => new Set([...prev, item.id]))
+
+    // Optimistic update
+    setTodayData((prev) => {
+      if (!prev) return prev
+      const newByMealType = { ...prev.byMealType }
+      newByMealType[mealType] = (newByMealType[mealType] ?? []).filter((i) => i.id !== item.id)
+      return {
+        ...prev,
+        byMealType: newByMealType,
+        totals: {
+          calories: Math.round(prev.totals.calories - item.calories),
+          protein:  Math.round((prev.totals.protein - item.protein) * 10) / 10,
+          carbs:    Math.round(prev.totals.carbs - item.carbs),
+          fat:      Math.round((prev.totals.fat - item.fat) * 10) / 10,
+        },
+      }
+    })
+
+    const res = await fetch(`/api/nutrition/items/${item.id}`, { method: "DELETE" })
+
+    setDeletingIds((prev) => {
+      const next = new Set(prev)
+      next.delete(item.id)
+      return next
+    })
+
+    if (!res.ok) await fetchToday() // revert on error
+  }
+
   const targets = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
   const totals = todayData?.totals ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
@@ -219,7 +419,6 @@ export default function NutritionPage() {
 
   return (
     <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
-
       {/* ── כותרת ─────────────────────────────────────────── */}
       <div>
         <h1 className="text-2xl font-bold">תזונה יומית</h1>
@@ -230,7 +429,6 @@ export default function NutritionPage() {
           ║            כרטיס סיכום מאקרו יומי               ║
           ╚══════════════════════════════════════════════════╝ */}
       <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
-
         {/* סרגל קלוריות */}
         <div>
           <div className="flex justify-between text-xs mb-1.5">
@@ -253,7 +451,6 @@ export default function NutritionPage() {
 
         {/* טבעות מאקרו */}
         <div className="flex items-end justify-around pt-1">
-          {/* חלבון — גדול ומודגש */}
           <div className="flex flex-col items-center gap-1">
             <div className="text-[10px] text-indigo-400 font-bold mb-0.5">יעד עיקרי</div>
             <MacroRing
@@ -269,8 +466,6 @@ export default function NutritionPage() {
               {Math.max(0, Math.round(protRemain))} גר' נותרו
             </p>
           </div>
-
-          {/* מאקרו קטנים */}
           <div className="flex gap-4">
             <MacroRing
               label="פחמימות"
@@ -349,11 +544,7 @@ export default function NutritionPage() {
             className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-xl px-4 h-14 flex items-center justify-center transition-colors shrink-0"
             aria-label="שלח"
           >
-            {parsing ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <Send size={18} />
-            )}
+            {parsing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
           </button>
         </div>
 
@@ -373,8 +564,12 @@ export default function NutritionPage() {
               נוסף בהצלחה — {lastAdded.items.length} פריטים
             </div>
             <div className="flex gap-3 text-xs text-slate-400">
-              <span className="text-orange-400 font-bold">{Math.round(lastAdded.totals.calories)} קק"ל</span>
-              <span className="text-indigo-400 font-bold">{Math.round(lastAdded.totals.protein)} גר' חלבון</span>
+              <span className="text-orange-400 font-bold">
+                {Math.round(lastAdded.totals.calories)} קק"ל
+              </span>
+              <span className="text-indigo-400 font-bold">
+                {Math.round(lastAdded.totals.protein)} גר' חלבון
+              </span>
               <span className="text-green-400">{Math.round(lastAdded.totals.carbs)} גר' פחמ'</span>
               <span className="text-amber-400">{Math.round(lastAdded.totals.fat)} גר' שומן</span>
             </div>
@@ -393,85 +588,95 @@ export default function NutritionPage() {
       </div>
 
       {/* ── קטעי ארוחות ──────────────────────────────────── */}
-      <div className="space-y-3">
-        {MEALS.map(({ type, label, emoji }) => {
-          const items = byMealType[type] ?? []
-          const mealCal = items.reduce((s, i) => s + i.calories, 0)
-          const mealProt = items.reduce((s, i) => s + i.protein, 0)
-          const isOpen = openMeal === type
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 size={20} className="animate-spin text-slate-500" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {MEALS.map(({ type, label, emoji }) => {
+            const items = byMealType[type] ?? []
+            const mealCal = items.reduce((s, i) => s + i.calories, 0)
+            const mealProt = items.reduce((s, i) => s + i.protein, 0)
+            const isOpen = openMeal === type
 
-          return (
-            <div key={type} className="bg-slate-900 rounded-2xl overflow-hidden">
-              <button
-                onClick={() => setOpenMeal(isOpen ? null : type)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/50 transition-colors"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="text-base">{emoji}</span>
-                  <span className="text-sm font-semibold">{label}</span>
-                  {items.length > 0 && (
-                    <span className="text-[10px] bg-indigo-500/20 text-indigo-400 rounded-full px-1.5 py-0.5 font-medium">
-                      {items.length}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  {items.length > 0 && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-slate-400">{Math.round(mealCal)} קק"ל</span>
-                      <span className="text-indigo-400 font-medium">{Math.round(mealProt)} גר' ח'</span>
-                    </div>
-                  )}
-                  {items.length === 0 && (
-                    <span className="text-xs text-slate-600">ריק</span>
-                  )}
-                  <ChevronLeft
-                    size={16}
-                    className={cn(
-                      "text-slate-600 transition-transform duration-200",
-                      isOpen ? "rotate-90" : "rtl:-rotate-180"
+            return (
+              <div key={type} className="bg-slate-900 rounded-2xl overflow-hidden">
+                {/* כותרת ארוחה */}
+                <button
+                  onClick={() => setOpenMeal(isOpen ? null : type)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base">{emoji}</span>
+                    <span className="text-sm font-semibold">{label}</span>
+                    {items.length > 0 && (
+                      <span className="text-[10px] bg-indigo-500/20 text-indigo-400 rounded-full px-1.5 py-0.5 font-medium">
+                        {items.length}
+                      </span>
                     )}
-                  />
-                </div>
-              </button>
-
-              {isOpen && (
-                <div className="px-4 pb-3 space-y-2 border-t border-slate-800">
-                  {items.length === 0 ? (
-                    <p className="text-xs text-slate-600 py-2">עדיין לא נרשמו מאכלים.</p>
-                  ) : (
-                    items.map((item, i) => (
-                      <div key={i} className="flex items-center justify-between text-sm py-1">
-                        <div className="flex-1 min-w-0">
-                          <span className="text-slate-300 truncate block">{item.name}</span>
-                          <span className="text-xs text-slate-600">
-                            {item.quantity} {item.unit}
-                          </span>
-                        </div>
-                        <div className="flex gap-2 text-xs shrink-0">
-                          <span className="text-slate-500">{Math.round(item.calories)} קק"ל</span>
-                          <span className="text-indigo-400">{Math.round(item.protein)} גר' ח'</span>
-                        </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {items.length > 0 && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-slate-400">{Math.round(mealCal)} קק"ל</span>
+                        <span className="text-indigo-400 font-medium">
+                          {Math.round(mealProt)} גר' ח'
+                        </span>
                       </div>
-                    ))
-                  )}
-                  <button
-                    onClick={() => {
-                      setSelectedMeal(type)
-                      document.querySelector<HTMLTextAreaElement>('textarea[placeholder="מה אכלת?"]')?.focus()
-                    }}
-                    className="w-full mt-1 flex items-center justify-center gap-1.5 border border-dashed border-slate-700 hover:border-indigo-600/50 rounded-xl py-2 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-                  >
-                    <Plus size={13} /> הוסף ל{label}
-                  </button>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+                    )}
+                    {items.length === 0 && <span className="text-xs text-slate-600">ריק</span>}
+                    <ChevronLeft
+                      size={16}
+                      className={cn(
+                        "text-slate-600 transition-transform duration-200",
+                        isOpen ? "rotate-90" : "rtl:-rotate-180"
+                      )}
+                    />
+                  </div>
+                </button>
 
-      {/* רפידת תחתית */}
+                {/* תוכן ארוחה */}
+                {isOpen && (
+                  <div className="px-4 pb-3 border-t border-slate-800">
+                    {items.length === 0 ? (
+                      <p className="text-xs text-slate-600 py-2">עדיין לא נרשמו מאכלים.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-800/60">
+                        {items.map((item) => (
+                          <FoodItemRow
+                            key={item.id}
+                            item={item}
+                            mealType={type}
+                            isEditing={editingId === item.id}
+                            isDeleting={deletingIds.has(item.id)}
+                            onEditStart={() => setEditingId(item.id)}
+                            onEditSave={(qty) => handleEditSave(item, type, qty)}
+                            onEditCancel={() => setEditingId(null)}
+                            onDelete={() => handleDelete(item, type)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSelectedMeal(type)
+                        document
+                          .querySelector<HTMLTextAreaElement>('textarea[placeholder="מה אכלת?"]')
+                          ?.focus()
+                      }}
+                      className="w-full mt-2 flex items-center justify-center gap-1.5 border border-dashed border-slate-700 hover:border-indigo-600/50 rounded-xl py-2 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                    >
+                      <Plus size={13} /> הוסף ל{label}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <div className="h-2" />
     </div>
   )

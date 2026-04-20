@@ -5,6 +5,9 @@
       "Bash(npx prisma *)",
       "Bash(npx tsc *)",
       "Bash(npm run *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\ido\\fitness-recomp\\src\\app\\api\\nutrition\\items"
     ]
   }
 }
