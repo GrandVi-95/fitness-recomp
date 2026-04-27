@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { calculateBMR, calculateTDEE, calculateAutoProtein } from "@/lib/utils"
+import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -77,11 +77,11 @@ export async function POST(request: Request) {
 
     // Backfill startWeight on first entry + auto-recalculate targets
     const [user, settings] = await Promise.all([
-      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { startWeight: true } }),
+      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { startWeight: true, targetCalories: true, targetProtein: true } }),
       db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } }),
     ])
 
-    const userUpdates: { startWeight?: number; targetCalories?: number; targetProtein?: number } = {}
+    const userUpdates: { startWeight?: number; targetCalories?: number; targetProtein?: number; targetFats?: number; targetCarbs?: number } = {}
 
     if (!user?.startWeight) userUpdates.startWeight = weightKg
 
@@ -97,6 +97,13 @@ export async function POST(request: Request) {
 
     if (settings?.autoProteinGoal) {
       userUpdates.targetProtein = calculateAutoProtein(weightKg)
+    }
+
+    if (userUpdates.targetCalories !== undefined || userUpdates.targetProtein !== undefined) {
+      const calForMacros = userUpdates.targetCalories ?? user?.targetCalories ?? 2500
+      const protForMacros = userUpdates.targetProtein ?? user?.targetProtein ?? 180
+      userUpdates.targetFats = calculateTargetFats(calForMacros)
+      userUpdates.targetCarbs = calculateTargetCarbs(calForMacros, protForMacros, userUpdates.targetFats)
     }
 
     if (Object.keys(userUpdates).length > 0) {

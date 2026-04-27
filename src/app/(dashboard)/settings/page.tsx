@@ -22,7 +22,7 @@ import {
   Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { calculateBMR, calculateTDEE, calculateAutoProtein } from "@/lib/utils"
+import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -48,6 +48,8 @@ interface SettingsData {
   name: string
   targetCalories: number
   targetProtein: number
+  targetFats: number
+  targetCarbs: number
   latestWeight: number | null
   calculatedProtein: number | null
   calculatedCalories: number | null
@@ -210,8 +212,12 @@ export default function SettingsPage() {
     return { bmr, tdee, autoProteinG: w > 0 ? calculateAutoProtein(w) : 0 }
   }, [weight, height, age, gender, activityMultiplier])
 
-  const effectiveCalories = autoCalorieGoal ? tdee      : manualCalories
+  const effectiveCalories = autoCalorieGoal ? tdee         : manualCalories
   const effectiveProtein  = autoProtein     ? autoProteinG : manualProtein
+  const effectiveFats     = effectiveCalories > 0 ? calculateTargetFats(effectiveCalories) : 0
+  const effectiveCarbs    = effectiveCalories > 0 && effectiveFats > 0
+    ? calculateTargetCarbs(effectiveCalories, effectiveProtein, effectiveFats)
+    : 0
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
@@ -519,6 +525,46 @@ export default function SettingsPage() {
             {effectiveProtein > 0 ? `${effectiveProtein} גר' חלבון` : "—"}
           </span>
         </div>
+
+        {/* ─── Macro breakdown ─────────────────────────────── */}
+        {effectiveCalories > 0 && (
+          <div className="rounded-xl bg-slate-800 px-3 py-3 space-y-2.5">
+            <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+              <Flame size={11} className="text-orange-400" /> פירוט מאקרו יומי
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-slate-700/50 rounded-lg py-2">
+                <p className="text-[10px] text-slate-500 mb-0.5">חלבון</p>
+                <p className="text-sm font-bold text-violet-300">
+                  {effectiveProtein}
+                  <span className="text-[10px] font-normal text-slate-500"> גר&apos;</span>
+                </p>
+                <p className="text-[10px] text-slate-600">{effectiveProtein * 4} קק&quot;ל</p>
+              </div>
+              <div className="bg-slate-700/50 rounded-lg py-2">
+                <p className="text-[10px] text-slate-500 mb-0.5">פחמימות</p>
+                <p className="text-sm font-bold text-green-300">
+                  {effectiveCarbs}
+                  <span className="text-[10px] font-normal text-slate-500"> גר&apos;</span>
+                </p>
+                <p className="text-[10px] text-slate-600">{effectiveCarbs * 4} קק&quot;ל</p>
+              </div>
+              <div className="bg-slate-700/50 rounded-lg py-2">
+                <p className="text-[10px] text-slate-500 mb-0.5">שומן</p>
+                <p className="text-sm font-bold text-amber-300">
+                  {effectiveFats}
+                  <span className="text-[10px] font-normal text-slate-500"> גר&apos;</span>
+                </p>
+                <p className="text-[10px] text-slate-600">{effectiveFats * 9} קק&quot;ל</p>
+              </div>
+            </div>
+            <div className="border-t border-slate-700 pt-2 text-center">
+              <p className="text-[10px] text-slate-600">
+                סה&quot;כ: {effectiveProtein * 4 + effectiveCarbs * 4 + effectiveFats * 9} קק&quot;ל מתוך {effectiveCalories.toLocaleString()} יעד
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── ספק AI ────────────────────────────────────────── */}

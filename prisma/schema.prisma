@@ -24,6 +24,8 @@ model User {
   // Recomp targets
   targetCalories  Int      @default(2500)    // kcal/day
   targetProtein   Int      @default(180)     // g/day
+  targetFats      Int      @default(69)      // g/day fat (25% of calories)
+  targetCarbs     Int      @default(290)     // g/day carbs (remaining calories)
   targetWeight    Float?                     // goal body weight kg
   muscleMassGoal  Float    @default(5.0)     // +5 kg muscle target
   startWeight     Float?                     // baseline body weight kg

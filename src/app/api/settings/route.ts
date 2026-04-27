@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { calculateBMR, calculateTDEE, calculateAutoProtein } from "@/lib/utils"
+import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -38,6 +38,8 @@ export async function GET() {
       name:                user.name ?? "",
       targetCalories:      user.targetCalories,
       targetProtein:       user.targetProtein,
+      targetFats:          user.targetFats,
+      targetCarbs:         user.targetCarbs,
       latestWeight,
       calculatedProtein,
       calculatedCalories,
@@ -134,7 +136,10 @@ export async function PUT(request: Request) {
 
     // ── 3. Determine effective body-profile values for auto-calculation ───────
     //   Use the incoming values if provided, else fall back to stored settings.
-    const existing = await db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } })
+    const [existing, currentUser] = await Promise.all([
+      db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } }),
+      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { targetCalories: true, targetProtein: true } }),
+    ])
 
     const effectiveHeight             = height             ?? existing?.height             ?? 183
     const effectiveAge                = age                ?? existing?.age                ?? 31
@@ -155,7 +160,7 @@ export async function PUT(request: Request) {
     }
 
     // ── 4. Build User-level updates (name + computed targets) ────────────────
-    const userUpdates: { name?: string; targetCalories?: number; targetProtein?: number } = {}
+    const userUpdates: { name?: string; targetCalories?: number; targetProtein?: number; targetFats?: number; targetCarbs?: number } = {}
 
     if (name !== undefined) userUpdates.name = name.trim()
 
@@ -170,6 +175,14 @@ export async function PUT(request: Request) {
       userUpdates.targetProtein = calculateAutoProtein(effectiveWeight)
     } else if (!effectiveAutoProtein && targetProtein !== undefined) {
       userUpdates.targetProtein = Math.round(targetProtein)
+    }
+
+    // Always recompute fats/carbs whenever calories or protein changes
+    if (userUpdates.targetCalories !== undefined || userUpdates.targetProtein !== undefined) {
+      const calForMacros = userUpdates.targetCalories ?? currentUser?.targetCalories ?? 2500
+      const protForMacros = userUpdates.targetProtein ?? currentUser?.targetProtein ?? 180
+      userUpdates.targetFats = calculateTargetFats(calForMacros)
+      userUpdates.targetCarbs = calculateTargetCarbs(calForMacros, protForMacros, userUpdates.targetFats)
     }
 
     if (Object.keys(userUpdates).length > 0) {

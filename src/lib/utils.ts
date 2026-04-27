@@ -162,6 +162,22 @@ export function calculateAutoProtein(weightKg: number): number {
   return Math.round(weightKg * PROTEIN_MULTIPLIER)
 }
 
+/** Fat target: 25% of total calories, at 9 kcal/g */
+export function calculateTargetFats(targetCalories: number): number {
+  return Math.round((targetCalories * 0.25) / 9)
+}
+
+/** Carb target: remaining calories after protein and fat, at 4 kcal/g */
+export function calculateTargetCarbs(
+  targetCalories: number,
+  targetProtein: number,
+  targetFats: number,
+): number {
+  const proteinKcal = targetProtein * 4
+  const fatKcal = targetFats * 9
+  return Math.round((targetCalories - proteinKcal - fatKcal) / 4)
+}
+
 // ── Progress helpers ──────────────────────────────────────────
 
 export function progressPercent(current: number, target: number): number {

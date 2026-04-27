@@ -108,6 +108,8 @@ async function getDashboardData() {
   if (settings?.autoProteinGoal && latestWeight) {
     targetProtein = Math.round(latestWeight * 2.2)
   }
+  const targetFats = user?.targetFats ?? Math.round((targetCalories * 0.25) / 9)
+  const targetCarbs = user?.targetCarbs ?? Math.round((targetCalories - targetProtein * 4 - targetFats * 9) / 4)
 
   // Next workout
   let nextWorkout: { name: string; dayLabel: string } | null = null
@@ -203,6 +205,8 @@ async function getDashboardData() {
     userName: user?.name ?? "ספורטאי",
     targetCalories,
     targetProtein,
+    targetFats,
+    targetCarbs,
     todayNutrition: {
       calories: Math.round(todayNutrition.calories),
       protein: Math.round(todayNutrition.protein * 10) / 10,
@@ -393,6 +397,8 @@ export default async function DashboardPage() {
     userName,
     targetCalories,
     targetProtein,
+    targetFats,
+    targetCarbs,
     todayNutrition,
     latestWeight,
     nextWorkout,
@@ -480,14 +486,14 @@ export default async function DashboardPage() {
           <MacroRing
             label="פחמימות"
             current={todayNutrition.carbs}
-            target={Math.round((targetCalories * 0.5) / 4)}
+            target={targetCarbs}
             unit=" גר'"
             color="#22c55e"
           />
           <MacroRing
             label="שומן"
             current={todayNutrition.fat}
-            target={Math.round((targetCalories * 0.25) / 9)}
+            target={targetFats}
             unit=" גר'"
             color="#f59e0b"
           />
