@@ -10,16 +10,18 @@ import {
   Zap,
   HeartPulse,
   Settings,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
-  { href: "/dashboard",   label: "בית",         icon: LayoutDashboard },
-  { href: "/workouts",    label: "אימונים",      icon: Dumbbell        },
-  { href: "/gym",         label: "חדר כושר",    icon: Zap             },
-  { href: "/nutrition",   label: "תזונה",        icon: UtensilsCrossed },
-  { href: "/metrics",     label: "מדדים",        icon: LineChart        },
-  { href: "/recovery",    label: "התאוששות",    icon: HeartPulse      },
+  { href: "/dashboard",   label: "בית",      icon: LayoutDashboard },
+  { href: "/workouts",    label: "אימונים",   icon: Dumbbell        },
+  { href: "/gym",         label: "כושר",     icon: Zap             },
+  { href: "/nutrition",   label: "תזונה",     icon: UtensilsCrossed },
+  { href: "/metrics",     label: "מדדים",     icon: LineChart        },
+  { href: "/weekly",      label: "שבועי",     icon: BarChart3       },
+  { href: "/recovery",    label: "התאוששות", icon: HeartPulse      },
 ] as const
 
 export default function DashboardLayout({

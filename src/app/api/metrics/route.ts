@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { calculateBMR, calculateTDEE, calculateAutoProtein } from "@/lib/utils"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -74,16 +75,32 @@ export async function POST(request: Request) {
       },
     })
 
-    // If no startWeight set on the user yet, backfill it
-    const user = await db.user.findUnique({
-      where: { id: DEMO_USER_ID },
-      select: { startWeight: true },
-    })
-    if (!user?.startWeight) {
-      await db.user.update({
-        where: { id: DEMO_USER_ID },
-        data: { startWeight: weightKg },
-      })
+    // Backfill startWeight on first entry + auto-recalculate targets
+    const [user, settings] = await Promise.all([
+      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { startWeight: true } }),
+      db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } }),
+    ])
+
+    const userUpdates: { startWeight?: number; targetCalories?: number; targetProtein?: number } = {}
+
+    if (!user?.startWeight) userUpdates.startWeight = weightKg
+
+    if (settings?.autoCalorieGoal) {
+      const bmr = calculateBMR(
+        weightKg,
+        settings.height,
+        settings.age,
+        settings.gender,
+      )
+      userUpdates.targetCalories = calculateTDEE(bmr, settings.activityMultiplier)
+    }
+
+    if (settings?.autoProteinGoal) {
+      userUpdates.targetProtein = calculateAutoProtein(weightKg)
+    }
+
+    if (Object.keys(userUpdates).length > 0) {
+      await db.user.update({ where: { id: DEMO_USER_ID }, data: userUpdates })
     }
 
     return NextResponse.json({ metric }, { status: 201 })

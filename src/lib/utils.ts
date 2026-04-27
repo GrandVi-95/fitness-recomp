@@ -134,6 +134,34 @@ export function formatRestTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`
 }
 
+// ── TDEE / calorie targets ────────────────────────────────
+
+export const PROTEIN_MULTIPLIER = 2.2 // g protein per kg bodyweight
+
+/**
+ * Mifflin-St Jeor BMR.
+ *  Male:   (10 × kg) + (6.25 × cm) − (5 × age) + 5
+ *  Female: (10 × kg) + (6.25 × cm) − (5 × age) − 161
+ */
+export function calculateBMR(
+  weightKg: number,
+  heightCm: number,
+  age: number,
+  gender: string,
+): number {
+  const base = 10 * weightKg + 6.25 * heightCm - 5 * age
+  return Math.round(gender === "female" ? base - 161 : base + 5)
+}
+
+/** TDEE = BMR × activity multiplier, rounded to nearest 50 kcal */
+export function calculateTDEE(bmr: number, activityMultiplier: number): number {
+  return Math.round((bmr * activityMultiplier) / 50) * 50
+}
+
+export function calculateAutoProtein(weightKg: number): number {
+  return Math.round(weightKg * PROTEIN_MULTIPLIER)
+}
+
 // ── Progress helpers ──────────────────────────────────────────
 
 export function progressPercent(current: number, target: number): number {

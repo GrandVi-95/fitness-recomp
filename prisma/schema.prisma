@@ -53,9 +53,15 @@ model UserSettings {
   // AI NLP settings
   aiProvider           String  @default("anthropic") // anthropic | openai | gemini
   aiApiKey             String?                        // user-supplied key (stored in plain text for local dev)
-  autoProteinGoal      Boolean @default(true)         // true = latestWeight × 2.1, false = manual
+  autoProteinGoal      Boolean @default(true)         // true = latestWeight × 2.2, false = manual
   smartAlertsEnabled   Boolean @default(true)         // show smart nutrition alert banner
   showWeeklySummary    Boolean @default(true)         // show weekly summary card on dashboard
+  // Body profile — used for Mifflin-St Jeor TDEE calculation
+  height               Int     @default(183)    // cm
+  age                  Int     @default(31)     // years
+  gender               String  @default("male") // male | female
+  activityMultiplier   Float   @default(1.45)   // TDEE multiplier (1.2 sedentary → 1.9 very active)
+  autoCalorieGoal      Boolean @default(true)   // true = TDEE from Mifflin-St Jeor, false = manual
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

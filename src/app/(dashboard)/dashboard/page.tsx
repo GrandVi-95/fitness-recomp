@@ -10,11 +10,17 @@ import {
   ChevronLeft,
   CalendarDays,
   Trophy,
+  BarChart3,
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
 
 const DEMO_USER_ID = "demo-user"
+
+/** Returns "YYYY-MM-DD" using the local calendar date, never UTC. */
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
 
 // ── Server data helpers ──────────────────────────────────────────────────────
 
@@ -100,7 +106,7 @@ async function getDashboardData() {
   const targetCalories = user?.targetCalories ?? 2600
   let targetProtein = user?.targetProtein ?? 185
   if (settings?.autoProteinGoal && latestWeight) {
-    targetProtein = Math.round(latestWeight * 2.1)
+    targetProtein = Math.round(latestWeight * 2.2)
   }
 
   // Next workout
@@ -128,7 +134,7 @@ async function getDashboardData() {
   if (showWeeklySummary) {
     const weekDayMap = new Map<string, { calories: number; protein: number }>()
     for (const log of weeklyNutritionLogs) {
-      const key = log.date.toISOString().split("T")[0]
+      const key = localDateStr(log.date)
       const prev = weekDayMap.get(key) ?? { calories: 0, protein: 0 }
       prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
       prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
@@ -177,7 +183,7 @@ async function getDashboardData() {
   if (smartAlertsEnabled) {
     const alertDayMap = new Map<string, { calories: number; protein: number }>()
     for (const log of alertNutritionLogs) {
-      const key = log.date.toISOString().split("T")[0]
+      const key = localDateStr(log.date)
       const prev = alertDayMap.get(key) ?? { calories: 0, protein: 0 }
       prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
       prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
@@ -306,7 +312,15 @@ function WeeklySummaryCard({
         <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
           <CalendarDays size={16} className="text-violet-400" /> סיכום שבועי
         </h2>
-        <span className="text-[11px] text-slate-500">מ-{weekLabel}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500">מ-{weekLabel}</span>
+          <Link
+            href="/weekly"
+            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5 transition-colors"
+          >
+            <BarChart3 size={11} /> דו&quot;ח מלא
+          </Link>
+        </div>
       </div>
 
       {/* Progress bars */}

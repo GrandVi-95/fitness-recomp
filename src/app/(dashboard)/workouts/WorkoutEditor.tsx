@@ -58,14 +58,28 @@ function newKey() {
   return `_${Math.random().toString(36).slice(2)}`
 }
 
+const MUSCLE_OPTIONS = [
+  { value: "chest", label: "חזה" },
+  { value: "back", label: "גב" },
+  { value: "shoulders", label: "כתפיים" },
+  { value: "biceps", label: "בייספס" },
+  { value: "triceps", label: "טרייספס" },
+  { value: "legs", label: "רגליים" },
+  { value: "core", label: "בטן" },
+  { value: "other", label: "אחר" },
+]
+
 // ─────────────────────────────────────────────────────────
-// ExerciseSearch — search + pick from DB
+// ExerciseSearch — searchable combobox with on-the-fly creation
 // ─────────────────────────────────────────────────────────
 
 function ExerciseSearch({ onSelect }: { onSelect: (ex: ExerciseResult) => void }) {
   const [q, setQ] = useState("")
   const [results, setResults] = useState<ExerciseResult[]>([])
   const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newMuscle, setNewMuscle] = useState("other")
+  const [createError, setCreateError] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const search = useCallback((query: string) => {
@@ -84,6 +98,30 @@ function ExerciseSearch({ onSelect }: { onSelect: (ex: ExerciseResult) => void }
     timerRef.current = setTimeout(() => search(q), 300)
   }, [q, search])
 
+  const trimmed = q.trim()
+  const exactMatch = results.some((r) => r.name.toLowerCase() === trimmed.toLowerCase())
+  const showAddOption = trimmed.length > 0 && !loading && !exactMatch
+
+  const handleCreate = async () => {
+    if (!trimmed || creating) return
+    setCreating(true)
+    setCreateError(false)
+    try {
+      const res = await fetch("/api/exercises", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed, primaryMuscle: newMuscle }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.exercise) throw new Error()
+      onSelect(data.exercise)
+    } catch {
+      setCreateError(true)
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="border border-slate-700 rounded-2xl overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700 bg-slate-800">
@@ -92,14 +130,14 @@ function ExerciseSearch({ onSelect }: { onSelect: (ex: ExerciseResult) => void }
           type="text"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="חפש תרגיל..."
+          placeholder="חפש או הקלד שם תרגיל חדש..."
           className="flex-1 bg-transparent text-sm placeholder:text-slate-600 focus:outline-none"
           autoFocus
         />
         {loading && <Loader2 size={12} className="animate-spin text-slate-600 shrink-0" />}
       </div>
       <div className="max-h-52 overflow-y-auto">
-        {results.length === 0 && !loading ? (
+        {results.length === 0 && !loading && !showAddOption ? (
           <p className="text-xs text-slate-600 text-center py-4">לא נמצאו תרגילים</p>
         ) : (
           results.map((ex) => (
@@ -124,6 +162,31 @@ function ExerciseSearch({ onSelect }: { onSelect: (ex: ExerciseResult) => void }
           ))
         )}
       </div>
+
+      {/* Add new exercise row */}
+      {showAddOption && (
+        <div className="border-t border-slate-700 bg-slate-900 px-3 py-2.5 flex items-center gap-2">
+          <select
+            value={newMuscle}
+            onChange={(e) => setNewMuscle(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 shrink-0"
+          >
+            {MUSCLE_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors"
+          >
+            {creating ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+            הוסף &ldquo;{trimmed}&rdquo;
+          </button>
+          {createError && <span className="text-[10px] text-red-400 shrink-0">שגיאה</span>}
+        </div>
+      )}
     </div>
   )
 }
