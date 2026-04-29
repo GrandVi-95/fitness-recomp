@@ -63,6 +63,7 @@ interface SettingsData {
   age: number
   gender: string
   activityMultiplier: number
+  dietaryPreference: string
 }
 
 // ── Small shared components ──────────────────────────────────────────────────
@@ -174,6 +175,9 @@ export default function SettingsPage() {
   const [aiProvider, setAiProvider] = useState("anthropic")
   const [apiKey, setApiKey]         = useState("")
 
+  // Dietary preference
+  const [dietaryPreference, setDietaryPreference] = useState("vegetarian")
+
   // Display
   const [smartAlertsEnabled, setSmartAlertsEnabled] = useState(true)
   const [showWeeklySummary, setShowWeeklySummary]   = useState(true)
@@ -198,6 +202,7 @@ export default function SettingsPage() {
         setAiProvider(d.aiProvider)
         setSmartAlertsEnabled(d.smartAlertsEnabled ?? true)
         setShowWeeklySummary(d.showWeeklySummary ?? true)
+        setDietaryPreference(d.dietaryPreference ?? "vegetarian")
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -232,6 +237,7 @@ export default function SettingsPage() {
         autoProteinGoal: autoProtein,
         smartAlertsEnabled,
         showWeeklySummary,
+        dietaryPreference,
         // Body profile — always sent so targets stay in sync
         weight,
         height,
@@ -328,6 +334,24 @@ export default function SettingsPage() {
             מוצג בדשבורד:{" "}
             <span className="text-indigo-300">שלום, {displayName.trim() || "ספורטאי"} 👋</span>
           </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <FieldLabel>העדפה תזונתית</FieldLabel>
+          <div className="relative">
+            <select
+              value={dietaryPreference}
+              onChange={(e) => setDietaryPreference(e.target.value)}
+              className="w-full appearance-none bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+            >
+              <option value="vegetarian">צמחוני</option>
+              <option value="vegan">טבעוני</option>
+              <option value="pescatarian">פסקטריאני</option>
+              <option value="omnivore">כל-אוכל</option>
+            </select>
+            <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          </div>
+          <p className="text-[11px] text-slate-500">משמש להצעות ארוחה חכמות בדשבורד</p>
         </div>
       </section>
 

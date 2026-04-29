@@ -386,7 +386,7 @@ function WorkoutPicker() {
 // ActiveSession — ממשק האימון החי
 // ─────────────────────────────────────────────────────────────
 
-const WEIGHT_STEPS = [0.5, 2.5, 5] as const
+const WEIGHT_STEP = 2.5
 
 function ActiveSession() {
   const {
@@ -398,7 +398,6 @@ function ActiveSession() {
     inputWeightKg,
     inputReps,
     inputRpe,
-    weightStep,
     startedAt,
     logSet,
     updateSetServerId,
@@ -407,7 +406,6 @@ function ActiveSession() {
     setWeight,
     setReps,
     setRpe,
-    setWeightStep,
     nextExercise,
     prevExercise,
     startRest,
@@ -715,7 +713,7 @@ function ActiveSession() {
                 adjustWeight(currentEx.exerciseId, delta)
               }
               onSet={(v) => setWeight(currentEx.exerciseId, v)}
-              step={weightStep}
+              step={WEIGHT_STEP}
               min={0}
               isDecimal
             />
@@ -731,28 +729,17 @@ function ActiveSession() {
             />
           </div>
 
-          {/* בחירת קפיצת משקל */}
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[11px] text-slate-600 w-10 shrink-0">
-              קפיצה
-            </span>
-            <div className="flex gap-1.5 flex-1">
-              {WEIGHT_STEPS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setWeightStep(s)}
-                  className={cn(
-                    "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
-                    weightStep === s
-                      ? "bg-indigo-600 border-indigo-500 text-white"
-                      : "bg-transparent border-slate-800 text-slate-500 hover:border-slate-600"
-                  )}
-                >
-                  {s} ק"ג
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Previous performance hint near inputs */}
+          {currentEx.previousPerformance && (
+            <p className="text-[11px] text-amber-600/80 text-center -mt-1">
+              פעם קודמת:{" "}
+              {currentEx.previousPerformance.topSetWeightKg > 0
+                ? `${currentEx.previousPerformance.topSetWeightKg} ק"ג`
+                : "BW"}
+              {currentEx.previousPerformance.sets[0] != null &&
+                ` × ${currentEx.previousPerformance.sets[0].reps} חזרות`}
+            </p>
+          )}
 
           {/* RPE (מתקפל) */}
           {showRpe && (

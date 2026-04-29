@@ -211,9 +211,10 @@ export async function DELETE(
       )
     }
 
-    await db.workoutPlan.delete({
-      where: { id: planId },
-    })
+    // The DB handles the full cascade:
+    // WorkoutPlan → Workout → WorkoutExercise
+    //                       → WorkoutSession → SetLog
+    await db.workoutPlan.delete({ where: { id: planId } })
 
     return NextResponse.json({ ok: true })
   } catch (err) {

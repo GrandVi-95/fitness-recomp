@@ -49,11 +49,17 @@ async function getWeeklyData() {
   thisWeekStart.setDate(now.getDate() - now.getDay())
   thisWeekStart.setHours(0, 0, 0, 0)
 
-  // Last week: previous Sunday → Saturday 23:59:59
+  // Shift back 3 h (UTC+3 Israel Summer upper bound) so sessions started just
+  // after local midnight Sunday aren't missed when the server runs in UTC.
+  // Shift back 3 h (UTC+3 Israel Summer upper bound) so sessions started just
+  // after local midnight Sunday aren't missed when the server runs in UTC.
+  const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
+  const thisWeekStartQ = new Date(thisWeekStart.getTime() - TZ_OFFSET_MS)
+  const lastWeekStartQ = new Date(thisWeekStartQ.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+  // Last week: previous Sunday — used for body metrics filter
   const lastWeekStart = new Date(thisWeekStart)
   lastWeekStart.setDate(thisWeekStart.getDate() - 7)
-  const lastWeekEnd = new Date(thisWeekStart)
-  lastWeekEnd.setMilliseconds(-1)
 
   const [
     user,
@@ -74,7 +80,7 @@ async function getWeeklyData() {
     db.workoutSession.findMany({
       where: {
         userId: DEMO_USER_ID,
-        startedAt: { gte: thisWeekStart },
+        startedAt: { gte: thisWeekStartQ },
         completedAt: { not: null },
       },
       include: {
@@ -87,7 +93,7 @@ async function getWeeklyData() {
     db.workoutSession.findMany({
       where: {
         userId: DEMO_USER_ID,
-        startedAt: { gte: lastWeekStart, lt: thisWeekStart },
+        startedAt: { gte: lastWeekStartQ, lt: thisWeekStartQ },
         completedAt: { not: null },
       },
       include: {

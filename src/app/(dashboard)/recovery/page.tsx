@@ -1,21 +1,9 @@
-import {
-  HeartPulse,
-  BedDouble,
-  Zap,
-  AlertTriangle,
-  CheckCircle2,
-  BarChart3,
-} from "lucide-react"
-import Link from "next/link"
 import { db } from "@/lib/db"
+import RecoveryTabs, { type RecoveryData, type WeeklyData } from "@/components/recovery/RecoveryTabs"
 
 const DEMO_USER_ID = "demo-user"
 
-// ─────────────────────────────────────────────────────────
-// Volume landmarks
-// ─────────────────────────────────────────────────────────
-
-const MUSCLE_ORDER  = ["chest","back","shoulders","biceps","triceps","quads","hamstrings","core"] as const
+const MUSCLE_ORDER = ["chest","back","shoulders","biceps","triceps","quads","hamstrings","core"] as const
 type Muscle = typeof MUSCLE_ORDER[number]
 
 const MUSCLE_LABELS: Record<Muscle, string> = {
@@ -30,22 +18,19 @@ const THRESHOLDS: Record<Muscle, { min: number; max: number }> = {
   hamstrings: { min:8,  max:20 }, core:      { min:6,  max:12 },
 }
 
-const STATUS_STYLES = {
-  optimal: { bar:"bg-green-500", label:"bg-green-500/10 text-green-400",  text:"אופטימלי" },
-  under:   { bar:"bg-amber-500", label:"bg-amber-500/10 text-amber-400",  text:"חסר"      },
-  over:    { bar:"bg-red-500",   label:"bg-red-500/10 text-red-400",      text:"ביתר"     },
+const DAY_LABELS_HE = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שב'"]
+
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
-const DELOAD_THRESHOLD = 6
+const MUSCLE_HE_EXTRA: Record<string, string> = {
+  legs: "רגליים", glutes: "ישבן", calves: "שוקיים", other: "אחר",
+}
 
-// ─────────────────────────────────────────────────────────
-// Data fetching
-// ─────────────────────────────────────────────────────────
-
-async function getRecoveryData() {
+async function getRecoveryData(): Promise<RecoveryData> {
   const now = new Date()
 
-  // Last completed session
   const lastSession = await db.workoutSession.findFirst({
     where: { userId: DEMO_USER_ID, completedAt: { not: null } },
     orderBy: { completedAt: "desc" },
@@ -57,7 +42,6 @@ async function getRecoveryData() {
     ? Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10
     : null
 
-  // Weekly volume (last 7 days)
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
   const recentSessions = await db.workoutSession.findMany({
     where: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { gte: sevenDaysAgo } },
@@ -81,7 +65,6 @@ async function getRecoveryData() {
     return { muscle: MUSCLE_LABELS[muscle], sets, status }
   })
 
-  // Consecutive weeks
   let consecutiveWeeks = 0
   for (let w = 0; w < 12; w++) {
     const end   = new Date(now.getTime() - w * 7 * 86_400_000)
@@ -102,136 +85,205 @@ async function getRecoveryData() {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// Page component
-// ─────────────────────────────────────────────────────────
+async function getWeeklyData(): Promise<WeeklyData> {
+  const now = new Date()
+
+  const thisWeekStart = new Date(now)
+  thisWeekStart.setDate(now.getDate() - now.getDay())
+  thisWeekStart.setHours(0, 0, 0, 0)
+
+  const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
+  const thisWeekStartQ = new Date(thisWeekStart.getTime() - TZ_OFFSET_MS)
+  const lastWeekStartQ = new Date(thisWeekStartQ.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+  const lastWeekStart = new Date(thisWeekStart)
+  lastWeekStart.setDate(thisWeekStart.getDate() - 7)
+
+  const [
+    user,
+    activePlan,
+    thisWeekSessions,
+    lastWeekSessions,
+    thisWeekNutrition,
+    bodyMetrics,
+  ] = await Promise.all([
+    db.user.findUnique({
+      where: { id: DEMO_USER_ID },
+      include: { userSettings: true },
+    }),
+    db.workoutPlan.findFirst({
+      where: { userId: DEMO_USER_ID, isActive: true },
+      include: { workouts: true },
+    }),
+    db.workoutSession.findMany({
+      where: { userId: DEMO_USER_ID, startedAt: { gte: thisWeekStartQ }, completedAt: { not: null } },
+      include: {
+        sets: {
+          where: { isWarmup: false },
+          include: { exercise: { select: { name: true, primaryMuscle: true } } },
+        },
+      },
+    }),
+    db.workoutSession.findMany({
+      where: {
+        userId: DEMO_USER_ID,
+        startedAt: { gte: lastWeekStartQ, lt: thisWeekStartQ },
+        completedAt: { not: null },
+      },
+      include: {
+        sets: {
+          where: { isWarmup: false },
+          include: { exercise: { select: { name: true } } },
+        },
+      },
+    }),
+    db.nutritionLog.findMany({
+      where: { userId: DEMO_USER_ID, date: { gte: thisWeekStart } },
+      include: { foodItems: true },
+    }),
+    db.bodyMetric.findMany({
+      where: { userId: DEMO_USER_ID, date: { gte: lastWeekStart } },
+      orderBy: { date: "asc" },
+    }),
+  ])
+
+  const latestWeight =
+    bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStart).at(-1)?.weightKg ??
+    bodyMetrics.at(-1)?.weightKg ?? null
+
+  let targetProtein = user?.targetProtein ?? 185
+  if (user?.userSettings?.autoProteinGoal && latestWeight) {
+    targetProtein = Math.round(latestWeight * 2.2)
+  }
+  const targetCalories = user?.targetCalories ?? 2600
+
+  interface ExStats {
+    name: string
+    primaryMuscle: string
+    thisVolume: number
+    thisMaxWeight: number
+    lastVolume: number
+    lastMaxWeight: number
+  }
+
+  const exerciseMap = new Map<string, ExStats>()
+
+  for (const session of thisWeekSessions) {
+    for (const set of session.sets) {
+      const prev = exerciseMap.get(set.exerciseId) ?? {
+        name: set.exercise.name,
+        primaryMuscle: set.exercise.primaryMuscle,
+        thisVolume: 0, thisMaxWeight: 0, lastVolume: 0, lastMaxWeight: 0,
+      }
+      prev.thisVolume += set.weightKg * set.reps
+      prev.thisMaxWeight = Math.max(prev.thisMaxWeight, set.weightKg)
+      exerciseMap.set(set.exerciseId, prev)
+    }
+  }
+
+  for (const session of lastWeekSessions) {
+    for (const set of session.sets) {
+      const ex = exerciseMap.get(set.exerciseId)
+      if (!ex) continue
+      ex.lastVolume += set.weightKg * set.reps
+      ex.lastMaxWeight = Math.max(ex.lastMaxWeight, set.weightKg)
+    }
+  }
+
+  const progressionList = [...exerciseMap.values()]
+    .sort((a, b) => b.thisVolume - a.thisVolume)
+    .map((ex) => ({
+      name: ex.name,
+      primaryMuscle: ex.primaryMuscle,
+      thisVolume: Math.round(ex.thisVolume),
+      thisMaxWeight: ex.thisMaxWeight,
+      lastVolume: Math.round(ex.lastVolume),
+      lastMaxWeight: ex.lastMaxWeight,
+      volumeDelta: Math.round(ex.thisVolume - ex.lastVolume),
+      volumeDeltaPct: ex.lastVolume > 0
+        ? Math.round(((ex.thisVolume - ex.lastVolume) / ex.lastVolume) * 100)
+        : null,
+      weightDelta: Math.round((ex.thisMaxWeight - ex.lastMaxWeight) * 10) / 10,
+      isPR: ex.lastMaxWeight > 0 && ex.thisMaxWeight > ex.lastMaxWeight,
+      isNew: ex.lastMaxWeight === 0,
+    }))
+
+  const nutritionByDay = new Map<string, { calories: number; protein: number }>()
+  for (const log of thisWeekNutrition) {
+    const key = localDateStr(log.date)
+    const prev = nutritionByDay.get(key) ?? { calories: 0, protein: 0 }
+    prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
+    prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
+    nutritionByDay.set(key, prev)
+  }
+
+  const todayStr = localDateStr(now)
+  const dailyNutrition = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(thisWeekStart)
+    d.setDate(d.getDate() + i)
+    const day = localDateStr(d)
+    const data = nutritionByDay.get(day)
+    return {
+      label: DAY_LABELS_HE[i] ?? String(i + 1),
+      day,
+      calories: Math.round(data?.calories ?? 0),
+      protein: Math.round((data?.protein ?? 0) * 10) / 10,
+      hasData: !!data,
+      isFuture: day > todayStr,
+    }
+  })
+
+  const loggedDays = dailyNutrition.filter((d) => d.hasData)
+  const avgCalories = loggedDays.length > 0
+    ? Math.round(loggedDays.reduce((s, d) => s + d.calories, 0) / loggedDays.length)
+    : 0
+  const avgProtein = loggedDays.length > 0
+    ? Math.round((loggedDays.reduce((s, d) => s + d.protein, 0) / loggedDays.length) * 10) / 10
+    : 0
+  const proteinDaysHit = dailyNutrition.filter((d) => d.hasData && d.protein >= targetProtein).length
+
+  const thisWeekMetrics = bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStart)
+  const lastWeekMetrics = bodyMetrics.filter((m) => {
+    const d = new Date(m.date)
+    return d >= lastWeekStart && d < thisWeekStart
+  })
+
+  const thisWeekAvgWeight = thisWeekMetrics.length > 0
+    ? Math.round((thisWeekMetrics.reduce((s, m) => s + m.weightKg, 0) / thisWeekMetrics.length) * 100) / 100
+    : null
+  const lastWeekAvgWeight = lastWeekMetrics.length > 0
+    ? Math.round((lastWeekMetrics.reduce((s, m) => s + m.weightKg, 0) / lastWeekMetrics.length) * 100) / 100
+    : null
+  const weightDelta = thisWeekAvgWeight !== null && lastWeekAvgWeight !== null
+    ? Math.round((thisWeekAvgWeight - lastWeekAvgWeight) * 100) / 100
+    : null
+
+  const workoutsCompleted = thisWeekSessions.length
+  const workoutGoal = activePlan?.workouts?.length ?? 3
+
+  const weekLabel = thisWeekStart.toLocaleDateString("he-IL", { day: "numeric", month: "short" })
+
+  // suppress unused variable warning
+  void MUSCLE_HE_EXTRA
+
+  return {
+    targetCalories,
+    targetProtein,
+    weekLabel,
+    progressionList,
+    dailyNutrition,
+    avgCalories,
+    avgProtein,
+    proteinDaysHit,
+    workoutsCompleted,
+    workoutGoal,
+    thisWeekAvgWeight,
+    lastWeekAvgWeight,
+    weightDelta,
+  }
+}
 
 export default async function RecoveryPage() {
-  const { lastSleep, lastFatigue, lastAvgRpe, weeklyVolume, consecutiveWeeks } = await getRecoveryData()
-
-  const hasData = lastSleep != null || lastFatigue != null || lastAvgRpe != null
-  const underTrained = weeklyVolume.filter((m) => m.status === "under")
-
-  const scores = [
-    { label:"שינה",      value: lastSleep   != null ? lastSleep   : "—", unit: lastSleep   != null ? "שע'" : "", icon: BedDouble,  color:"text-blue-400"  },
-    { label:"עייפות",    value: lastFatigue  != null ? lastFatigue  : "—", unit: lastFatigue  != null ? "/5"  : "", icon: Zap,        color:"text-amber-400" },
-    { label:"RPE אימון", value: lastAvgRpe   != null ? lastAvgRpe   : "—", unit: lastAvgRpe   != null ? "/10" : "", icon: HeartPulse, color:"text-red-400"   },
-  ]
-
-  return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
-
-      {/* כותרת */}
-      <div>
-        <h1 className="text-2xl font-bold">התאוששות ותובנות</h1>
-        <p className="text-sm text-slate-400 mt-0.5">מעקב נפח · אותות דילוד · קצב חלבון</p>
-      </div>
-
-      {/* ציוני התאוששות */}
-      <div className="grid grid-cols-3 gap-3">
-        {scores.map(({ label, value, unit, icon: Icon, color }) => (
-          <div key={label} className="bg-slate-900 rounded-2xl p-3 flex flex-col items-center gap-1.5">
-            <Icon size={18} className={color} />
-            <p className="text-lg font-bold leading-none">
-              {value}{unit && <span className="text-xs font-normal text-slate-500">{unit}</span>}
-            </p>
-            <p className="text-[11px] text-slate-500">{label}</p>
-          </div>
-        ))}
-      </div>
-
-      {!hasData && (
-        <div className="bg-slate-900 rounded-2xl p-4 text-center text-slate-500 text-sm">
-          <p className="font-medium text-slate-400 mb-1">אין נתוני התאוששות עדיין</p>
-          <p className="text-xs">לאחר סיום אימון עם דיווח שינה ועייפות, הנתונים יופיעו כאן.</p>
-          <Link href="/gym" className="text-indigo-400 text-xs font-semibold mt-2 inline-block">
-            התחל אימון ←
-          </Link>
-        </div>
-      )}
-
-      {/* התראה */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold flex items-center gap-2">
-          <AlertTriangle size={15} className="text-amber-400" /> התראות
-        </h2>
-        <div className="border rounded-2xl p-4 space-y-2 bg-indigo-500/10 border-indigo-500/30">
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={16} className="text-indigo-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-indigo-400">עקוב אחר רישום תזונה</p>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                רשום ארוחות במהלך היום כדי לוודא עמידה ביעד החלבון היומי.
-              </p>
-            </div>
-          </div>
-          <Link href="/nutrition" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">
-            עבור לתזונה ←
-          </Link>
-        </div>
-      </div>
-
-      {/* נפח שבועי */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
-            <BarChart3 size={15} className="text-indigo-400" /> נפח שבועי
-          </h2>
-          <span className="text-xs text-slate-500">7 ימים אחרונים</span>
-        </div>
-
-        {weeklyVolume.every((m) => m.sets === 0) ? (
-          <p className="text-xs text-slate-600 text-center py-2">אין אימונים מ-7 הימים האחרונים.</p>
-        ) : (
-          weeklyVolume.map(({ muscle, sets, status }) => {
-            const style = STATUS_STYLES[status]
-            return (
-              <div key={muscle} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 w-20">{muscle}</span>
-                  <span className="text-slate-500">{sets} סטים</span>
-                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${style.label}`}>{style.text}</span>
-                </div>
-                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${style.bar}`} style={{ width: `${Math.min((sets / 20) * 100, 100)}%` }} />
-                </div>
-              </div>
-            )
-          })
-        )}
-
-        {underTrained.length > 0 && (
-          <div className="bg-slate-800 rounded-xl p-3 text-xs text-slate-400">
-            <span className="font-semibold text-amber-400">אימון חסר: </span>
-            {underTrained.map((m) => m.muscle).join(", ")} — הוסף סטים השבוע.
-          </div>
-        )}
-      </div>
-
-      {/* גלאי הפרדה */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold flex items-center gap-2">
-          <BedDouble size={15} className="text-blue-400" /> גלאי הפרדה
-        </h2>
-        <div className="flex items-center gap-3 text-sm">
-          <CheckCircle2 size={18} className="text-green-400 shrink-0" />
-          <p className="text-slate-300">
-            {consecutiveWeeks === 0
-              ? "עדיין לא זוהו שבועות אימון."
-              : <><span className="font-semibold text-slate-100">{consecutiveWeeks} שבועות</span> אימון רצופים.</>
-            }
-          </p>
-        </div>
-        <p className="text-xs text-slate-500">
-          הפרדה תומלץ לאחר <span className="text-amber-400">{DELOAD_THRESHOLD} שבועות רצופים</span> של אימון.
-        </p>
-        <div className="flex gap-2">
-          {Array.from({ length: DELOAD_THRESHOLD }).map((_, i) => (
-            <div key={i} className={`flex-1 h-2 rounded-full ${i < consecutiveWeeks ? "bg-green-500" : "bg-slate-800"}`} />
-          ))}
-        </div>
-        <p className="text-[11px] text-slate-600">{consecutiveWeeks} / {DELOAD_THRESHOLD} שבועות עד להפרדה המוצעת</p>
-      </div>
-    </div>
-  )
+  const [recovery, weekly] = await Promise.all([getRecoveryData(), getWeeklyData()])
+  return <RecoveryTabs recovery={recovery} weekly={weekly} />
 }

@@ -8,9 +8,6 @@ import {
   Zap,
   AlertTriangle,
   ChevronLeft,
-  CalendarDays,
-  Trophy,
-  BarChart3,
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
@@ -30,12 +27,6 @@ async function getDashboardData() {
   const endOfDay = new Date()
   endOfDay.setHours(23, 59, 59, 999)
 
-  // Current week: Sunday → today
-  const now = new Date()
-  const startOfWeek = new Date(now)
-  startOfWeek.setDate(now.getDate() - now.getDay()) // back to Sunday
-  startOfWeek.setHours(0, 0, 0, 0)
-
   // Last 2 completed days (not today) for smart alert
   const twoDaysAgo = new Date(startOfDay)
   twoDaysAgo.setDate(startOfDay.getDate() - 2)
@@ -46,8 +37,6 @@ async function getDashboardData() {
     latestMetric,
     lastSession,
     activePlan,
-    weeklyNutritionLogs,
-    weeklyWorkoutsCompleted,
     alertNutritionLogs,
   ] = await Promise.all([
     db.user.findUnique({
@@ -70,17 +59,6 @@ async function getDashboardData() {
     db.workoutPlan.findFirst({
       where: { userId: DEMO_USER_ID, isActive: true },
       include: { workouts: { orderBy: { order: "asc" } } },
-    }),
-    db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: startOfWeek, lte: endOfDay } },
-      include: { foodItems: true },
-    }),
-    db.workoutSession.count({
-      where: {
-        userId: DEMO_USER_ID,
-        startedAt: { gte: startOfWeek },
-        completedAt: { not: null },
-      },
     }),
     db.nutritionLog.findMany({
       where: { userId: DEMO_USER_ID, date: { gte: twoDaysAgo, lt: startOfDay } },
@@ -122,62 +100,6 @@ async function getDashboardData() {
     }
   }
 
-  // ── Weekly summary ────────────────────────────────────────────────────────
-  const showWeeklySummary = settings?.showWeeklySummary ?? true
-  let weeklySummary: {
-    workoutsCompleted: number
-    workoutGoal: number
-    avgCalories: number
-    avgProtein: number
-    summaryText: string
-    weekStart: Date
-  } | null = null
-
-  if (showWeeklySummary) {
-    const weekDayMap = new Map<string, { calories: number; protein: number }>()
-    for (const log of weeklyNutritionLogs) {
-      const key = localDateStr(log.date)
-      const prev = weekDayMap.get(key) ?? { calories: 0, protein: 0 }
-      prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
-      prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
-      weekDayMap.set(key, prev)
-    }
-
-    const loggedDays = weekDayMap.size
-    const vals = [...weekDayMap.values()]
-    const avgCalories =
-      loggedDays > 0 ? Math.round(vals.reduce((s, d) => s + d.calories, 0) / loggedDays) : 0
-    const avgProtein =
-      loggedDays > 0
-        ? Math.round((vals.reduce((s, d) => s + d.protein, 0) / loggedDays) * 10) / 10
-        : 0
-
-    const workoutGoal = activePlan?.workouts?.length ?? 3
-    const proteinPct = targetProtein > 0 ? Math.round((avgProtein / targetProtein) * 100) : 0
-
-    let summaryText = ""
-    if (weeklyWorkoutsCompleted === 0 && loggedDays === 0) {
-      summaryText = "שבוע חדש — בואו נתחיל חזק!"
-    } else if (weeklyWorkoutsCompleted >= workoutGoal && proteinPct >= 90) {
-      summaryText = `כל הכבוד! ${weeklyWorkoutsCompleted} אימונים ו-${proteinPct}% מיעד החלבון — שבוע מצוין!`
-    } else if (weeklyWorkoutsCompleted >= workoutGoal) {
-      summaryText = `יפה! ${weeklyWorkoutsCompleted}/${workoutGoal} אימונים. ממוצע חלבון: ${avgProtein} מתוך ${targetProtein} גר'.`
-    } else if (proteinPct >= 90) {
-      summaryText = `תזונה מעולה (${proteinPct}% חלבון). הוסף ${workoutGoal - weeklyWorkoutsCompleted} אימונים נוספים!`
-    } else {
-      summaryText = `${weeklyWorkoutsCompleted}/${workoutGoal} אימונים · ${proteinPct}% מיעד החלבון. בוא נשפר ביחד!`
-    }
-
-    weeklySummary = {
-      workoutsCompleted: weeklyWorkoutsCompleted,
-      workoutGoal,
-      avgCalories,
-      avgProtein,
-      summaryText,
-      weekStart: startOfWeek,
-    }
-  }
-
   // ── Smart alert (last 2 complete days both below target by >20%) ──────────
   const smartAlertsEnabled = settings?.smartAlertsEnabled ?? true
   let showSmartAlert = false
@@ -215,7 +137,6 @@ async function getDashboardData() {
     },
     latestWeight,
     nextWorkout,
-    weeklySummary,
     showSmartAlert,
   }
 }
@@ -292,104 +213,6 @@ function StatCard({
   )
 }
 
-function WeeklySummaryCard({
-  data,
-  targetCalories,
-  targetProtein,
-}: {
-  data: NonNullable<Awaited<ReturnType<typeof getDashboardData>>["weeklySummary"]>
-  targetCalories: number
-  targetProtein: number
-}) {
-  const workoutPct = Math.min((data.workoutsCompleted / data.workoutGoal) * 100, 100)
-  const proteinPct = Math.min((data.avgProtein / targetProtein) * 100, 100)
-  const caloriePct = Math.min((data.avgCalories / targetCalories) * 100, 100)
-
-  const weekLabel = data.weekStart.toLocaleDateString("he-IL", {
-    day: "numeric",
-    month: "short",
-  })
-
-  return (
-    <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <CalendarDays size={16} className="text-violet-400" /> סיכום שבועי
-        </h2>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-500">מ-{weekLabel}</span>
-          <Link
-            href="/weekly"
-            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5 transition-colors"
-          >
-            <BarChart3 size={11} /> דו&quot;ח מלא
-          </Link>
-        </div>
-      </div>
-
-      {/* Progress bars */}
-      <div className="space-y-3">
-        {/* Workouts */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">אימונים</span>
-            <span className="font-semibold">
-              {data.workoutsCompleted}
-              <span className="text-slate-500 font-normal">/{data.workoutGoal}</span>
-            </span>
-          </div>
-          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-indigo-400 transition-all"
-              style={{ width: `${workoutPct}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Protein */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">ממוצע חלבון</span>
-            <span className="font-semibold">
-              {data.avgProtein}
-              <span className="text-slate-500 font-normal"> גר'</span>
-            </span>
-          </div>
-          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-violet-400 transition-all"
-              style={{ width: `${proteinPct}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Calories */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">ממוצע קלוריות</span>
-            <span className="font-semibold">
-              {data.avgCalories}
-              <span className="text-slate-500 font-normal"> קק"ל</span>
-            </span>
-          </div>
-          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-orange-400 transition-all"
-              style={{ width: `${caloriePct}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Summary text */}
-      <div className="flex items-start gap-2.5 bg-violet-500/10 border border-violet-500/20 rounded-xl px-3 py-2.5">
-        <Trophy size={14} className="text-violet-400 mt-0.5 shrink-0" />
-        <p className="text-xs text-slate-300 leading-relaxed">{data.summaryText}</p>
-      </div>
-    </div>
-  )
-}
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
@@ -402,7 +225,6 @@ export default async function DashboardPage() {
     todayNutrition,
     latestWeight,
     nextWorkout,
-    weeklySummary,
     showSmartAlert,
   } = await getDashboardData()
 
@@ -508,15 +330,6 @@ export default async function DashboardPage() {
           </p>
         )}
       </div>
-
-      {/* סיכום שבועי */}
-      {weeklySummary && (
-        <WeeklySummaryCard
-          data={weeklySummary}
-          targetCalories={targetCalories}
-          targetProtein={targetProtein}
-        />
-      )}
 
       {/* רשת סטטיסטיקות */}
       <div className="grid grid-cols-2 gap-3">

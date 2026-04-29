@@ -10,7 +10,6 @@ import {
   Zap,
   HeartPulse,
   Settings,
-  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -20,7 +19,6 @@ const NAV_ITEMS = [
   { href: "/gym",         label: "כושר",     icon: Zap             },
   { href: "/nutrition",   label: "תזונה",     icon: UtensilsCrossed },
   { href: "/metrics",     label: "מדדים",     icon: LineChart        },
-  { href: "/weekly",      label: "שבועי",     icon: BarChart3       },
   { href: "/recovery",    label: "התאוששות", icon: HeartPulse      },
 ] as const
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 
 /** POST /api/gym/sessions/[sessionId]/finish
@@ -60,6 +61,10 @@ export async function POST(
           : {}),
       },
     })
+
+    revalidatePath("/dashboard")
+    revalidatePath("/weekly")
+    revalidatePath("/workouts")
 
     return NextResponse.json({
       durationMins,

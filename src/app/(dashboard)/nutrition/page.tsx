@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import MealSuggester from "@/components/dashboard/MealSuggester"
 import {
   Send,
   Flame,
@@ -280,6 +281,7 @@ export default function NutritionPage() {
   )
 
   const [openMeal, setOpenMeal] = useState<string | null>(null)
+  const [dietaryPreference, setDietaryPreference] = useState("vegetarian")
 
   // Edit / delete state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -299,6 +301,10 @@ export default function NutritionPage() {
 
   useEffect(() => {
     fetchToday()
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => { if (d.dietaryPreference) setDietaryPreference(d.dietaryPreference) })
+      .catch(() => {})
   }, [fetchToday])
 
   // ── שליחת קלט NLP ───────────────────────────────────────
@@ -586,6 +592,17 @@ export default function NutritionPage() {
           </div>
         )}
       </div>
+
+      {/* ── הצעת ארוחה ───────────────────────────────────── */}
+      <MealSuggester
+        remaining={{
+          calories: Math.max(0, targets.calories - totals.calories),
+          protein:  Math.max(0, Math.round((targets.protein - totals.protein) * 10) / 10),
+          carbs:    Math.max(0, targets.carbs - totals.carbs),
+          fats:     Math.max(0, Math.round((targets.fat - totals.fat) * 10) / 10),
+        }}
+        dietaryPreference={dietaryPreference}
+      />
 
       {/* ── קטעי ארוחות ──────────────────────────────────── */}
       {loading ? (

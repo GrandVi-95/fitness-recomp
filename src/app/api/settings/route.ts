@@ -53,6 +53,7 @@ export async function GET() {
       age,
       gender,
       activityMultiplier,
+      dietaryPreference:   s?.dietaryPreference  ?? "vegetarian",
     })
   } catch (err) {
     console.error("[GET /api/settings]", err)
@@ -79,6 +80,7 @@ interface SettingsBody {
   autoProteinGoal?: boolean
   smartAlertsEnabled?: boolean
   showWeeklySummary?: boolean
+  dietaryPreference?: string
 }
 
 /** PUT /api/settings */
@@ -100,6 +102,7 @@ export async function PUT(request: Request) {
       autoProteinGoal,
       smartAlertsEnabled,
       showWeeklySummary,
+      dietaryPreference,
     } = body
 
     // ── 1. Validate manual ranges ────────────────────────────────────────────
@@ -201,6 +204,7 @@ export async function PUT(request: Request) {
       ...(gender                 !== undefined ? { gender }                              : {}),
       ...(activityMultiplier     !== undefined ? { activityMultiplier }                 : {}),
       ...(autoCalorieGoal        !== undefined ? { autoCalorieGoal }                    : {}),
+      ...(dietaryPreference      !== undefined ? { dietaryPreference }                  : {}),
     }
 
     if (Object.keys(settingsData).length > 0) {

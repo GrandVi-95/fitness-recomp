@@ -69,7 +69,6 @@ interface GymState {
   inputWeightKg: Record<string, number>
   inputReps: Record<string, number>
   inputRpe: Record<string, number>
-  weightStep: number            // currently selected increment (0.5 | 2.5 | 5)
 
   // ── Rest timer ─────────────────────────────────────────────
   restActive: boolean
@@ -97,7 +96,6 @@ interface GymState {
   setWeight: (exerciseId: string, value: number) => void
   setReps: (exerciseId: string, value: number) => void
   setRpe: (exerciseId: string, value: number) => void
-  setWeightStep: (step: number) => void
   nextExercise: () => void
   prevExercise: () => void
   startRest: (durationSecs: number, info: LastLoggedSetInfo) => void
@@ -138,7 +136,6 @@ export const useGymStore = create<GymState>()(
       inputWeightKg: {},
       inputReps: {},
       inputRpe: {},
-      weightStep: 2.5,
       restActive: false,
       restStartedAt: null,
       restDurationSecs: 90,
@@ -171,7 +168,6 @@ export const useGymStore = create<GymState>()(
           inputWeightKg,
           inputReps,
           inputRpe,
-          weightStep: 2.5,
           restActive: false,
           restStartedAt: null,
           restDurationSecs: 90,
@@ -254,8 +250,6 @@ export const useGymStore = create<GymState>()(
         set((state) => ({
           inputRpe: { ...state.inputRpe, [exerciseId]: value },
         })),
-
-      setWeightStep: (step) => set({ weightStep: step }),
 
       nextExercise: () =>
         set((state) => ({

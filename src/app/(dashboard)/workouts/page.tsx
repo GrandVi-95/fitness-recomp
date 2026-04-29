@@ -81,11 +81,18 @@ export default function WorkoutsPage() {
   useEffect(() => { fetchPlans() }, [fetchPlans])
 
   const handleDelete = async (planId: string) => {
-    if (!confirm("למחוק את תוכנית האימון? פעולה זו אינה הפיכה.")) return
+    if (!confirm("למחוק את תוכנית האימון? כל היסטוריית האימונים שלה תימחק גם היא. פעולה זו אינה הפיכה.")) return
     setDeleting(planId)
     try {
-      await fetch(`/api/workouts/plans/${planId}`, { method: "DELETE" })
+      const res = await fetch(`/api/workouts/plans/${planId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error ?? "שגיאה במחיקת התוכנית — אנא נסה שוב")
+        return
+      }
       setPlans((prev) => prev?.filter((p) => p.id !== planId) ?? [])
+    } catch {
+      alert("שגיאה במחיקת התוכנית — בדוק את החיבור שלך")
     } finally {
       setDeleting(null)
     }
