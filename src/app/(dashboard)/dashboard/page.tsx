@@ -1,4 +1,6 @@
 // לוח בקרה — סיכום ההתקדמות היומית
+// force-dynamic: this page reads live DB data on every request — never serve from cache.
+export const dynamic = "force-dynamic"
 
 import {
   Dumbbell,
@@ -11,29 +13,33 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
+import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition"
 
 const DEMO_USER_ID = "demo-user"
 
-/** Returns "YYYY-MM-DD" using the local calendar date, never UTC. */
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+/**
+ * Returns "YYYY-MM-DD" from a Date using its UTC components.
+ * Used only for the soft smart-alert heuristic, where per-day grouping
+ * doesn't need to be timezone-perfect.
+ */
+function utcDateStr(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
 }
 
 // ── Server data helpers ──────────────────────────────────────────────────────
 
 async function getDashboardData() {
-  const startOfDay = new Date()
-  startOfDay.setHours(0, 0, 0, 0)
-  const endOfDay = new Date()
-  endOfDay.setHours(23, 59, 59, 999)
+  // getTodayBounds() returns UTC-equivalent boundaries for "today" in Israel
+  // time (UTC+3). Using getTodayNutrition() here instead of an inline query
+  // guarantees the dashboard and the Nutrition page always read identically.
+  const { startOfDay } = getTodayBounds()
 
-  // Last 2 completed days (not today) for smart alert
-  const twoDaysAgo = new Date(startOfDay)
-  twoDaysAgo.setDate(startOfDay.getDate() - 2)
+  // Alert: look at the 2 complete calendar days immediately before today
+  const twoDaysAgo = new Date(startOfDay.getTime() - 2 * 24 * 60 * 60 * 1000)
 
   const [
     user,
-    nutritionLogs,
+    { totals: todayNutrition },
     latestMetric,
     lastSession,
     activePlan,
@@ -43,10 +49,7 @@ async function getDashboardData() {
       where: { id: DEMO_USER_ID },
       include: { userSettings: true },
     }),
-    db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: startOfDay, lte: endOfDay } },
-      include: { foodItems: true },
-    }),
+    getTodayNutrition(DEMO_USER_ID),
     db.bodyMetric.findFirst({
       where: { userId: DEMO_USER_ID },
       orderBy: { date: "desc" },
@@ -65,18 +68,6 @@ async function getDashboardData() {
       include: { foodItems: true },
     }),
   ])
-
-  // Today's nutrition
-  const allItems = nutritionLogs.flatMap((l) => l.foodItems)
-  const todayNutrition = allItems.reduce(
-    (acc, item) => ({
-      calories: acc.calories + item.calories,
-      protein: acc.protein + item.protein,
-      carbs: acc.carbs + item.carbs,
-      fat: acc.fat + item.fat,
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  )
 
   // Targets
   const settings = user?.userSettings
@@ -107,18 +98,18 @@ async function getDashboardData() {
   if (smartAlertsEnabled) {
     const alertDayMap = new Map<string, { calories: number; protein: number }>()
     for (const log of alertNutritionLogs) {
-      const key = localDateStr(log.date)
+      const key = utcDateStr(log.date)
       const prev = alertDayMap.get(key) ?? { calories: 0, protein: 0 }
       prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
-      prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
+      prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
       alertDayMap.set(key, prev)
     }
 
     if (alertDayMap.size >= 2) {
       const days = [...alertDayMap.values()]
-      const THRESHOLD = 0.8 // below 80% = >20% gap
+      const THRESHOLD = 0.8
       const bothBelowCalories = days.every((d) => d.calories < targetCalories * THRESHOLD)
-      const bothBelowProtein = days.every((d) => d.protein < targetProtein * THRESHOLD)
+      const bothBelowProtein  = days.every((d) => d.protein  < targetProtein  * THRESHOLD)
       showSmartAlert = bothBelowCalories || bothBelowProtein
     }
   }
@@ -129,12 +120,7 @@ async function getDashboardData() {
     targetProtein,
     targetFats,
     targetCarbs,
-    todayNutrition: {
-      calories: Math.round(todayNutrition.calories),
-      protein: Math.round(todayNutrition.protein * 10) / 10,
-      carbs: Math.round(todayNutrition.carbs),
-      fat: Math.round(todayNutrition.fat * 10) / 10,
-    },
+    todayNutrition,
     latestWeight,
     nextWorkout,
     showSmartAlert,

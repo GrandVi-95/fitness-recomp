@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 
 const DEMO_USER_ID = "demo-user"
@@ -279,6 +280,8 @@ export async function POST(request: Request) {
       },
       include: { foodItems: true },
     })
+
+    revalidatePath("/dashboard")
 
     const totals = log.foodItems.reduce(
       (acc, item) => ({

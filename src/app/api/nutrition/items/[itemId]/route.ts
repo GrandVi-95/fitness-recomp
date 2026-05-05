@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 
 const DEMO_USER_ID = "demo-user"
@@ -40,6 +41,7 @@ export async function PUT(
       },
     })
 
+    revalidatePath("/dashboard")
     return NextResponse.json({ ok: true, updated })
   } catch (err) {
     console.error("[PUT /api/nutrition/items/:id]", err)
@@ -73,6 +75,7 @@ export async function DELETE(
       await db.nutritionLog.delete({ where: { id: item.log.id } })
     }
 
+    revalidatePath("/dashboard")
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error("[DELETE /api/nutrition/items/:id]", err)
