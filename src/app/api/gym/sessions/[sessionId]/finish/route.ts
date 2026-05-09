@@ -63,7 +63,7 @@ export async function POST(
     })
 
     revalidatePath("/dashboard")
-    revalidatePath("/weekly")
+    revalidatePath("/recovery")
     revalidatePath("/workouts")
 
     return NextResponse.json({

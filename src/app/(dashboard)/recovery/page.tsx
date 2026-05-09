@@ -1,7 +1,10 @@
+export const dynamic = "force-dynamic"
+
 import { db } from "@/lib/db"
 import RecoveryTabs, { type RecoveryData, type WeeklyData } from "@/components/recovery/RecoveryTabs"
 
 const DEMO_USER_ID = "demo-user"
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000 // Israel UTC+3
 
 const MUSCLE_ORDER = ["chest","back","shoulders","biceps","triceps","quads","hamstrings","core"] as const
 type Muscle = typeof MUSCLE_ORDER[number]
@@ -20,12 +23,32 @@ const THRESHOLDS: Record<Muscle, { min: number; max: number }> = {
 
 const DAY_LABELS_HE = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שב'"]
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
-
 const MUSCLE_HE_EXTRA: Record<string, string> = {
   legs: "רגליים", glutes: "ישבן", calves: "שוקיים", other: "אחר",
+}
+
+// Returns "YYYY-MM-DD" in Israel time (UTC+3) for any UTC Date.
+function israelDateStr(d: Date): string {
+  const shifted = new Date(d.getTime() + TZ_OFFSET_MS)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`
+}
+
+// Returns UTC-equivalent boundaries for the current Israel calendar week (Sun–Sat).
+function getIsraelWeekBounds(): { thisWeekStartQ: Date; lastWeekStartQ: Date } {
+  const now = new Date()
+  // Shift forward to Israel time so UTC date/day methods give Israel calendar values
+  const israelNow = new Date(now.getTime() + TZ_OFFSET_MS)
+
+  // Sunday of current Israel week (JS day 0 = Sunday)
+  const israelSunday = new Date(israelNow)
+  israelSunday.setUTCDate(israelNow.getUTCDate() - israelNow.getUTCDay())
+  israelSunday.setUTCHours(0, 0, 0, 0)
+
+  // Shift back to real UTC for DB queries
+  const thisWeekStartQ = new Date(israelSunday.getTime() - TZ_OFFSET_MS)
+  const lastWeekStartQ = new Date(thisWeekStartQ.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+  return { thisWeekStartQ, lastWeekStartQ }
 }
 
 async function getRecoveryData(): Promise<RecoveryData> {
@@ -87,17 +110,7 @@ async function getRecoveryData(): Promise<RecoveryData> {
 
 async function getWeeklyData(): Promise<WeeklyData> {
   const now = new Date()
-
-  const thisWeekStart = new Date(now)
-  thisWeekStart.setDate(now.getDate() - now.getDay())
-  thisWeekStart.setHours(0, 0, 0, 0)
-
-  const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
-  const thisWeekStartQ = new Date(thisWeekStart.getTime() - TZ_OFFSET_MS)
-  const lastWeekStartQ = new Date(thisWeekStartQ.getTime() - 7 * 24 * 60 * 60 * 1000)
-
-  const lastWeekStart = new Date(thisWeekStart)
-  lastWeekStart.setDate(thisWeekStart.getDate() - 7)
+  const { thisWeekStartQ, lastWeekStartQ } = getIsraelWeekBounds()
 
   const [
     user,
@@ -138,17 +151,17 @@ async function getWeeklyData(): Promise<WeeklyData> {
       },
     }),
     db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: thisWeekStart } },
+      where: { userId: DEMO_USER_ID, date: { gte: thisWeekStartQ } },
       include: { foodItems: true },
     }),
     db.bodyMetric.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: lastWeekStart } },
+      where: { userId: DEMO_USER_ID, date: { gte: lastWeekStartQ } },
       orderBy: { date: "asc" },
     }),
   ])
 
   const latestWeight =
-    bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStart).at(-1)?.weightKg ??
+    bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStartQ).at(-1)?.weightKg ??
     bodyMetrics.at(-1)?.weightKg ?? null
 
   let targetProtein = user?.targetProtein ?? 185
@@ -208,20 +221,21 @@ async function getWeeklyData(): Promise<WeeklyData> {
       isNew: ex.lastMaxWeight === 0,
     }))
 
+  // Group nutrition by Israel calendar day
   const nutritionByDay = new Map<string, { calories: number; protein: number }>()
   for (const log of thisWeekNutrition) {
-    const key = localDateStr(log.date)
+    const key = israelDateStr(log.date)
     const prev = nutritionByDay.get(key) ?? { calories: 0, protein: 0 }
     prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
-    prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
+    prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
     nutritionByDay.set(key, prev)
   }
 
-  const todayStr = localDateStr(now)
+  const todayStr = israelDateStr(now)
   const dailyNutrition = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(thisWeekStart)
-    d.setDate(d.getDate() + i)
-    const day = localDateStr(d)
+    // Each day starts at thisWeekStartQ + i full days
+    const dayUTC = new Date(thisWeekStartQ.getTime() + i * 24 * 60 * 60 * 1000)
+    const day = israelDateStr(dayUTC)
     const data = nutritionByDay.get(day)
     return {
       label: DAY_LABELS_HE[i] ?? String(i + 1),
@@ -242,10 +256,10 @@ async function getWeeklyData(): Promise<WeeklyData> {
     : 0
   const proteinDaysHit = dailyNutrition.filter((d) => d.hasData && d.protein >= targetProtein).length
 
-  const thisWeekMetrics = bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStart)
+  const thisWeekMetrics = bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStartQ)
   const lastWeekMetrics = bodyMetrics.filter((m) => {
     const d = new Date(m.date)
-    return d >= lastWeekStart && d < thisWeekStart
+    return d >= lastWeekStartQ && d < thisWeekStartQ
   })
 
   const thisWeekAvgWeight = thisWeekMetrics.length > 0
@@ -261,9 +275,12 @@ async function getWeeklyData(): Promise<WeeklyData> {
   const workoutsCompleted = thisWeekSessions.length
   const workoutGoal = activePlan?.workouts?.length ?? 3
 
-  const weekLabel = thisWeekStart.toLocaleDateString("he-IL", { day: "numeric", month: "short" })
+  const weekLabel = thisWeekStartQ.toLocaleDateString("he-IL", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Jerusalem",
+  })
 
-  // suppress unused variable warning
   void MUSCLE_HE_EXTRA
 
   return {

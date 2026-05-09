@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Sparkles, Loader2, RefreshCw, ChefHat } from "lucide-react"
+import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste } from "lucide-react"
 
 interface Props {
   remaining: {
@@ -11,9 +11,32 @@ interface Props {
     fats: number
   }
   dietaryPreference: string
+  onUseSuggestion?: (ingredientsText: string) => void
 }
 
-export default function MealSuggester({ remaining, dietaryPreference }: Props) {
+// Extract bullet items under the **מרכיבים:** heading and join them as
+// a comma-separated string suitable for the free-text NLP food logger.
+function extractIngredients(suggestion: string): string {
+  const lines = suggestion.split("\n")
+  let inSection = false
+  const items: string[] = []
+
+  for (const line of lines) {
+    if (/מרכיבים/.test(line)) {
+      inSection = true
+      continue
+    }
+    if (inSection) {
+      if (/^\*\*/.test(line.trim())) break
+      const cleaned = line.replace(/^[-•*]\s*/, "").trim()
+      if (cleaned) items.push(cleaned)
+    }
+  }
+
+  return items.length > 0 ? items.join(", ") : suggestion
+}
+
+export default function MealSuggester({ remaining, dietaryPreference, onUseSuggestion }: Props) {
   const [suggestion, setSuggestion] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,10 +84,19 @@ export default function MealSuggester({ remaining, dietaryPreference }: Props) {
 
       {/* Suggestion result */}
       {suggestion && (
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
+        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 space-y-3">
           <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
             {suggestion}
           </p>
+          {onUseSuggestion && (
+            <button
+              onClick={() => onUseSuggestion(extractIngredients(suggestion))}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600/80 hover:bg-emerald-600 rounded-lg py-2 text-xs font-semibold text-emerald-50 transition-colors"
+            >
+              <ClipboardPaste size={13} />
+              השתמש בהצעה זו
+            </button>
+          )}
         </div>
       )}
 

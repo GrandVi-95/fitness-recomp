@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
 
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       await db.user.update({ where: { id: DEMO_USER_ID }, data: userUpdates })
     }
 
+    revalidatePath("/recovery")
     return NextResponse.json({ metric }, { status: 201 })
   } catch (err) {
     console.error("[POST /api/metrics]", err)

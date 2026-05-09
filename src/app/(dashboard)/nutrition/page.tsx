@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import MealSuggester from "@/components/dashboard/MealSuggester"
 import {
   Send,
@@ -282,6 +282,7 @@ export default function NutritionPage() {
 
   const [openMeal, setOpenMeal] = useState<string | null>(null)
   const [dietaryPreference, setDietaryPreference] = useState("vegetarian")
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Edit / delete state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -416,6 +417,17 @@ export default function NutritionPage() {
     if (!res.ok) await fetchToday() // revert on error
   }
 
+  const handleUseSuggestion = useCallback((ingredientsText: string) => {
+    setNlpText(ingredientsText)
+    // Defer focus+scroll until after the state update is painted
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+  }, [])
+
   const targets = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
   const totals = todayData?.totals ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
@@ -529,6 +541,7 @@ export default function NutritionPage() {
         <div className="flex gap-2 items-end">
           <div className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 focus-within:border-indigo-500 transition-colors">
             <textarea
+              ref={textareaRef}
               rows={2}
               value={nlpText}
               onChange={(e) => setNlpText(e.target.value)}
@@ -602,6 +615,7 @@ export default function NutritionPage() {
           fats:     Math.max(0, Math.round((targets.fat - totals.fat) * 10) / 10),
         }}
         dietaryPreference={dietaryPreference}
+        onUseSuggestion={handleUseSuggestion}
       />
 
       {/* ── קטעי ארוחות ──────────────────────────────────── */}

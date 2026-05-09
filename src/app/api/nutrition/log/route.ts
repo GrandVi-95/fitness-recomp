@@ -282,6 +282,7 @@ export async function POST(request: Request) {
     })
 
     revalidatePath("/dashboard")
+    revalidatePath("/recovery")
 
     const totals = log.foodItems.reduce(
       (acc, item) => ({

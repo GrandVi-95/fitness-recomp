@@ -42,6 +42,7 @@ export async function PUT(
     })
 
     revalidatePath("/dashboard")
+    revalidatePath("/recovery")
     return NextResponse.json({ ok: true, updated })
   } catch (err) {
     console.error("[PUT /api/nutrition/items/:id]", err)
@@ -76,6 +77,7 @@ export async function DELETE(
     }
 
     revalidatePath("/dashboard")
+    revalidatePath("/recovery")
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error("[DELETE /api/nutrition/items/:id]", err)
