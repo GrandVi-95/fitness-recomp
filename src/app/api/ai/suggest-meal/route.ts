@@ -168,14 +168,18 @@ async function callGemini(prompt: string, apiKey: string, maxTokens: number): Pr
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { maxOutputTokens: maxTokens },
     }),
   })
-  if (res.status === 400 || res.status === 401 || res.status === 403) {
-    throw new Error("Gemini API key is invalid or does not have access")
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "(unreadable)")
+    console.error(`[callGemini suggest-meal] HTTP ${res.status}:`, errorBody)
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Gemini API key is invalid or does not have access")
+    }
+    throw new Error(`Gemini ${res.status}: ${errorBody}`)
   }
-  if (!res.ok) throw new Error(`Gemini ${res.status}`)
   const data = await res.json()
   return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
 }

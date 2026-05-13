@@ -149,10 +149,14 @@ async function callGemini(userMessage: string, apiKey: string): Promise<string> 
       generationConfig: { maxOutputTokens: 1024 },
     }),
   })
-  if (res.status === 400 || res.status === 401 || res.status === 403) {
-    throw new Error("API_KEY_INVALID: מפתח Gemini לא תקין — בדוק את המפתח בדף ההגדרות")
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "(unreadable)")
+    console.error(`[callGemini nutrition/log] HTTP ${res.status}:`, errorBody)
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("API_KEY_INVALID: מפתח Gemini לא תקין — בדוק את המפתח בדף ההגדרות")
+    }
+    throw new Error(`Gemini ${res.status}: ${errorBody}`)
   }
-  if (!res.ok) throw new Error(`Gemini error: ${res.status}`)
   const data = await res.json()
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
 }
