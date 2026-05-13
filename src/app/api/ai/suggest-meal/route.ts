@@ -178,12 +178,13 @@ async function callGemini(prompt: string, apiKey: string, maxTokens: number): Pr
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 2048 },
+        generationConfig: { maxOutputTokens: 8192 },
       }),
     })
     if (res.ok) {
       console.log("[Gemini] Successfully used model:", model)
       const data = await res.json()
+      console.log("[Gemini] Finish reason:", data?.candidates?.[0]?.finishReason)
       return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
     }
     const errorBody = await res.text().catch(() => "(unreadable)")
