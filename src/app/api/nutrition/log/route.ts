@@ -54,15 +54,17 @@ ${JSON.stringify(foodList, null, 2)}`
 }
 
 // ── Robust JSON extraction ────────────────────────────────────────────────────
+// Strips ALL markdown code fences (global replace handles mid-string wrapping
+// from Gemini and other providers), then falls back to a {...} block scan.
 function extractJsonText(raw: string): string {
   const stripped = raw
-    .replace(/^```(?:json)?\s*/im, "")
-    .replace(/\s*```\s*$/im, "")
+    .replace(/```json\n?/g, "")
+    .replace(/```\n?/g, "")
     .trim()
 
   if (stripped.startsWith("{")) return stripped
 
-  const match = raw.match(/\{[\s\S]*\}/)
+  const match = stripped.match(/\{[\s\S]*\}/)
   if (match) return match[0]
 
   throw new Error("No JSON object found in AI response")
@@ -153,7 +155,7 @@ async function callGemini(userMessage: string, apiKey: string): Promise<string> 
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: userMessage }] }],
-        generationConfig: { maxOutputTokens: 1024 },
+        generationConfig: { maxOutputTokens: 1024, responseMimeType: "application/json" },
       }),
     })
     if (res.ok) {
