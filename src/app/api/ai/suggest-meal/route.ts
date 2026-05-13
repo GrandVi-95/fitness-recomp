@@ -178,7 +178,7 @@ async function callGemini(prompt: string, apiKey: string, maxTokens: number): Pr
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens },
+        generationConfig: { maxOutputTokens: 2048 },
       }),
     })
     if (res.ok) {
