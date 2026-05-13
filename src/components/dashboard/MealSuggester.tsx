@@ -2,6 +2,23 @@
 
 import { useState } from "react"
 import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+const MEAL_TYPES = [
+  { value: "breakfast", label: "בוקר" },
+  { value: "lunch",     label: "צהריים" },
+  { value: "dinner",    label: "ערב" },
+  { value: "snack",     label: "חטיף" },
+] as const
+
+const FLAVOR_PROFILES = [
+  { value: "savory",   label: "מלוח" },
+  { value: "sweet",    label: "מתוק" },
+  { value: "surprise", label: "הפתיעו אותי" },
+] as const
+
+type MealTypeValue    = typeof MEAL_TYPES[number]["value"]
+type FlavorValue      = typeof FLAVOR_PROFILES[number]["value"]
 
 interface Props {
   remaining: {
@@ -14,8 +31,8 @@ interface Props {
   onUseSuggestion?: (ingredientsText: string) => void
 }
 
-// Extract bullet items under the **מרכיבים:** heading and join them as
-// a comma-separated string suitable for the free-text NLP food logger.
+// Collects bullet items from ALL **מרכיבים:** sections (handles multi-meal splits)
+// and joins them as a comma-separated string for the NLP food logger.
 function extractIngredients(suggestion: string): string {
   const lines = suggestion.split("\n")
   let inSection = false
@@ -27,7 +44,10 @@ function extractIngredients(suggestion: string): string {
       continue
     }
     if (inSection) {
-      if (/^\*\*/.test(line.trim())) break
+      if (/^\*\*/.test(line.trim())) {
+        inSection = false // end of this section; keep scanning for another
+        continue
+      }
       const cleaned = line.replace(/^[-•*]\s*/, "").trim()
       if (cleaned) items.push(cleaned)
     }
@@ -37,10 +57,12 @@ function extractIngredients(suggestion: string): string {
 }
 
 export default function MealSuggester({ remaining, dietaryPreference, onUseSuggestion }: Props) {
-  const [suggestion, setSuggestion] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [ingredients, setIngredients] = useState("")
+  const [suggestion, setSuggestion]     = useState<string | null>(null)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [ingredients, setIngredients]   = useState("")
+  const [mealType, setMealType]         = useState<MealTypeValue>("dinner")
+  const [flavorProfile, setFlavorProfile] = useState<FlavorValue>("savory")
 
   const suggest = async (withIngredients?: string) => {
     setLoading(true)
@@ -52,6 +74,8 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
         body: JSON.stringify({
           ingredients: withIngredients ?? "",
           remaining,
+          mealType,
+          flavorProfile,
         }),
       })
       const data = await res.json()
@@ -99,6 +123,48 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
           )}
         </div>
       )}
+
+      {/* Meal type selector */}
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-slate-500 font-medium">סוג ארוחה</p>
+        <div className="flex gap-1.5 flex-wrap">
+          {MEAL_TYPES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setMealType(t.value)}
+              className={cn(
+                "px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors",
+                mealType === t.value
+                  ? "bg-violet-600 border-violet-500 text-white"
+                  : "bg-transparent border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Flavor profile selector */}
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-slate-500 font-medium">פרופיל טעם</p>
+        <div className="flex gap-1.5 flex-wrap">
+          {FLAVOR_PROFILES.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFlavorProfile(f.value)}
+              className={cn(
+                "px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors",
+                flavorProfile === f.value
+                  ? "bg-violet-600 border-violet-500 text-white"
+                  : "bg-transparent border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Primary CTA */}
       <button

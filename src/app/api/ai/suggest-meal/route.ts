@@ -5,11 +5,28 @@ import { db } from "@/lib/db"
 const DEMO_USER_ID = "demo-user"
 
 const DIET_LABELS: Record<string, string> = {
-  vegetarian: "צמחוני",
-  vegan:      "טבעוני",
-  pescatarian:"פסקטריאני",
-  omnivore:   "כל-אוכל",
+  vegetarian:  "צמחוני",
+  vegan:       "טבעוני",
+  pescatarian: "פסקטריאני",
+  omnivore:    "כל-אוכל",
 }
+
+const MEAL_TYPE_LABELS: Record<string, string> = {
+  breakfast: "ארוחת בוקר",
+  lunch:     "ארוחת צהריים",
+  dinner:    "ארוחת ערב",
+  snack:     "חטיף/ביניים",
+}
+
+const FLAVOR_LABELS: Record<string, string> = {
+  savory:   "מלוח",
+  sweet:    "מתוק",
+  surprise: "כל פרופיל טעם (הפתעה)",
+}
+
+// Remaining macros above these thresholds are split across two meals instead of one.
+const SPLIT_CAL     = 800
+const SPLIT_PROTEIN = 60
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
@@ -17,31 +34,27 @@ function buildPrompt(
   remaining: { calories: number; protein: number; carbs: number; fats: number },
   dietLabel: string,
   ingredients: string,
+  mealType: string,
+  flavorProfile: string,
 ): string {
+  const mealTypeLabel  = MEAL_TYPE_LABELS[mealType]   ?? "ארוחה כלשהי"
+  const flavorLabel    = FLAVOR_LABELS[flavorProfile]  ?? "כל פרופיל טעם"
+
   const ingredientsPart = ingredients.trim()
     ? `\n- **מרכיבים זמינים בבית:** ${ingredients.trim()}`
     : ""
 
   const ingredientsInstruction = ingredients.trim()
     ? "השתמש במרכיבים המצוינים לעיל ככל האפשר."
-    : "הצע ארוחה מעשית עם מרכיבים נפוצים שקל להשיג."
+    : "הצע מרכיבים מעשיים ונפוצים שקל להשיג."
 
-  return `אתה תזונאי ספורט מנוסה המתמחה בספורטאים עם תזונה ${dietLabel}ית ויעדי רכב גוף.
+  const needsSplit = remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
 
-תפקידך: להציע ארוחה אחת שמשלימה בצורה מדויקת את יעדי המאקרו שנותרו להיום.
+  const splitRule = needsSplit
+    ? `\n\n**כלל חלוקת ארוחות (חובה):** הכמות הנותרת (${remaining.calories} קק"ל / ${remaining.protein} גר' חלבון) גדולה מדי לארוחה אחת סבירה. עליך לחלק את ההצעה בדיוק לשתי ארוחות נפרדות (לדוגמה: ארוחה עיקרית + חטיף לילה). השתמש בפורמט הכפול המפורט למטה.`
+    : ""
 
-**יעדי מאקרו שנותרו להיום:**
-- קלוריות: ${remaining.calories} קק"ל
-- חלבון: ${remaining.protein} גר'
-- פחמימות: ${remaining.carbs} גר'
-- שומן: ${remaining.fats} גר'
-- העדפה תזונתית: ${dietLabel}${ingredientsPart}
-
-**הנחיות:**
-- ${ingredientsInstruction}
-- **חובה: ענה בעברית בלבד.**
-- ענה **בדיוק** בפורמט הבא, כולל הכותרות המודגשות:
-
+  const singleFormat = `\
 **שם הארוחה:** [שם קצר]
 
 **מרכיבים:**
@@ -51,15 +64,60 @@ function buildPrompt(
 **הכנה:** [משפט אחד]
 
 **ערכים משוערים:** ~[קלוריות] קק"ל · [חלבון] גר' חלבון · [פחמימות] גר' פחמ' · [שומן] גר' שומן`
+
+  const splitFormat = `\
+**ארוחה 1 — [שם קצר]:**
+
+**מרכיבים:**
+- [כמות ויחידה] [שם מרכיב]
+- [כמות ויחידה] [שם מרכיב]
+
+**הכנה:** [משפט אחד]
+
+**ערכים משוערים:** ~[קלוריות] קק"ל · [חלבון] גר' חלבון · [פחמימות] גר' פחמ' · [שומן] גר' שומן
+
+---
+
+**ארוחה 2 — [שם קצר]:**
+
+**מרכיבים:**
+- [כמות ויחידה] [שם מרכיב]
+- [כמות ויחידה] [שם מרכיב]
+
+**הכנה:** [משפט אחד]
+
+**ערכים משוערים:** ~[קלוריות] קק"ל · [חלבון] גר' חלבון · [פחמימות] גר' פחמ' · [שומן] גר' שומן`
+
+  return `אתה תזונאי ספורט מנוסה המתמחה בספורטאים עם תזונה ${dietLabel}ית ויעדי רכב גוף.
+
+תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות בצורה מדויקת את יעדי המאקרו שנותרו להיום.
+
+**יעדי מאקרו שנותרו להיום:**
+- קלוריות: ${remaining.calories} קק"ל
+- חלבון: ${remaining.protein} גר'
+- פחמימות: ${remaining.carbs} גר'
+- שומן: ${remaining.fats} גר'
+- העדפה תזונתית: ${dietLabel}
+- סוג ארוחה: ${mealTypeLabel}
+- פרופיל טעם: ${flavorLabel}${ingredientsPart}${splitRule}
+
+**הנחיות:**
+- ${ingredientsInstruction}
+- הקפד על פרופיל הטעם "${flavorLabel}" בבחירת המרכיבים.
+- ציין כמויות מדויקות בגרמים או יחידות.
+- **חובה: ענה בעברית בלבד.**
+- ענה **בדיוק** בפורמט הבא, כולל הכותרות המודגשות:
+
+${needsSplit ? splitFormat : singleFormat}`
 }
 
 // ── Provider dispatch ────────────────────────────────────────────────────────
 
-async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
+async function callAnthropic(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
   const client = new Anthropic({ apiKey })
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 512,
+    max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
   })
   const content = message.content[0]
@@ -67,14 +125,14 @@ async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
   return content.text.trim()
 }
 
-async function callOpenAI(prompt: string, apiKey: string): Promise<string> {
+async function callOpenAI(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 512,
+      max_tokens: maxTokens,
     }),
   })
   if (!res.ok) throw new Error(`OpenAI ${res.status}`)
@@ -82,14 +140,14 @@ async function callOpenAI(prompt: string, apiKey: string): Promise<string> {
   return (data.choices[0]?.message?.content ?? "").trim()
 }
 
-async function callGemini(prompt: string, apiKey: string): Promise<string> {
+async function callGemini(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 512 },
+      generationConfig: { maxOutputTokens: maxTokens },
     }),
   })
   if (!res.ok) throw new Error(`Gemini ${res.status}`)
@@ -105,13 +163,11 @@ function resolveProvider(
   userProvider: string,
   userApiKey: string | null,
 ): ProviderKey | null {
-  // 1. User-configured key takes highest priority
   if (userApiKey) {
     const p = userProvider as ProviderKey["provider"]
     return { provider: p, apiKey: userApiKey }
   }
 
-  // 2. Environment variable fallback — first match wins
   if (process.env.ANTHROPIC_API_KEY) {
     return { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY }
   }
@@ -131,7 +187,9 @@ function resolveProvider(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const ingredients = (body.ingredients ?? "") as string
+    const ingredients   = (body.ingredients   ?? "") as string
+    const mealType      = (body.mealType      ?? "dinner") as string
+    const flavorProfile = (body.flavorProfile ?? "savory") as string
     const remaining = body.remaining as {
       calories: number
       protein: number
@@ -145,7 +203,11 @@ export async function POST(request: NextRequest) {
 
     const dietaryPreference = settings?.dietaryPreference ?? "vegetarian"
     const dietLabel = DIET_LABELS[dietaryPreference] ?? "צמחוני"
-    const prompt = buildPrompt(remaining, dietLabel, ingredients)
+    const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile)
+
+    // Allow more tokens when the response needs to cover two split meals
+    const needsSplit = remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
+    const maxTokens  = needsSplit ? 700 : 512
 
     const resolved = resolveProvider(
       settings?.aiProvider ?? "anthropic",
@@ -164,11 +226,11 @@ export async function POST(request: NextRequest) {
 
     let suggestion: string
     if (resolved.provider === "openai") {
-      suggestion = await callOpenAI(prompt, resolved.apiKey)
+      suggestion = await callOpenAI(prompt, resolved.apiKey, maxTokens)
     } else if (resolved.provider === "gemini") {
-      suggestion = await callGemini(prompt, resolved.apiKey)
+      suggestion = await callGemini(prompt, resolved.apiKey, maxTokens)
     } else {
-      suggestion = await callAnthropic(prompt, resolved.apiKey)
+      suggestion = await callAnthropic(prompt, resolved.apiKey, maxTokens)
     }
 
     return NextResponse.json({ suggestion })
