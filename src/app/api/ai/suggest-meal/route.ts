@@ -24,9 +24,30 @@ const FLAVOR_LABELS: Record<string, string> = {
   surprise: "כל פרופיל טעם (הפתעה)",
 }
 
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai:    "OpenAI",
+  gemini:    "Gemini",
+}
+
 // Remaining macros above these thresholds are split across two meals instead of one.
 const SPLIT_CAL     = 800
 const SPLIT_PROTEIN = 60
+
+// ── Key resolution: user-saved key first, then env var for chosen provider ───
+//
+// Returns null only when NEITHER a user-saved key NOR the correct env var
+// exists for the provider the user actually chose. Does NOT fall back to a
+// different provider — the user's explicit selection is always respected.
+function resolveApiKey(provider: string, userApiKey: string | null): string | null {
+  if (userApiKey) return userApiKey
+  switch (provider) {
+    case "anthropic": return process.env.ANTHROPIC_API_KEY ?? null
+    case "openai":    return process.env.OPENAI_API_KEY ?? null
+    case "gemini":    return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
+    default:          return null
+  }
+}
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
@@ -135,6 +156,7 @@ async function callOpenAI(prompt: string, apiKey: string, maxTokens: number): Pr
       max_tokens: maxTokens,
     }),
   })
+  if (res.status === 401) throw new Error("OpenAI API key is invalid")
   if (!res.ok) throw new Error(`OpenAI ${res.status}`)
   const data = await res.json()
   return (data.choices[0]?.message?.content ?? "").trim()
@@ -150,36 +172,12 @@ async function callGemini(prompt: string, apiKey: string, maxTokens: number): Pr
       generationConfig: { maxOutputTokens: maxTokens },
     }),
   })
+  if (res.status === 400 || res.status === 401 || res.status === 403) {
+    throw new Error("Gemini API key is invalid or does not have access")
+  }
   if (!res.ok) throw new Error(`Gemini ${res.status}`)
   const data = await res.json()
   return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
-}
-
-// ── Key resolution: user-saved key first, then env-var fallback ──────────────
-
-type ProviderKey = { provider: "anthropic" | "openai" | "gemini"; apiKey: string }
-
-function resolveProvider(
-  userProvider: string,
-  userApiKey: string | null,
-): ProviderKey | null {
-  if (userApiKey) {
-    const p = userProvider as ProviderKey["provider"]
-    return { provider: p, apiKey: userApiKey }
-  }
-
-  if (process.env.ANTHROPIC_API_KEY) {
-    return { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY }
-  }
-  if (process.env.OPENAI_API_KEY) {
-    return { provider: "openai", apiKey: process.env.OPENAI_API_KEY }
-  }
-  const geminiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY
-  if (geminiKey) {
-    return { provider: "gemini", apiKey: geminiKey }
-  }
-
-  return null
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -201,36 +199,33 @@ export async function POST(request: NextRequest) {
       where: { userId: DEMO_USER_ID },
     })
 
-    const dietaryPreference = settings?.dietaryPreference ?? "vegetarian"
-    const dietLabel = DIET_LABELS[dietaryPreference] ?? "צמחוני"
-    const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile)
+    const provider  = settings?.aiProvider ?? "anthropic"
+    const apiKey    = resolveApiKey(provider, settings?.aiApiKey ?? null)
 
-    // Allow more tokens when the response needs to cover two split meals
-    const needsSplit = remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
-    const maxTokens  = needsSplit ? 700 : 512
-
-    const resolved = resolveProvider(
-      settings?.aiProvider ?? "anthropic",
-      settings?.aiApiKey ?? null,
-    )
-
-    if (!resolved) {
+    if (!apiKey) {
+      const name = PROVIDER_NAMES[provider] ?? provider
       return NextResponse.json(
         {
-          error:
-            "לא נמצא מפתח AI — הוסף ANTHROPIC_API_KEY, OPENAI_API_KEY, או GEMINI_API_KEY למשתני הסביבה, או הגדר מפתח בדף ההגדרות.",
+          error: `מפתח ${name} API אינו מוגדר בשרת — הגדר ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY ב-.env.local, או הזן מפתח אישי בהגדרות`,
         },
         { status: 500 },
       )
     }
 
+    const dietaryPreference = settings?.dietaryPreference ?? "vegetarian"
+    const dietLabel = DIET_LABELS[dietaryPreference] ?? "צמחוני"
+    const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile)
+
+    const needsSplit = remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
+    const maxTokens  = needsSplit ? 700 : 512
+
     let suggestion: string
-    if (resolved.provider === "openai") {
-      suggestion = await callOpenAI(prompt, resolved.apiKey, maxTokens)
-    } else if (resolved.provider === "gemini") {
-      suggestion = await callGemini(prompt, resolved.apiKey, maxTokens)
+    if (provider === "openai") {
+      suggestion = await callOpenAI(prompt, apiKey, maxTokens)
+    } else if (provider === "gemini") {
+      suggestion = await callGemini(prompt, apiKey, maxTokens)
     } else {
-      suggestion = await callAnthropic(prompt, resolved.apiKey, maxTokens)
+      suggestion = await callAnthropic(prompt, apiKey, maxTokens)
     }
 
     return NextResponse.json({ suggestion })

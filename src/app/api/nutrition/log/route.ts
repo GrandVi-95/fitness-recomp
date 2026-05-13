@@ -54,40 +54,45 @@ ${JSON.stringify(foodList, null, 2)}`
 }
 
 // ── Robust JSON extraction ────────────────────────────────────────────────────
-// Handles plain JSON, markdown code fences (```json ... ```), and embedded JSON.
 function extractJsonText(raw: string): string {
-  // Strip markdown code fences
   const stripped = raw
     .replace(/^```(?:json)?\s*/im, "")
     .replace(/\s*```\s*$/im, "")
     .trim()
 
-  // If the stripped text starts with { it's likely clean JSON
   if (stripped.startsWith("{")) return stripped
 
-  // Fallback: find the first {...} block (greedy match of the whole object)
   const match = raw.match(/\{[\s\S]*\}/)
   if (match) return match[0]
 
   throw new Error("No JSON object found in AI response")
 }
 
+// ── Key resolution: user-saved key first, then env var for chosen provider ───
+//
+// Returns null only when NEITHER a user-saved key NOR the correct env var
+// exists for the provider the user actually chose. This intentionally does NOT
+// fall back to a different provider — respecting the user's explicit selection.
+function resolveApiKey(provider: string, userApiKey: string | null): string | null {
+  if (userApiKey) return userApiKey
+  switch (provider) {
+    case "anthropic": return process.env.ANTHROPIC_API_KEY ?? null
+    case "openai":    return process.env.OPENAI_API_KEY ?? null
+    case "gemini":    return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
+    default:          return null
+  }
+}
+
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai:    "OpenAI",
+  gemini:    "Gemini",
+}
+
 // ── Provider dispatch ────────────────────────────────────────────────────────
 
-async function callAnthropic(
-  userMessage: string,
-  apiKey?: string | null
-): Promise<string> {
-  // Prefer explicit key from settings, fall back to env var
-  const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY
-  if (!resolvedKey) {
-    throw new Error(
-      "API_KEY_MISSING: מפתח Anthropic API לא מוגדר — " +
-      "הוסף אותו בדף ההגדרות או הגדר ANTHROPIC_API_KEY בקובץ .env.local"
-    )
-  }
-
-  const client = new Anthropic({ apiKey: resolvedKey })
+async function callAnthropic(userMessage: string, apiKey: string): Promise<string> {
+  const client = new Anthropic({ apiKey })
   try {
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -99,19 +104,15 @@ async function callAnthropic(
     if (content.type !== "text") throw new Error("Unexpected response type from Claude")
     return content.text
   } catch (err: unknown) {
-    // Re-throw with a friendlier message for auth errors
-    const message = err instanceof Error ? err.message : String(err)
-    if (message.includes("401") || message.includes("auth") || message.includes("API key")) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes("401") || msg.includes("auth") || msg.includes("API key")) {
       throw new Error("API_KEY_INVALID: מפתח Anthropic API לא תקין — בדוק את המפתח בדף ההגדרות")
     }
     throw err
   }
 }
 
-async function callOpenAI(
-  userMessage: string,
-  apiKey: string
-): Promise<string> {
+async function callOpenAI(userMessage: string, apiKey: string): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -135,20 +136,20 @@ async function callOpenAI(
   return data.choices[0]?.message?.content ?? ""
 }
 
-async function callGemini(
-  userMessage: string,
-  apiKey: string
-): Promise<string> {
+async function callGemini(userMessage: string, apiKey: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${userMessage}` }] }],
+      // systemInstruction keeps the schema instruction separate from the user
+      // message, matching how OpenAI/Anthropic handle system prompts.
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: userMessage }] }],
       generationConfig: { maxOutputTokens: 1024 },
     }),
   })
-  if (res.status === 400 || res.status === 403) {
+  if (res.status === 400 || res.status === 401 || res.status === 403) {
     throw new Error("API_KEY_INVALID: מפתח Gemini לא תקין — בדוק את המפתח בדף ההגדרות")
   }
   if (!res.ok) throw new Error(`Gemini error: ${res.status}`)
@@ -167,20 +168,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "נדרש תיאור מזון" }, { status: 400 })
     }
 
-    // ── Load AI settings ──────────────────────────────────────────────────
+    // ── Load AI settings and resolve API key for chosen provider ─────────────
     const settings = await db.userSettings.findUnique({
       where: { userId: DEMO_USER_ID },
     })
-    const provider = settings?.aiProvider ?? "anthropic"
-    const apiKey   = settings?.aiApiKey ?? null
+    const provider   = settings?.aiProvider ?? "anthropic"
+    const apiKey     = resolveApiKey(provider, settings?.aiApiKey ?? null)
 
-    // ── Validate key for non-Anthropic providers (they have no env fallback) ──
-    if ((provider === "openai" || provider === "gemini") && !apiKey) {
+    if (!apiKey) {
+      const name = PROVIDER_NAMES[provider] ?? provider
       return NextResponse.json(
-        {
-          error: `מפתח ${provider === "openai" ? "OpenAI" : "Gemini"} API לא מוגדר — הגדר אותו בדף ההגדרות`,
-        },
-        { status: 400 }
+        { error: `מפתח ${name} API אינו מוגדר בשרת — הגדר ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY ב-.env.local, או הזן מפתח אישי בהגדרות` },
+        { status: 500 },
       )
     }
 
@@ -217,24 +216,23 @@ export async function POST(request: Request) {
 
     const userMessage = buildUserMessage(text, foodList)
 
-    // ── Dispatch to provider ──────────────────────────────────────────────
+    // ── Dispatch to chosen provider ───────────────────────────────────────
     let rawText: string
     try {
       if (provider === "openai") {
-        rawText = await callOpenAI(userMessage, apiKey!)
+        rawText = await callOpenAI(userMessage, apiKey)
       } else if (provider === "gemini") {
-        rawText = await callGemini(userMessage, apiKey!)
+        rawText = await callGemini(userMessage, apiKey)
       } else {
         rawText = await callAnthropic(userMessage, apiKey)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      // Surface API key errors directly to the UI
       if (msg.startsWith("API_KEY_")) {
         const display = msg.replace(/^API_KEY_[A-Z_]+:\s*/, "")
         return NextResponse.json({ error: display }, { status: 400 })
       }
-      throw err // let outer catch handle unexpected errors
+      throw err
     }
 
     // ── Parse JSON from response ──────────────────────────────────────────
