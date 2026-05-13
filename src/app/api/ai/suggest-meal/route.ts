@@ -162,26 +162,39 @@ async function callOpenAI(prompt: string, apiKey: string, maxTokens: number): Pr
   return (data.choices[0]?.message?.content ?? "").trim()
 }
 
+const GEMINI_MODELS = [
+  "gemini-3.1-flash",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+]
+
 async function callGemini(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens },
-    }),
-  })
-  if (!res.ok) {
+  let lastError = ""
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    })
+    if (res.ok) {
+      console.log("[Gemini] Successfully used model:", model)
+      const data = await res.json()
+      return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
+    }
     const errorBody = await res.text().catch(() => "(unreadable)")
     console.error(`[callGemini suggest-meal] HTTP ${res.status}:`, errorBody)
     if (res.status === 401 || res.status === 403) {
       throw new Error("Gemini API key is invalid or does not have access")
     }
-    throw new Error(`Gemini ${res.status}: ${errorBody}`)
+    console.warn(`[Gemini] Model failed, trying next: ${model} (${res.status})`)
+    lastError = `${res.status}: ${errorBody}`
   }
-  const data = await res.json()
-  return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
+  throw new Error(`Gemini: all models failed. Last error — ${lastError}`)
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────

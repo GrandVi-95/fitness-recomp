@@ -136,29 +136,40 @@ async function callOpenAI(userMessage: string, apiKey: string): Promise<string> 
   return data.choices[0]?.message?.content ?? ""
 }
 
+const GEMINI_MODELS = [
+  "gemini-3.1-flash",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+]
+
 async function callGemini(userMessage: string, apiKey: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      // systemInstruction keeps the schema instruction separate from the user
-      // message, matching how OpenAI/Anthropic handle system prompts.
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      generationConfig: { maxOutputTokens: 1024 },
-    }),
-  })
-  if (!res.ok) {
+  let lastError = ""
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+        generationConfig: { maxOutputTokens: 1024 },
+      }),
+    })
+    if (res.ok) {
+      console.log("[Gemini] Successfully used model:", model)
+      const data = await res.json()
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+    }
     const errorBody = await res.text().catch(() => "(unreadable)")
     console.error(`[callGemini nutrition/log] HTTP ${res.status}:`, errorBody)
     if (res.status === 401 || res.status === 403) {
       throw new Error("API_KEY_INVALID: מפתח Gemini לא תקין — בדוק את המפתח בדף ההגדרות")
     }
-    throw new Error(`Gemini ${res.status}: ${errorBody}`)
+    console.warn(`[Gemini] Model failed, trying next: ${model} (${res.status})`)
+    lastError = `${res.status}: ${errorBody}`
   }
-  const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+  throw new Error(`Gemini: all models failed. Last error — ${lastError}`)
 }
 
 /** POST /api/nutrition/log
