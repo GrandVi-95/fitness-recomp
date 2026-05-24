@@ -42,10 +42,20 @@ export interface TodayNutritionEntry {
   protein: number
   carbs: number
   fat: number
+  fiber: number
+  sugar: number
+  saturatedFat: number
 }
 
 export interface TodayNutritionResult {
-  totals: { calories: number; protein: number; carbs: number; fat: number }
+  totals: {
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+    sugar: number
+    saturatedFat: number
+  }
   byMealType: Record<string, TodayNutritionEntry[]>
 }
 
@@ -72,36 +82,43 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
 
   const raw = allItems.reduce(
     (acc, item) => ({
-      calories: acc.calories + item.calories,
-      protein:  acc.protein  + item.protein,
-      carbs:    acc.carbs    + item.carbs,
-      fat:      acc.fat      + item.fat,
+      calories:     acc.calories     + item.calories,
+      protein:      acc.protein      + item.protein,
+      carbs:        acc.carbs        + item.carbs,
+      fat:          acc.fat          + item.fat,
+      sugar:        acc.sugar        + item.sugar,
+      saturatedFat: acc.saturatedFat + item.saturatedFat,
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, saturatedFat: 0 },
   )
 
   const byMealType: Record<string, TodayNutritionEntry[]> = {}
   for (const item of allItems) {
     if (!byMealType[item.mealType]) byMealType[item.mealType] = []
     byMealType[item.mealType].push({
-      id:       item.id,
-      logId:    item.logId,
-      name:     item.name,
-      quantity: item.quantity,
-      unit:     item.unit,
-      calories: item.calories,
-      protein:  item.protein,
-      carbs:    item.carbs,
-      fat:      item.fat,
+      id:          item.id,
+      logId:       item.logId,
+      name:        item.name,
+      quantity:    item.quantity,
+      unit:        item.unit,
+      calories:    item.calories,
+      protein:     item.protein,
+      carbs:       item.carbs,
+      fat:         item.fat,
+      fiber:       item.fiber,
+      sugar:       item.sugar,
+      saturatedFat: item.saturatedFat,
     })
   }
 
   return {
     totals: {
-      calories: Math.round(raw.calories),
-      protein:  Math.round(raw.protein * 10) / 10,
-      carbs:    Math.round(raw.carbs),
-      fat:      Math.round(raw.fat * 10) / 10,
+      calories:     Math.round(raw.calories),
+      protein:      Math.round(raw.protein * 10) / 10,
+      carbs:        Math.round(raw.carbs),
+      fat:          Math.round(raw.fat * 10) / 10,
+      sugar:        Math.round(raw.sugar * 10) / 10,
+      saturatedFat: Math.round(raw.saturatedFat * 10) / 10,
     },
     byMealType,
   }

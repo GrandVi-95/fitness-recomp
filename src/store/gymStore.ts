@@ -26,6 +26,14 @@ export interface PreviousPerformance {
   totalVolume: number
 }
 
+export interface ExerciseBaseline {
+  weightKg: number
+  reps: number | null  // null when no history yet
+  // true = last 2 sessions matched → athlete consolidated, consider increasing
+  // false = most-recent session used as anchor (athlete still adapting)
+  isConfirmed: boolean
+}
+
 export interface SessionExercise {
   workoutExerciseId: string
   exerciseId: string
@@ -38,6 +46,7 @@ export interface SessionExercise {
   restSeconds: number
   notes?: string
   previousPerformance: PreviousPerformance | null
+  baseline: ExerciseBaseline | null
 }
 
 export interface LastLoggedSetInfo {
@@ -150,9 +159,14 @@ export const useGymStore = create<GymState>()(
         const inputRpe: Record<string, number> = {}
 
         for (const ex of exercises) {
+          // Prefer the server-computed baseline (driven by last-2-session comparison).
+          // Fall back to previous-performance top set, then 0.
           inputWeightKg[ex.exerciseId] =
-            ex.previousPerformance?.topSetWeightKg ?? 0
-          inputReps[ex.exerciseId] = parseDefaultReps(ex.targetReps)
+            ex.baseline?.weightKg ?? ex.previousPerformance?.topSetWeightKg ?? 0
+          // Use the baseline's confirmed reps when available, otherwise parse the
+          // target rep string (e.g. "8-12" → 8).
+          inputReps[ex.exerciseId] =
+            ex.baseline?.reps ?? parseDefaultReps(ex.targetReps)
           inputRpe[ex.exerciseId] = 7
         }
 

@@ -20,6 +20,9 @@ import {
   Dumbbell,
   Flame,
   Zap,
+  Mail,
+  Send,
+  XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
@@ -64,6 +67,8 @@ interface SettingsData {
   gender: string
   activityMultiplier: number
   dietaryPreference: string
+  reportEnabled: boolean
+  reportEmail: string
 }
 
 // ── Small shared components ──────────────────────────────────────────────────
@@ -182,6 +187,13 @@ export default function SettingsPage() {
   const [smartAlertsEnabled, setSmartAlertsEnabled] = useState(true)
   const [showWeeklySummary, setShowWeeklySummary]   = useState(true)
 
+  // Weekly report
+  const [reportEnabled, setReportEnabled] = useState(true)
+  const [reportEmail, setReportEmail]     = useState("")
+  const [sendingTest, setSendingTest]     = useState(false)
+  const [testResult, setTestResult]       = useState<"success" | "error" | null>(null)
+  const [testError, setTestError]         = useState<string | null>(null)
+
   // ── Load from server ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -203,6 +215,8 @@ export default function SettingsPage() {
         setSmartAlertsEnabled(d.smartAlertsEnabled ?? true)
         setShowWeeklySummary(d.showWeeklySummary ?? true)
         setDietaryPreference(d.dietaryPreference ?? "vegetarian")
+        setReportEnabled(d.reportEnabled ?? true)
+        setReportEmail(d.reportEmail ?? "")
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -238,6 +252,8 @@ export default function SettingsPage() {
         smartAlertsEnabled,
         showWeeklySummary,
         dietaryPreference,
+        reportEnabled,
+        reportEmail: reportEmail.trim(),
         // Body profile — always sent so targets stay in sync
         weight,
         height,
@@ -282,6 +298,32 @@ export default function SettingsPage() {
       alert("שגיאה באיפוס — אנא נסה שוב")
     } finally {
       setResetting(false)
+    }
+  }
+
+  const handleSendTestEmail = async () => {
+    setSendingTest(true)
+    setTestResult(null)
+    setTestError(null)
+    try {
+      const res = await fetch("/api/cron/weekly-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setTestResult("error")
+        setTestError(data.error ?? "שגיאה בשליחה")
+      } else {
+        setTestResult("success")
+        setTimeout(() => setTestResult(null), 5000)
+      }
+    } catch {
+      setTestResult("error")
+      setTestError("שגיאת רשת — בדוק את החיבור שלך")
+    } finally {
+      setSendingTest(false)
     }
   }
 
@@ -661,6 +703,63 @@ export default function SettingsPage() {
           </div>
           <Toggle enabled={smartAlertsEnabled} onChange={setSmartAlertsEnabled} />
         </div>
+      </section>
+
+      {/* ── דוחות שבועיים ─────────────────────────────────── */}
+      <section className="bg-slate-900 rounded-2xl p-4 space-y-4">
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
+          <Mail size={15} className="text-teal-400" /> דוחות שבועיים
+        </h2>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">שלח דוח אימייל שבועי</p>
+            <p className="text-[11px] text-slate-500">כל יום ראשון — ניתוח חלבון, סוכר וימי אימון</p>
+          </div>
+          <Toggle enabled={reportEnabled} onChange={setReportEnabled} />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs text-slate-400">כתובת אימייל לדוח</label>
+          <input
+            type="email"
+            value={reportEmail}
+            onChange={(e) => setReportEmail(e.target.value)}
+            placeholder="your@email.com"
+            dir="ltr"
+            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30"
+          />
+          <p className="text-[11px] text-slate-600">
+            ריק = יוצא מה-REPORT_EMAIL ב-.env.local
+          </p>
+        </div>
+
+        {/* Send Test Email button */}
+        <button
+          onClick={handleSendTestEmail}
+          disabled={sendingTest}
+          className={cn(
+            "w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+            testResult === "success"
+              ? "bg-teal-600/20 border border-teal-500/40 text-teal-300"
+              : testResult === "error"
+              ? "bg-red-500/10 border border-red-500/30 text-red-400"
+              : "bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 disabled:opacity-50",
+          )}
+        >
+          {sendingTest ? (
+            <><span className="animate-spin text-base leading-none">◌</span> שולח…</>
+          ) : testResult === "success" ? (
+            <><CheckCircle2 size={15} /> נשלח בהצלחה!</>
+          ) : testResult === "error" ? (
+            <><XCircle size={15} /> {testError ?? "שגיאה בשליחה"}</>
+          ) : (
+            <><Send size={14} /> שלח אימייל בדיקה עכשיו</>
+          )}
+        </button>
+        <p className="text-[11px] text-slate-600 text-center -mt-1">
+          שולח את ניתוח השבוע הנוכחי מיידית
+        </p>
       </section>
 
       {/* ── אבטחה ─────────────────────────────────────────── */}

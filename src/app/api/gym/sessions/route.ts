@@ -3,11 +3,24 @@ import { db } from "@/lib/db"
 
 const DEMO_USER_ID = "demo-user"
 
+/**
+ * Returns true when both sessions logged the same (weightKg, reps) for every
+ * working set in order. This means the athlete consolidated at this weight and
+ * is ready for progressive overload on the next session.
+ */
+function setsMatch(
+  a: { reps: number; weightKg: number }[],
+  b: { reps: number; weightKg: number }[],
+): boolean {
+  if (a.length === 0 || a.length !== b.length) return false
+  return a.every((s, i) => s.weightKg === b[i].weightKg && s.reps === b[i].reps)
+}
+
 /** POST /api/gym/sessions
  * Body: { workoutId: string }
  *
- * Creates a WorkoutSession, then fetches all exercises + their previous
- * performance in a single round-trip so the client can start immediately.
+ * Creates a WorkoutSession, then fetches all exercises + their last 2 sessions
+ * of working sets so the client can auto-fill a smart baseline.
  */
 export async function POST(request: Request) {
   try {
@@ -29,11 +42,13 @@ export async function POST(request: Request) {
       include: { exercise: true },
     })
 
-    // For each exercise, find the most recent completed session that logged
-    // working sets for it, then return those sets as "previous performance".
+    // For each exercise, fetch the last 2 completed sessions with working sets.
+    // We compare them to determine whether the athlete has consolidated at a
+    // weight (isConfirmed = true → suggest same weight, signal "ready to increase")
+    // or is still progressing (isConfirmed = false → suggest most-recent weight).
     const exercisesWithPrev = await Promise.all(
       workoutExercises.map(async (we) => {
-        const prevSession = await db.workoutSession.findFirst({
+        const prevSessions = await db.workoutSession.findMany({
           where: {
             userId: DEMO_USER_ID,
             completedAt: { not: null },
@@ -43,6 +58,7 @@ export async function POST(request: Request) {
             },
           },
           orderBy: { completedAt: "desc" },
+          take: 2,
           include: {
             sets: {
               where: { exerciseId: we.exerciseId, isWarmup: false },
@@ -51,13 +67,22 @@ export async function POST(request: Request) {
           },
         })
 
-        const prevSets = prevSession?.sets ?? []
+        const [latest, previous] = prevSessions
+        const latestSets  = latest?.sets   ?? []
+        const previousSets = previous?.sets ?? []
+
+        const isConfirmed = setsMatch(latestSets, previousSets)
+
         const topSetWeightKg =
-          prevSets.length > 0 ? Math.max(...prevSets.map((s) => s.weightKg)) : 0
-        const totalVolume = prevSets.reduce(
+          latestSets.length > 0 ? Math.max(...latestSets.map((s) => s.weightKg)) : 0
+        const totalVolume = latestSets.reduce(
           (sum, s) => sum + s.weightKg * s.reps,
-          0
+          0,
         )
+
+        // suggestedReps: first working set of the most recent session (reliable
+        // anchor), or null when no history exists yet.
+        const suggestedReps = latestSets[0]?.reps ?? null
 
         let secondaryMuscles: string[] = []
         try {
@@ -77,13 +102,13 @@ export async function POST(request: Request) {
           restSeconds: we.restSeconds,
           notes: we.notes ?? undefined,
           previousPerformance:
-            prevSession && prevSets.length > 0
+            latest && latestSets.length > 0
               ? {
-                  sessionDate: prevSession.completedAt!.toLocaleDateString(
-                    "en-US",
-                    { month: "short", day: "numeric" }
-                  ),
-                  sets: prevSets.map((s) => ({
+                  sessionDate: latest.completedAt!.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  }),
+                  sets: latestSets.map((s) => ({
                     reps: s.reps,
                     weightKg: s.weightKg,
                     rpe: s.rpe ?? undefined,
@@ -92,8 +117,19 @@ export async function POST(request: Request) {
                   totalVolume,
                 }
               : null,
+          // Baseline drives the auto-fill in the gym UI.
+          // isConfirmed = true  → athlete did identical weight+reps two sessions in a row
+          // isConfirmed = false → most recent session is the best available anchor
+          baseline:
+            topSetWeightKg > 0
+              ? {
+                  weightKg: topSetWeightKg,
+                  reps: suggestedReps,
+                  isConfirmed,
+                }
+              : null,
         }
-      })
+      }),
     )
 
     return NextResponse.json({

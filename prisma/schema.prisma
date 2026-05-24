@@ -65,6 +65,9 @@ model UserSettings {
   activityMultiplier   Float   @default(1.45)   // TDEE multiplier (1.2 sedentary → 1.9 very active)
   autoCalorieGoal      Boolean @default(true)   // true = TDEE from Mifflin-St Jeor, false = manual
   dietaryPreference    String  @default("vegetarian") // vegetarian | vegan | pescatarian | omnivore
+  // Weekly report
+  reportEnabled        Boolean @default(true)         // send weekly coaching email
+  reportEmail          String?                        // recipient — falls back to REPORT_EMAIL env var
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -180,9 +183,11 @@ model Food {
   proteinPer100  Float
   carbsPer100    Float
   fatPer100      Float
-  fiberPer100    Float  @default(0)
+  fiberPer100         Float  @default(0)
+  sugarPer100         Float  @default(0)
+  saturatedFatPer100  Float  @default(0)
   // Aliases for NLP matching: stored as JSON array string
-  aliases        String @default("[]")
+  aliases             String @default("[]")
 
   nutritionItems NutritionFoodItem[]
 }
@@ -207,11 +212,13 @@ model NutritionFoodItem {
   quantity Float   // amount in `unit`
   unit     String  @default("g") // g | ml | piece | scoop | cup
   // Computed macros (denormalized for quick aggregation)
-  calories Float
-  protein  Float
-  carbs    Float
-  fat      Float
-  fiber    Float   @default(0)
+  calories     Float
+  protein      Float
+  carbs        Float
+  fat          Float
+  fiber        Float   @default(0)
+  sugar        Float   @default(0)
+  saturatedFat Float   @default(0)
 
   log  NutritionLog @relation(fields: [logId], references: [id], onDelete: Cascade)
   food Food?        @relation(fields: [foodId], references: [id])

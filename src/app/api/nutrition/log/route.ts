@@ -15,6 +15,8 @@ interface ParsedFoodItem {
   carbs: number
   fat: number
   fiber?: number
+  sugar?: number
+  saturatedFat?: number
 }
 
 // ── Hebrew NLP prompt (shared across providers) ─────────────────────────────
@@ -28,6 +30,7 @@ const SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה באפליקצי�
 4. חשב מאקרו על בסיס הכמות שצוינה: (כמות / 100) × ערכי per100g.
 5. אם מזון לא נמצא במסד הנתונים, כלול אותו עם הערכה מציאותית ו-matchedFoodId כ-null.
 6. שם המזון בתשובה יכול להיות בעברית.
+7. חשב גם sugar (סוכר, תת-קבוצה של פחמימות) ו-saturatedFat (שומן רווי, תת-קבוצה של שומן) לפי per100g אם קיים, אחרת הערך מציאותי.
 
 החזר תשובה בפורמט JSON בלבד (ללא טקסט נוסף לפני או אחרי):
 {
@@ -41,7 +44,9 @@ const SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה באפליקצי�
       "protein": 18,
       "carbs": 4,
       "fat": 9,
-      "fiber": 2
+      "fiber": 2,
+      "sugar": 1,
+      "saturatedFat": 3
     }
   ]
 }`
@@ -212,6 +217,8 @@ export async function POST(request: Request) {
         carbsPer100: true,
         fatPer100: true,
         fiberPer100: true,
+        sugarPer100: true,
+        saturatedFatPer100: true,
       },
     })
 
@@ -228,6 +235,8 @@ export async function POST(request: Request) {
           carbs: f.carbsPer100,
           fat: f.fatPer100,
           fiber: f.fiberPer100,
+          sugar: f.sugarPer100,
+          saturatedFat: f.saturatedFatPer100,
         },
       }
     })
@@ -286,11 +295,13 @@ export async function POST(request: Request) {
             name: item.name,
             quantity: item.quantity,
             unit: item.unit,
-            calories: Math.round(item.calories * 10) / 10,
-            protein: Math.round(item.protein * 10) / 10,
-            carbs: Math.round(item.carbs * 10) / 10,
-            fat: Math.round(item.fat * 10) / 10,
-            fiber: Math.round((item.fiber ?? 0) * 10) / 10,
+            calories:     Math.round(item.calories * 10) / 10,
+            protein:      Math.round(item.protein * 10) / 10,
+            carbs:        Math.round(item.carbs * 10) / 10,
+            fat:          Math.round(item.fat * 10) / 10,
+            fiber:        Math.round((item.fiber        ?? 0) * 10) / 10,
+            sugar:        Math.round((item.sugar        ?? 0) * 10) / 10,
+            saturatedFat: Math.round((item.saturatedFat ?? 0) * 10) / 10,
           })),
         },
       },
