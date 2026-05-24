@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { Resend } from "resend"
 import { db } from "@/lib/db"
-import type { WeeklyReport, WeeklyReportDay } from "@/app/api/reports/weekly/route"
+import { getWeeklyReport } from "@/lib/weeklyReport"
+import type { WeeklyReport, WeeklyReportDay } from "@/lib/weeklyReport"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -225,18 +226,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Fetch the report: test = current week, cron = previous week
+    // Build the report: test = current week, cron = previous week
     const weeksAgo = isTestTrigger ? 0 : 1
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-    const reportRes = await fetch(`${baseUrl}/api/reports/weekly?weeksAgo=${weeksAgo}`, {
-      cache: "no-store",
-    })
-
-    if (!reportRes.ok) {
-      throw new Error(`Weekly report fetch failed: ${reportRes.status}`)
-    }
-
-    const report = (await reportRes.json()) as WeeklyReport
+    const report   = await getWeeklyReport(DEMO_USER_ID, weeksAgo)
     const insights = buildInsights(report)
     const subject  = isTestTrigger
       ? `[בדיקה] דוח שבועי — ${report.weekStart} עד ${report.weekEnd}`
