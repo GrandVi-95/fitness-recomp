@@ -5,37 +5,55 @@ export const dynamic = "force-dynamic"
 import {
   Dumbbell,
   Flame,
-  Beef,
   TrendingUp,
   Zap,
   AlertTriangle,
   ChevronLeft,
+  Calendar,
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
 import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition"
+import { cn } from "@/lib/utils"
 
-const DEMO_USER_ID = "demo-user"
+const DEMO_USER_ID  = "demo-user"
+const TZ_OFFSET_MS  = 3 * 60 * 60 * 1000 // Israel UTC+3
+const SUGAR_TARGET  = 50                   // g/day — matches SUGAR_LIMIT_G in weeklyReport
 
-/**
- * Returns "YYYY-MM-DD" from a Date using its UTC components.
- * Used only for the soft smart-alert heuristic, where per-day grouping
- * doesn't need to be timezone-perfect.
- */
+// ── Date helpers ─────────────────────────────────────────────────────────────
+
+function israelDayKey(d: Date): string {
+  const s = new Date(d.getTime() + TZ_OFFSET_MS)
+  return `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, "0")}-${String(s.getUTCDate()).padStart(2, "0")}`
+}
+
 function utcDateStr(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
 }
 
-// ── Server data helpers ──────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface WeekDayData {
+  dayKey:           string
+  isToday:          boolean
+  isFuture:         boolean
+  hadWorkout:       boolean
+  nutritionStatus:  "hit" | "partial" | "none"
+}
+
+// ── Server data helpers ───────────────────────────────────────────────────────
 
 async function getDashboardData() {
-  // getTodayBounds() returns UTC-equivalent boundaries for "today" in Israel
-  // time (UTC+3). Using getTodayNutrition() here instead of an inline query
-  // guarantees the dashboard and the Nutrition page always read identically.
   const { startOfDay } = getTodayBounds()
-
-  // Alert: look at the 2 complete calendar days immediately before today
   const twoDaysAgo = new Date(startOfDay.getTime() - 2 * 24 * 60 * 60 * 1000)
+
+  // Current week bounds (Israel Sunday → Saturday) for the streak widget
+  const nowShifted    = new Date(Date.now() + TZ_OFFSET_MS)
+  const sundayShifted = new Date(nowShifted)
+  sundayShifted.setUTCDate(nowShifted.getUTCDate() - nowShifted.getUTCDay())
+  sundayShifted.setUTCHours(0, 0, 0, 0)
+  const weekStartUTC = new Date(sundayShifted.getTime() - TZ_OFFSET_MS)
+  const weekEndUTC   = new Date(weekStartUTC.getTime() + 7 * 24 * 60 * 60 * 1000)
 
   const [
     user,
@@ -44,43 +62,55 @@ async function getDashboardData() {
     lastSession,
     activePlan,
     alertNutritionLogs,
+    weekSessions,
+    weekNutritionLogs,
   ] = await Promise.all([
     db.user.findUnique({
-      where: { id: DEMO_USER_ID },
+      where:   { id: DEMO_USER_ID },
       include: { userSettings: true },
     }),
     getTodayNutrition(DEMO_USER_ID),
     db.bodyMetric.findFirst({
-      where: { userId: DEMO_USER_ID },
+      where:   { userId: DEMO_USER_ID },
       orderBy: { date: "desc" },
     }),
     db.workoutSession.findFirst({
-      where: { userId: DEMO_USER_ID },
+      where:   { userId: DEMO_USER_ID },
       orderBy: { startedAt: "desc" },
       include: { workout: true },
     }),
     db.workoutPlan.findFirst({
-      where: { userId: DEMO_USER_ID, isActive: true },
+      where:   { userId: DEMO_USER_ID, isActive: true },
       include: { workouts: { orderBy: { order: "asc" } } },
     }),
     db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: twoDaysAgo, lt: startOfDay } },
+      where:   { userId: DEMO_USER_ID, date: { gte: twoDaysAgo, lt: startOfDay } },
+      include: { foodItems: true },
+    }),
+    // Week streak: completed workout sessions
+    db.workoutSession.findMany({
+      where:   { userId: DEMO_USER_ID, completedAt: { gte: weekStartUTC, lt: weekEndUTC } },
+      select:  { completedAt: true },
+    }),
+    // Week streak: nutrition logs
+    db.nutritionLog.findMany({
+      where:   { userId: DEMO_USER_ID, date: { gte: weekStartUTC, lt: weekEndUTC } },
       include: { foodItems: true },
     }),
   ])
 
-  // Targets
-  const settings = user?.userSettings
+  // ── Targets ──────────────────────────────────────────────────────────────────
+  const settings    = user?.userSettings
   const latestWeight = latestMetric?.weightKg ?? null
   const targetCalories = user?.targetCalories ?? 2600
-  let targetProtein = user?.targetProtein ?? 185
+  let   targetProtein  = user?.targetProtein  ?? 185
   if (settings?.autoProteinGoal && latestWeight) {
     targetProtein = Math.round(latestWeight * 2.2)
   }
-  const targetFats = user?.targetFats ?? Math.round((targetCalories * 0.25) / 9)
+  const targetFats  = user?.targetFats  ?? Math.round((targetCalories * 0.25) / 9)
   const targetCarbs = user?.targetCarbs ?? Math.round((targetCalories - targetProtein * 4 - targetFats * 9) / 4)
 
-  // Next workout
+  // ── Next workout ──────────────────────────────────────────────────────────────
   let nextWorkout: { name: string; dayLabel: string } | null = null
   if (activePlan?.workouts?.length) {
     if (!lastSession) {
@@ -91,28 +121,69 @@ async function getDashboardData() {
     }
   }
 
-  // ── Smart alert (last 2 complete days both below target by >20%) ──────────
+  // ── Smart alert (last 2 complete days both below target by >20%) ─────────────
   const smartAlertsEnabled = settings?.smartAlertsEnabled ?? true
-  let showSmartAlert = false
+  let   showSmartAlert     = false
 
   if (smartAlertsEnabled) {
     const alertDayMap = new Map<string, { calories: number; protein: number }>()
     for (const log of alertNutritionLogs) {
-      const key = utcDateStr(log.date)
+      const key  = utcDateStr(log.date)
       const prev = alertDayMap.get(key) ?? { calories: 0, protein: 0 }
       prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
       prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
       alertDayMap.set(key, prev)
     }
-
     if (alertDayMap.size >= 2) {
-      const days = [...alertDayMap.values()]
+      const days      = [...alertDayMap.values()]
       const THRESHOLD = 0.8
-      const bothBelowCalories = days.every((d) => d.calories < targetCalories * THRESHOLD)
-      const bothBelowProtein  = days.every((d) => d.protein  < targetProtein  * THRESHOLD)
-      showSmartAlert = bothBelowCalories || bothBelowProtein
+      showSmartAlert  =
+        days.every((d) => d.calories < targetCalories * THRESHOLD) ||
+        days.every((d) => d.protein  < targetProtein  * THRESHOLD)
     }
   }
+
+  // ── Weekly streak computation ─────────────────────────────────────────────────
+  // Workout days set
+  const workoutDayKeys = new Set(
+    weekSessions
+      .filter((s) => s.completedAt)
+      .map((s) => israelDayKey(s.completedAt!)),
+  )
+
+  // Nutrition per-day accumulator
+  const nutritionByDay = new Map<string, { calories: number; protein: number }>()
+  for (const log of weekNutritionLogs) {
+    const key  = israelDayKey(log.date)
+    const prev = nutritionByDay.get(key) ?? { calories: 0, protein: 0 }
+    prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
+    prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
+    nutritionByDay.set(key, prev)
+  }
+
+  const todayKey = israelDayKey(new Date())
+
+  const weekDays: WeekDayData[] = Array.from({ length: 7 }, (_, i) => {
+    const dayUTC = new Date(weekStartUTC.getTime() + i * 24 * 60 * 60 * 1000)
+    const key    = israelDayKey(dayUTC)
+    const nutr   = nutritionByDay.get(key)
+    const isFuture = key > todayKey
+
+    let nutritionStatus: WeekDayData["nutritionStatus"] = "none"
+    if (!isFuture && nutr) {
+      const calOk  = nutr.calories >= targetCalories * 0.8
+      const protOk = nutr.protein  >= targetProtein  * 0.8
+      nutritionStatus = calOk && protOk ? "hit" : "partial"
+    }
+
+    return {
+      dayKey: key,
+      isToday:   key === todayKey,
+      isFuture,
+      hadWorkout: workoutDayKeys.has(key),
+      nutritionStatus,
+    }
+  })
 
   return {
     userName: user?.name ?? "ספורטאי",
@@ -124,10 +195,11 @@ async function getDashboardData() {
     latestWeight,
     nextWorkout,
     showSmartAlert,
+    weekDays,
   }
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────────
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function MacroRing({
   label,
@@ -199,7 +271,82 @@ function StatCard({
   )
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// Day abbreviations for Sunday-first Israel week
+const DAY_LABELS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"]
+
+function WeeklyStreak({ days }: { days: WeekDayData[] }) {
+  return (
+    <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
+      <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
+        <Calendar size={15} className="text-violet-400" /> מדד התמדה שבועי
+      </h2>
+
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((day, i) => (
+          <div
+            key={day.dayKey}
+            className={cn(
+              "flex flex-col items-center gap-1.5 py-2 rounded-xl transition-colors",
+              day.isToday ? "bg-slate-800 ring-1 ring-violet-500/40" : "",
+            )}
+          >
+            {/* Day label */}
+            <span
+              className={cn(
+                "text-[10px] font-medium",
+                day.isToday ? "text-violet-300" : "text-slate-500",
+              )}
+            >
+              {DAY_LABELS[i]}
+            </span>
+
+            {/* Workout indicator */}
+            {day.isFuture ? (
+              <div className="w-5 h-5 rounded-full border border-slate-700/40 bg-slate-800/40" />
+            ) : day.hadWorkout ? (
+              <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
+                <Dumbbell size={9} className="text-white" />
+              </div>
+            ) : (
+              <div className="w-5 h-5 rounded-full border border-slate-700 bg-slate-800/60" />
+            )}
+
+            {/* Nutrition indicator */}
+            {day.isFuture ? (
+              <div className="w-5 h-5 rounded-full border border-slate-700/40 bg-slate-800/40" />
+            ) : day.nutritionStatus === "hit" ? (
+              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                <span className="text-white text-[9px] font-black leading-none">✓</span>
+              </div>
+            ) : day.nutritionStatus === "partial" ? (
+              <div className="w-5 h-5 rounded-full bg-amber-400/80" />
+            ) : (
+              <div className="w-5 h-5 rounded-full border border-slate-700 bg-slate-800/60" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-5 pt-0.5">
+        <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
+          אימון
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+          יעד תזונה ✓
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80 inline-block" />
+          חלקי
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
   const {
@@ -212,10 +359,11 @@ export default async function DashboardPage() {
     latestWeight,
     nextWorkout,
     showSmartAlert,
+    weekDays,
   } = await getDashboardData()
 
-  const caloriesLeft = targetCalories - todayNutrition.calories
-  const proteinLeft = targetProtein - todayNutrition.protein
+  const caloriesLeft   = targetCalories - todayNutrition.calories
+  const proteinLeft    = targetProtein  - todayNutrition.protein
   const isProteinBehind = proteinLeft > targetProtein * 0.3
 
   return (
@@ -282,7 +430,7 @@ export default async function DashboardPage() {
           <p className="text-[11px] text-slate-600 mt-1">יעד: {targetCalories} קק"ל</p>
         </div>
 
-        {/* טבעות מאקרו */}
+        {/* טבעות מאקרו — Protein · Carbs · Fat · Sugar */}
         <div className="flex justify-around pt-1">
           <MacroRing
             label="חלבון"
@@ -304,6 +452,13 @@ export default async function DashboardPage() {
             target={targetFats}
             unit=" גר'"
             color="#f59e0b"
+          />
+          <MacroRing
+            label="סוכר"
+            current={todayNutrition.sugar}
+            target={SUGAR_TARGET}
+            unit=" גר'"
+            color="#f43f5e"
           />
         </div>
 
@@ -349,26 +504,8 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {/* מקורות חלבון מובילים */}
-      <div className="bg-slate-900 rounded-2xl p-4">
-        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Beef size={15} className="text-emerald-400" /> מקורות חלבון צמחיים מובילים
-        </h2>
-        <ul className="space-y-2">
-          {[
-            { name: "סייטן (100 גר')", protein: 75, kcal: 370 },
-            { name: "חלבון מי גבינה (30 גר')", protein: 24, kcal: 114 },
-            { name: "טמפה (100 גר')", protein: 20, kcal: 193 },
-            { name: "יוגורט יווני (200 גר')", protein: 20, kcal: 118 },
-            { name: "אדממה (150 גר')", protein: 18, kcal: 182 },
-          ].map((food) => (
-            <li key={food.name} className="flex items-center justify-between text-xs">
-              <span className="text-slate-300">{food.name}</span>
-              <span className="text-indigo-300 font-semibold">{food.protein} גר' חלבון</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* מדד התמדה שבועי */}
+      <WeeklyStreak days={weekDays} />
     </div>
   )
 }
