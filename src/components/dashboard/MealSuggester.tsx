@@ -144,7 +144,9 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
                 ))}
               </ul>
 
-              <p className="text-xs text-slate-400 leading-relaxed mb-2.5">{meal.preparation}</p>
+              {meal.preparation && (
+                <p className="text-xs text-slate-400 leading-relaxed mb-2.5">{meal.preparation}</p>
+              )}
 
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
                 <span className="text-orange-400">{meal.macros.calories} קק"ל</span>

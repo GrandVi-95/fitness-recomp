@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.9",
+    description:
+      "Flattened JSON schema to resolve infinite generation loops.",
+  },
+  {
     version: "v1.1.8",
     description:
       "Added Graceful Failure mode and macro-violation warnings for impossible constraints.",
@@ -56,4 +61,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.8"
+export const APP_VERSION = "v1.1.9"

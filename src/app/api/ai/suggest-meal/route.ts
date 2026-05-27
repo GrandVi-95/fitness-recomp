@@ -88,19 +88,9 @@ function buildPrompt(
   const maxProtein  = remaining.protein + 5
   const maxCalories = remaining.calories
 
-  const jsonSchema = `{
-  "meals": [
-    {
-      "name": "שם קצר בעברית",
-      "ingredients": [
-        { "quantity": "200 גר'", "name": "שם מרכיב" }
-      ],
-      "preparation": "הוראת הכנה קצרה בעברית",
-      "macros": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "sugar": 0 }
-    }
-  ],
-  "warning": ""
-}`
+  const jsonSchema = needsSplit
+    ? `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0","meal2_name":"...","meal2_ingredients":"מרכיב א, מרכיב ב","meal2_macros":"calories:0,protein:0,carbs:0,fat:0","warning":""}`
+    : `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0","warning":""}`
 
   return `תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות את יעדי המאקרו שנותרו להיום עבור ספורטאי עם תזונה ${dietLabel}ית.
 
@@ -118,11 +108,10 @@ function buildPrompt(
 3. ${ingredientsInstruction}
 4. הארוחה חייבת להיות ריאלית ומפתה — לא חומרי גלם לא מבושלים.
 5. תבלינים/שמנים/ממרחים: עד 20 גר' לכל מרכיב. אבקת חלבון: עד סקופ אחד (~30 גר').
-6. כל התוכן (שמות, הכנה) חייב להיות בעברית.
-7. ${needsSplit ? "החזר 2 פריטים במערך meals." : "החזר פריט אחד במערך meals."}
-8. אם המאקרו המבוקש בלתי-אפשרי מבחינה מתמטית עם המרכיבים הזמינים: קרב לקלוריות וחלבון ככל האפשר, ועצור. אסור בהחלט להוסיף מרכיבים לולאה אינסופית — בחר את ההתאמה הטובה ביותר האפשרית וסגור את ה-JSON מיידית.
+6. כל התוכן חייב להיות בעברית.
+7. אם המאקרו המבוקש בלתי-אפשרי: קרב לקלוריות וחלבון ככל האפשר ועצור — אסור ללולאת מרכיבים.
 
-החזר JSON בדיוק לפי הסכמה הבאה (ללא שדות נוספים, ללא טקסט מחוץ ל-JSON):
+החזר JSON בדיוק לפי הסכמה הבאה — ללא מפתחות נוספים, ללא מערכים, ללא קינון:
 ${jsonSchema}`
 }
 
@@ -133,6 +122,49 @@ function stripMarkdownFences(raw: string): string {
     .replace(/```(?:json)?\n?/g, "")
     .replace(/```\n?/g, "")
     .trim()
+}
+
+interface FlatMeal {
+  meal1_name?: string
+  meal1_ingredients?: string
+  meal1_macros?: string
+  meal2_name?: string
+  meal2_ingredients?: string
+  meal2_macros?: string
+  warning?: string
+}
+
+function parseMacroString(s: string = "") {
+  const num = (key: string) => {
+    const m = s.match(new RegExp(key + "\\s*:?\\s*(\\d+(?:\\.\\d+)?)", "i"))
+    return m ? Math.round(parseFloat(m[1])) : 0
+  }
+  return { calories: num("calories"), protein: num("protein"), carbs: num("carbs"), fat: num("fat"), sugar: 0 }
+}
+
+function parseIngredientString(s: string = "") {
+  return s.split(",").map((i) => i.trim()).filter(Boolean).map((name) => ({ quantity: "", name }))
+}
+
+function flatToNestedSuggestion(flat: FlatMeal): string {
+  const meals = []
+  if (flat.meal1_name) {
+    meals.push({
+      name: flat.meal1_name,
+      ingredients: parseIngredientString(flat.meal1_ingredients),
+      preparation: "",
+      macros: parseMacroString(flat.meal1_macros),
+    })
+  }
+  if (flat.meal2_name) {
+    meals.push({
+      name: flat.meal2_name,
+      ingredients: parseIngredientString(flat.meal2_ingredients),
+      preparation: "",
+      macros: parseMacroString(flat.meal2_macros),
+    })
+  }
+  return JSON.stringify({ meals, warning: flat.warning ?? "" })
 }
 
 // ── Provider dispatch ────────────────────────────────────────────────────────
@@ -256,7 +288,14 @@ export async function POST(request: NextRequest) {
       suggestion = await callAnthropic(prompt, apiKey)
     }
 
-    return NextResponse.json({ suggestion: stripMarkdownFences(suggestion) })
+    const clean = stripMarkdownFences(suggestion)
+    let nested: string
+    try {
+      nested = flatToNestedSuggestion(JSON.parse(clean) as FlatMeal)
+    } catch {
+      nested = clean
+    }
+    return NextResponse.json({ suggestion: nested })
   } catch (err) {
     console.error("[POST /api/ai/suggest-meal]", err)
     return NextResponse.json({ error: "שגיאה בהצעת הארוחה — נסה שוב" }, { status: 500 })
