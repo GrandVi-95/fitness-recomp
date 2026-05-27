@@ -37,6 +37,7 @@ interface MealData {
 
 interface SuggestionData {
   meals: MealData[]
+  warning?: string
 }
 
 interface Props {
@@ -154,6 +155,12 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
               </div>
             </div>
           ))}
+
+          {parsedSuggestion.warning && (
+            <p className="text-[11px] text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 leading-relaxed" dir="rtl">
+              ⚠️ {parsedSuggestion.warning}
+            </p>
+          )}
 
           {onUseSuggestion && (
             <button

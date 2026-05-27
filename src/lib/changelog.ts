@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.8",
+    description:
+      "Added Graceful Failure mode and macro-violation warnings for impossible constraints.",
+  },
+  {
     version: "v1.1.7",
     description:
       "Fixed AI hallucination loops via temperature reduction and robust markdown stripping.",
@@ -51,4 +56,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.7"
+export const APP_VERSION = "v1.1.8"

@@ -52,9 +52,11 @@ function resolveApiKey(provider: string, userApiKey: string | null): string | nu
 // ── System prompt ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT =
-  "You are a sports nutritionist API endpoint. " +
-  "Respond with a valid JSON object containing the meal suggestion. " +
-  "No greetings, no explanations outside the JSON. JSON only."
+  "You are a sports nutritionist API endpoint. Respond with a valid JSON object. No greetings, no text outside the JSON.\n\n" +
+  "GRACEFUL FAILURE RULES — apply in this exact priority order:\n" +
+  "1. MACRO OVERRIDE: If hitting 0 g fat (or any near-zero macro) makes a real meal impossible, IGNORE that limit. Prioritize Calories first, then Protein. A slightly over-fat edible meal beats an infinite generation loop.\n" +
+  "2. TRANSPARENCY: Include a top-level \"warning\" field (string). If you violated the fat/carb limit to produce a realistic meal, set it to: \"חריגה קלה בשומן לצורך איזון ערכים תזונתיים.\" — otherwise set it to an empty string \"\".\n" +
+  "3. FAIL-SAFE: If you still cannot find a solution, STOP immediately. Return the closest approximation you have computed so far and close the JSON object. Do NOT loop, do NOT add more ingredients trying to fix the math."
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
@@ -96,7 +98,8 @@ function buildPrompt(
       "preparation": "הוראת הכנה קצרה בעברית",
       "macros": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "sugar": 0 }
     }
-  ]
+  ],
+  "warning": ""
 }`
 
   return `תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות את יעדי המאקרו שנותרו להיום עבור ספורטאי עם תזונה ${dietLabel}ית.
