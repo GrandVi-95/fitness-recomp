@@ -231,8 +231,9 @@ export async function POST(request: NextRequest) {
     const dietLabel = DIET_LABELS[dietaryPreference] ?? "צמחוני"
     const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile)
 
-    const needsSplit = remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
-    const maxTokens  = needsSplit ? 700 : 512
+    // JSON responses in Hebrew require significantly more tokens than the old
+    // markdown format; 512/700 caused MAX_TOKENS truncation and broken JSON.
+    const maxTokens = 2048
 
     let suggestion: string
     if (provider === "openai") {
