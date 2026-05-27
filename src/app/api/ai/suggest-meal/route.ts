@@ -129,7 +129,7 @@ async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
   const client = new Anthropic({ apiKey })
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
   })
@@ -148,7 +148,7 @@ async function callOpenAI(prompt: string, apiKey: string): Promise<string> {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
-      max_tokens: 4096,
+      max_tokens: 8192,
       response_format: { type: "json_object" },
     }),
   })
@@ -175,7 +175,7 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 4096, responseMimeType: "application/json" },
+        generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
       }),
     })
     if (res.ok) {

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.4",
+    description:
+      "Raised AI token ceiling to 8192 across all providers (Gemini maxOutputTokens, OpenAI/Anthropic max_tokens) to eliminate JSON truncation.",
+  },
+  {
     version: "v1.1.3",
     description:
       "Forced maxTokens override in backend to fix JSON truncation (token limits hardcoded at 4096 per provider, no client override path).",
@@ -31,4 +36,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.3"
+export const APP_VERSION = "v1.1.4"
