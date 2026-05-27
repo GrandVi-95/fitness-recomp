@@ -53,9 +53,8 @@ function resolveApiKey(provider: string, userApiKey: string | null): string | nu
 
 const SYSTEM_PROMPT =
   "You are a sports nutritionist API endpoint. " +
-  "CRITICAL: Respond with valid JSON ONLY. " +
-  "Do NOT include markdown, code fences (```json), greetings, preamble, or any text outside the JSON object. " +
-  "Your entire response MUST start with { and end with }."
+  "Respond with a valid JSON object containing the meal suggestion. " +
+  "No greetings, no explanations outside the JSON. JSON only."
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
@@ -124,6 +123,15 @@ function buildPrompt(
 ${jsonSchema}`
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function stripMarkdownFences(raw: string): string {
+  return raw
+    .replace(/```(?:json)?\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim()
+}
+
 // ── Provider dispatch ────────────────────────────────────────────────────────
 
 async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
@@ -131,6 +139,7 @@ async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 8192,
+    temperature: 0.1,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
   })
@@ -150,6 +159,7 @@ async function callOpenAI(prompt: string, apiKey: string): Promise<string> {
         { role: "user", content: prompt },
       ],
       max_tokens: 8192,
+      temperature: 0.1,
       response_format: { type: "json_object" },
     }),
   })
@@ -173,7 +183,7 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
     const payload = {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 8192 },
+      generationConfig: { maxOutputTokens: 8192, temperature: 0.1 },
     }
     console.log("[GEMINI EXACT PAYLOAD]:", JSON.stringify(payload, null, 2))
     const res = await fetch(url, {
@@ -243,7 +253,7 @@ export async function POST(request: NextRequest) {
       suggestion = await callAnthropic(prompt, apiKey)
     }
 
-    return NextResponse.json({ suggestion })
+    return NextResponse.json({ suggestion: stripMarkdownFences(suggestion) })
   } catch (err) {
     console.error("[POST /api/ai/suggest-meal]", err)
     return NextResponse.json({ error: "שגיאה בהצעת הארוחה — נסה שוב" }, { status: 500 })

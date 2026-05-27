@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.7",
+    description:
+      "Fixed AI hallucination loops via temperature reduction and robust markdown stripping.",
+  },
+  {
     version: "v1.1.6",
     description:
       "Fixed Gemini infinite generation loop by removing JSON mime-type constraint and adding macro failsafes.",
@@ -46,4 +51,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.6"
+export const APP_VERSION = "v1.1.7"
