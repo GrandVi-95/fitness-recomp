@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -17,8 +17,27 @@ const FLAVOR_PROFILES = [
   { value: "surprise", label: "הפתיעו אותי" },
 ] as const
 
-type MealTypeValue    = typeof MEAL_TYPES[number]["value"]
-type FlavorValue      = typeof FLAVOR_PROFILES[number]["value"]
+type MealTypeValue = typeof MEAL_TYPES[number]["value"]
+type FlavorValue   = typeof FLAVOR_PROFILES[number]["value"]
+
+interface MealMacros {
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  sugar: number
+}
+
+interface MealData {
+  name: string
+  ingredients: Array<{ quantity: string; name: string }>
+  preparation: string
+  macros: MealMacros
+}
+
+interface SuggestionData {
+  meals: MealData[]
+}
 
 interface Props {
   remaining: {
@@ -31,38 +50,33 @@ interface Props {
   onUseSuggestion?: (ingredientsText: string) => void
 }
 
-// Collects bullet items from ALL **מרכיבים:** sections (handles multi-meal splits)
-// and joins them as a comma-separated string for the NLP food logger.
 function extractIngredients(suggestion: string): string {
-  const lines = suggestion.split("\n")
-  let inSection = false
-  const items: string[] = []
-
-  for (const line of lines) {
-    if (/מרכיבים/.test(line)) {
-      inSection = true
-      continue
-    }
-    if (inSection) {
-      if (/^\*\*/.test(line.trim())) {
-        inSection = false // end of this section; keep scanning for another
-        continue
-      }
-      const cleaned = line.replace(/^[-•*]\s*/, "").trim()
-      if (cleaned) items.push(cleaned)
-    }
+  try {
+    const data = JSON.parse(suggestion) as SuggestionData
+    return data.meals
+      .flatMap((m) => m.ingredients.map((i) => `${i.quantity} ${i.name}`))
+      .join(", ")
+  } catch {
+    return suggestion
   }
-
-  return items.length > 0 ? items.join(", ") : suggestion
 }
 
 export default function MealSuggester({ remaining, dietaryPreference, onUseSuggestion }: Props) {
-  const [suggestion, setSuggestion]     = useState<string | null>(null)
-  const [loading, setLoading]           = useState(false)
-  const [error, setError]               = useState<string | null>(null)
-  const [ingredients, setIngredients]   = useState("")
-  const [mealType, setMealType]         = useState<MealTypeValue>("dinner")
+  const [suggestion, setSuggestion]       = useState<string | null>(null)
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState<string | null>(null)
+  const [ingredients, setIngredients]     = useState("")
+  const [mealType, setMealType]           = useState<MealTypeValue>("dinner")
   const [flavorProfile, setFlavorProfile] = useState<FlavorValue>("savory")
+
+  const parsedSuggestion = useMemo<SuggestionData | null>(() => {
+    if (!suggestion) return null
+    try {
+      return JSON.parse(suggestion) as SuggestionData
+    } catch {
+      return null
+    }
+  }, [suggestion])
 
   const suggest = async (withIngredients?: string) => {
     setLoading(true)
@@ -107,14 +121,43 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
       </div>
 
       {/* Suggestion result */}
-      {suggestion && (
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 space-y-3">
-          <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
-            {suggestion}
-          </p>
+      {parsedSuggestion && (
+        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 space-y-4">
+          {parsedSuggestion.meals.map((meal, i) => (
+            <div
+              key={i}
+              className={cn(i > 0 && "pt-4 border-t border-violet-500/20")}
+              dir="rtl"
+            >
+              {parsedSuggestion.meals.length > 1 && (
+                <p className="text-[11px] text-violet-400 font-semibold mb-1">ארוחה {i + 1}</p>
+              )}
+              <p className="text-sm font-bold text-slate-100 mb-2">{meal.name}</p>
+
+              <ul className="space-y-0.5 mb-2">
+                {meal.ingredients.map((ing, j) => (
+                  <li key={j} className="text-xs text-slate-400">
+                    <span className="text-slate-600 ml-1">—</span>
+                    {ing.quantity} {ing.name}
+                  </li>
+                ))}
+              </ul>
+
+              <p className="text-xs text-slate-400 leading-relaxed mb-2.5">{meal.preparation}</p>
+
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
+                <span className="text-orange-400">{meal.macros.calories} קק"ל</span>
+                <span className="text-indigo-400">{meal.macros.protein}ג' חלב'</span>
+                <span className="text-emerald-400">{meal.macros.carbs}ג' פחמ'</span>
+                <span className="text-amber-400">{meal.macros.fat}ג' שומן</span>
+                <span className="text-rose-400">{meal.macros.sugar}ג' סוכר</span>
+              </div>
+            </div>
+          ))}
+
           {onUseSuggestion && (
             <button
-              onClick={() => onUseSuggestion(extractIngredients(suggestion))}
+              onClick={() => onUseSuggestion(extractIngredients(suggestion!))}
               className="w-full flex items-center justify-center gap-2 bg-emerald-600/80 hover:bg-emerald-600 rounded-lg py-2 text-xs font-semibold text-emerald-50 transition-colors"
             >
               <ClipboardPaste size={13} />
@@ -174,12 +217,12 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
       >
         {loading ? (
           <Loader2 size={15} className="animate-spin" />
-        ) : suggestion ? (
+        ) : parsedSuggestion ? (
           <RefreshCw size={14} />
         ) : (
           <Sparkles size={14} />
         )}
-        {loading ? "מייצר הצעה..." : suggestion ? "הצע אפשרות אחרת" : "הצע לי ארוחה"}
+        {loading ? "מייצר הצעה..." : parsedSuggestion ? "הצע אפשרות אחרת" : "הצע לי ארוחה"}
       </button>
 
       {/* Divider */}

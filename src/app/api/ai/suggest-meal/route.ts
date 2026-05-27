@@ -49,6 +49,14 @@ function resolveApiKey(provider: string, userApiKey: string | null): string | nu
   }
 }
 
+// ── System prompt ────────────────────────────────────────────────────────────
+
+const SYSTEM_PROMPT =
+  "You are a sports nutritionist API endpoint. " +
+  "CRITICAL: Respond with valid JSON ONLY. " +
+  "Do NOT include markdown, code fences (```json), greetings, preamble, or any text outside the JSON object. " +
+  "Your entire response MUST start with { and end with }."
+
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 function buildPrompt(
@@ -75,91 +83,44 @@ function buildPrompt(
     ? `\n\n**כלל חלוקת ארוחות (חובה):** הכמות הנותרת (${remaining.calories} קק"ל / ${remaining.protein} גר' חלבון) גדולה מדי לארוחה אחת סבירה. עליך לחלק את ההצעה בדיוק לשתי ארוחות נפרדות (לדוגמה: ארוחה עיקרית + חטיף לילה). השתמש בפורמט הכפול המפורט למטה.`
     : ""
 
-  const singleFormat = `\
-**שם הארוחה:** [שם קצר]
-
-**מרכיבים:**
-- [כמות ויחידה] [שם מרכיב]
-- [כמות ויחידה] [שם מרכיב]
-
-**הכנה:** [משפט אחד]
-
-**ערכים משוערים:** ~[קלוריות] קק"ל · [חלבון] גר' חלבון · [פחמימות] גר' פחמ' · [שומן] גר' שומן · [סוכר] גר' סוכר`
-
-  const splitFormat = `\
-**ארוחה 1 — [שם קצר]:**
-
-**מרכיבים:**
-- [כמות ויחידה] [שם מרכיב]
-- [כמות ויחידה] [שם מרכיב]
-
-**הכנה:** [משפט אחד]
-
-**ערכים משוערים:** ~[קלוריות] קק"ל · [חלבון] גר' חלבון · [פחמימות] גר' פחמ' · [שומן] גר' שומן · [סוכר] גר' סוכר
-
----
-
-**ארוחה 2 — [שם קצר]:**
-
-**מרכיבים:**
-- [כמות ויחידה] [שם מרכיב]
-- [כמות ויחידה] [שם מרכיב]
-
-**הכנה:** [משפט אחד]
-
-**ערכים משוערים:** ~[קלוריות] קק"ל · [חלבון] גר' חלבון · [פחמימות] גר' פחמ' · [שומן] גר' שומן · [סוכר] גר' סוכר`
-
   // Pre-compute hard ceilings to embed as explicit numbers in the prompt
   const maxProtein  = remaining.protein + 5
   const maxCalories = remaining.calories
 
-  return `אתה תזונאי ספורט מנוסה המתמחה בספורטאים עם תזונה ${dietLabel}ית ויעדי רכב גוף.
+  const jsonSchema = `{
+  "meals": [
+    {
+      "name": "שם קצר בעברית",
+      "ingredients": [
+        { "quantity": "200 גר'", "name": "שם מרכיב" }
+      ],
+      "preparation": "הוראת הכנה קצרה בעברית",
+      "macros": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "sugar": 0 }
+    }
+  ]
+}`
 
-תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות את יעדי המאקרו שנותרו להיום.
+  return `תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות את יעדי המאקרו שנותרו להיום עבור ספורטאי עם תזונה ${dietLabel}ית.
 
-**יעדי מאקרו שנותרו להיום:**
-- קלוריות: ${remaining.calories} קק"ל
-- חלבון: ${remaining.protein} גר'
+יעדי מאקרו שנותרו:
+- קלוריות: ${remaining.calories} קק"ל (תקרה מוחלטת: ≤ ${maxCalories})
+- חלבון: ${remaining.protein} גר' (תקרה מוחלטת: ≤ ${maxProtein} גר')
 - פחמימות: ${remaining.carbs} גר'
 - שומן: ${remaining.fats} גר'
-- העדפה תזונתית: ${dietLabel}
 - סוג ארוחה: ${mealTypeLabel}
 - פרופיל טעם: ${flavorLabel}${ingredientsPart}${splitRule}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**כללי ברזל — חייב לקיים את כולם:**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+כללים מחייבים:
+1. סך הקלוריות ≤ ${maxCalories}. אם יש קונפליקט, קצץ פחמימות — לא קלוריות.
+2. סך החלבון ≤ ${maxProtein} גר'. אל תחרוג.
+3. ${ingredientsInstruction}
+4. הארוחה חייבת להיות ריאלית ומפתה — לא חומרי גלם לא מבושלים.
+5. תבלינים/שמנים/ממרחים: עד 20 גר' לכל מרכיב. אבקת חלבון: עד סקופ אחד (~30 גר').
+6. כל התוכן (שמות, הכנה) חייב להיות בעברית.
+7. ${needsSplit ? "החזר 2 פריטים במערך meals." : "החזר פריט אחד במערך meals."}
 
-**1. תקרת קלוריות מוחלטת:** סך כל קלוריות ההצעה חייב להיות ≤ ${maxCalories} קק"ל. זהו הגבול הבלתי-עביר. אם אי אפשר לעמוד גם בגבול הקלוריות וגם ביעד הפחמימות, **קצץ בפחמימות** — אל תגדל את הקלוריות.
-
-**2. תקרת חלבון מוחלטת:** סך החלבון חייב להיות ≤ ${maxProtein} גר'. אם המשתמש צריך ${remaining.protein} גר', אין לחרוג מ-${maxProtein} גר'. **אסור בהחלט** להציע 120 גר' אבקת חלבון, 200 גר' טופו ועוד גבינה רק כדי "לפגוע ביעד" — זה פגיעה חמורה בגבול.
-
-**3. סדר עדיפויות במקרה קונפליקט מתמטי:**
-   א. קלוריות — עמוד בתקרה תמיד.
-   ב. חלבון — קרב ליעד אך אל תחרוג מ-${maxProtein} גר'.
-   ג. פחמימות / שומן — אפשר לקצץ כדי לא לחרוג מהקלוריות.
-
-**4. מציאות קולינרית:** ההצעה חייבת להיות ארוחה אמיתית ומפתה שאדם רוצה לאכול. אסור לצרף חומרי גלם לא מבושלים ביחד רק כי המספרים עובדים. דוגמה לאסור: "120 גר' אבקת חלבון + 300 גר' בננות + 150 גר' סירופ מייפל".
-
-**5. כמויות אנושיות — תקרות נוקשות:**
-   - תבלינים / רטבים / שמנים / סירופים / ממרחים: **עד 15–20 גר' לכל מרכיב**
-   - אבקת חלבון: **עד סקופ אחד (~30 גר')** לכל מתכון — ורק אם ממש נחוץ
-   - נפח כולל: ארוחה אחת לא תעלה על מה שאדם ממוצע יכול לאכול בישיבה אחת
-
-**6. בדיקת חשבון לפני תשובה:** לפני שאתה כותב את הפורמט הסופי, חשב בשקט:
-   - סכום קלוריות מכל מרכיב ≤ ${maxCalories}? ✓/✗
-   - סכום חלבון מכל מרכיב ≤ ${maxProtein}? ✓/✗
-   אם אחת מהתשובות היא ✗ — ערוך את הכמויות לפני הכתיבה.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**הנחיות נוספות:**
-- ${ingredientsInstruction}
-- הקפד על פרופיל הטעם "${flavorLabel}" בבחירת המרכיבים.
-- ציין כמויות מדויקות בגרמים או יחידות.
-- **חובה: ענה בעברית בלבד.**
-- ענה **בדיוק** בפורמט הבא, כולל הכותרות המודגשות:
-
-${needsSplit ? splitFormat : singleFormat}`
+החזר JSON בדיוק לפי הסכמה הבאה (ללא שדות נוספים, ללא טקסט מחוץ ל-JSON):
+${jsonSchema}`
 }
 
 // ── Provider dispatch ────────────────────────────────────────────────────────
@@ -169,6 +130,7 @@ async function callAnthropic(prompt: string, apiKey: string, maxTokens: number):
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: maxTokens,
+    system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
   })
   const content = message.content[0]
@@ -182,8 +144,12 @@ async function callOpenAI(prompt: string, apiKey: string, maxTokens: number): Pr
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
       max_tokens: maxTokens,
+      response_format: { type: "json_object" },
     }),
   })
   if (res.status === 401) throw new Error("OpenAI API key is invalid")
@@ -207,8 +173,9 @@ async function callGemini(prompt: string, apiKey: string, maxTokens: number): Pr
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens },
+        generationConfig: { maxOutputTokens: maxTokens, responseMimeType: "application/json" },
       }),
     })
     if (res.ok) {

@@ -15,6 +15,7 @@ import Link from "next/link"
 import { db } from "@/lib/db"
 import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition"
 import { cn } from "@/lib/utils"
+import VersionBadge from "@/components/dashboard/ChangelogModal"
 
 const DEMO_USER_ID  = "demo-user"
 const TZ_OFFSET_MS  = 3 * 60 * 60 * 1000 // Israel UTC+3
@@ -506,6 +507,11 @@ export default async function DashboardPage() {
 
       {/* מדד התמדה שבועי */}
       <WeeklyStreak days={weekDays} />
+
+      {/* גרסה */}
+      <div className="flex justify-center pb-2">
+        <VersionBadge />
+      </div>
     </div>
   )
 }
