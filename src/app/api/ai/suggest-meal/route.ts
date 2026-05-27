@@ -169,14 +169,16 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
   let lastError = ""
   for (const model of GEMINI_MODELS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    const payload = {
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
+    }
+    console.log("[GEMINI EXACT PAYLOAD]:", JSON.stringify(payload, null, 2))
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
-      }),
+      body: JSON.stringify(payload),
     })
     if (res.ok) {
       console.log("[Gemini] Successfully used model:", model)

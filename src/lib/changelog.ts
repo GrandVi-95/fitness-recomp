@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.5",
+    description:
+      "Added verbose logging for Gemini API payload to diagnose MAX_TOKENS truncation.",
+  },
+  {
     version: "v1.1.4",
     description:
       "Raised AI token ceiling to 8192 across all providers (Gemini maxOutputTokens, OpenAI/Anthropic max_tokens) to eliminate JSON truncation.",
@@ -36,4 +41,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.4"
+export const APP_VERSION = "v1.1.5"
