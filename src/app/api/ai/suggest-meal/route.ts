@@ -118,6 +118,7 @@ function buildPrompt(
 5. תבלינים/שמנים/ממרחים: עד 20 גר' לכל מרכיב. אבקת חלבון: עד סקופ אחד (~30 גר').
 6. כל התוכן (שמות, הכנה) חייב להיות בעברית.
 7. ${needsSplit ? "החזר 2 פריטים במערך meals." : "החזר פריט אחד במערך meals."}
+8. אם המאקרו המבוקש בלתי-אפשרי מבחינה מתמטית עם המרכיבים הזמינים: קרב לקלוריות וחלבון ככל האפשר, ועצור. אסור בהחלט להוסיף מרכיבים לולאה אינסופית — בחר את ההתאמה הטובה ביותר האפשרית וסגור את ה-JSON מיידית.
 
 החזר JSON בדיוק לפי הסכמה הבאה (ללא שדות נוספים, ללא טקסט מחוץ ל-JSON):
 ${jsonSchema}`
@@ -172,7 +173,7 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
     const payload = {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
+      generationConfig: { maxOutputTokens: 8192 },
     }
     console.log("[GEMINI EXACT PAYLOAD]:", JSON.stringify(payload, null, 2))
     const res = await fetch(url, {

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.6",
+    description:
+      "Fixed Gemini infinite generation loop by removing JSON mime-type constraint and adding macro failsafes.",
+  },
+  {
     version: "v1.1.5",
     description:
       "Added verbose logging for Gemini API payload to diagnose MAX_TOKENS truncation.",
@@ -41,4 +46,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.5"
+export const APP_VERSION = "v1.1.6"
