@@ -125,11 +125,11 @@ ${jsonSchema}`
 
 // ── Provider dispatch ────────────────────────────────────────────────────────
 
-async function callAnthropic(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
+async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
   const client = new Anthropic({ apiKey })
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: maxTokens,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: prompt }],
   })
@@ -138,7 +138,7 @@ async function callAnthropic(prompt: string, apiKey: string, maxTokens: number):
   return content.text.trim()
 }
 
-async function callOpenAI(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
+async function callOpenAI(prompt: string, apiKey: string): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -148,7 +148,7 @@ async function callOpenAI(prompt: string, apiKey: string, maxTokens: number): Pr
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
-      max_tokens: maxTokens,
+      max_tokens: 4096,
       response_format: { type: "json_object" },
     }),
   })
@@ -165,7 +165,7 @@ const GEMINI_MODELS = [
   "gemini-1.5-flash",
 ]
 
-async function callGemini(prompt: string, apiKey: string, maxTokens: number): Promise<string> {
+async function callGemini(prompt: string, apiKey: string): Promise<string> {
   let lastError = ""
   for (const model of GEMINI_MODELS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
@@ -175,7 +175,7 @@ async function callGemini(prompt: string, apiKey: string, maxTokens: number): Pr
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens, responseMimeType: "application/json" },
+        generationConfig: { maxOutputTokens: 4096, responseMimeType: "application/json" },
       }),
     })
     if (res.ok) {
@@ -231,17 +231,13 @@ export async function POST(request: NextRequest) {
     const dietLabel = DIET_LABELS[dietaryPreference] ?? "צמחוני"
     const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile)
 
-    // JSON responses in Hebrew require significantly more tokens than the old
-    // markdown format; 512/700 caused MAX_TOKENS truncation and broken JSON.
-    const maxTokens = 2048
-
     let suggestion: string
     if (provider === "openai") {
-      suggestion = await callOpenAI(prompt, apiKey, maxTokens)
+      suggestion = await callOpenAI(prompt, apiKey)
     } else if (provider === "gemini") {
-      suggestion = await callGemini(prompt, apiKey, maxTokens)
+      suggestion = await callGemini(prompt, apiKey)
     } else {
-      suggestion = await callAnthropic(prompt, apiKey, maxTokens)
+      suggestion = await callAnthropic(prompt, apiKey)
     }
 
     return NextResponse.json({ suggestion })
