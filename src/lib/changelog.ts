@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.1.2",
+    description:
+      "Expanded AI token limit for JSON generation to 4096 across all providers to fix silent failures.",
+  },
+  {
     version: "v1.1.1",
     description:
       "תיקון: הגדלת מגבלת הטוקנים ל-4096 בכל ספקי ה-AI למניעת קטיעת JSON בהצעות ארוחה.",
@@ -21,4 +26,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.1"
+export const APP_VERSION = "v1.1.2"
