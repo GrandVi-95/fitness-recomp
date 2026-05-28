@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.2.0",
+    description:
+      "Feature: Secure image-based meal recognition with transient in-memory processing.",
+  },
+  {
     version: "v1.1.9",
     description:
       "Flattened JSON schema to resolve infinite generation loops.",
@@ -61,4 +66,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.1.9"
+export const APP_VERSION = "v1.2.0"

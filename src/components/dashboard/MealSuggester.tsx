@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste } from "lucide-react"
+import { useState, useMemo, useRef } from "react"
+import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste, Camera, ScanLine } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const MEAL_TYPES = [
@@ -22,30 +22,38 @@ type FlavorValue   = typeof FLAVOR_PROFILES[number]["value"]
 
 interface MealMacros {
   calories: number
-  protein: number
-  carbs: number
-  fat: number
-  sugar: number
+  protein:  number
+  carbs:    number
+  fat:      number
+  sugar:    number
 }
 
 interface MealData {
-  name: string
+  name:        string
   ingredients: Array<{ quantity: string; name: string }>
   preparation: string
-  macros: MealMacros
+  macros:      MealMacros
 }
 
 interface SuggestionData {
-  meals: MealData[]
+  meals:   MealData[]
   warning?: string
+}
+
+interface ScanResult {
+  ingredients: string
+  calories:    number
+  protein:     number
+  carbs:       number
+  fat:         number
 }
 
 interface Props {
   remaining: {
     calories: number
-    protein: number
-    carbs: number
-    fats: number
+    protein:  number
+    carbs:    number
+    fats:     number
   }
   dietaryPreference: string
   onUseSuggestion?: (ingredientsText: string) => void
@@ -69,6 +77,10 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
   const [ingredients, setIngredients]     = useState("")
   const [mealType, setMealType]           = useState<MealTypeValue>("dinner")
   const [flavorProfile, setFlavorProfile] = useState<FlavorValue>("savory")
+  const [scanLoading, setScanLoading]     = useState(false)
+  const [scanResult, setScanResult]       = useState<ScanResult | null>(null)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const parsedSuggestion = useMemo<SuggestionData | null>(() => {
     if (!suggestion) return null
@@ -84,7 +96,7 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
     setError(null)
     try {
       const res = await fetch("/api/ai/suggest-meal", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ingredients: withIngredients ?? "",
@@ -103,6 +115,44 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
       setError("שגיאת רשת — בדוק את החיבור שלך")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setScanLoading(true)
+    setScanResult(null)
+    setError(null)
+
+    try {
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload  = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const res  = await fetch("/api/ai/analyze-image", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ imageBase64 }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error ?? "שגיאה בניתוח התמונה — נסה שוב")
+        return
+      }
+
+      setScanResult(data as ScanResult)
+      setIngredients(data.ingredients ?? "")
+    } catch {
+      setError("שגיאה בניתוח התמונה — נסה שוב")
+    } finally {
+      setScanLoading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }
 
@@ -241,7 +291,67 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
         <div className="flex-1 h-px bg-slate-800" />
       </div>
 
-      {/* Ingredients section */}
+      {/* Scan meal section */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500 font-medium">סרוק ארוחה</p>
+          <span className="text-[10px] text-slate-600">מזהה מרכיבים דרך מצלמה</span>
+        </div>
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleScan}
+        />
+
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={scanLoading || loading}
+          className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-slate-600 rounded-xl py-2.5 text-sm font-medium text-slate-300 transition-colors"
+        >
+          {scanLoading ? (
+            <>
+              <Loader2 size={15} className="animate-spin text-teal-400" />
+              <span className="text-teal-300">מנתח תמונה...</span>
+            </>
+          ) : (
+            <>
+              <Camera size={15} className="text-teal-400" />
+              צלם / בחר תמונה
+            </>
+          )}
+        </button>
+
+        {/* Scan result preview */}
+        {scanResult && (
+          <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-2" dir="rtl">
+            <p className="text-[11px] text-teal-400 font-semibold flex items-center gap-1.5">
+              <ScanLine size={12} /> זוהו מרכיבים
+            </p>
+            <p className="text-xs text-slate-300 leading-relaxed">{scanResult.ingredients}</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold pt-0.5">
+              <span className="text-orange-400">{scanResult.calories} קק"ל</span>
+              <span className="text-indigo-400">{scanResult.protein}ג' חלב'</span>
+              <span className="text-emerald-400">{scanResult.carbs}ג' פחמ'</span>
+              <span className="text-amber-400">{scanResult.fat}ג' שומן</span>
+            </div>
+            <p className="text-[10px] text-slate-600">המרכיבים הועברו לשדה למטה — לחץ "הצע" לקבלת ארוחה מותאמת</p>
+          </div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-px bg-slate-800" />
+        <span className="text-[11px] text-slate-600">או הזן ידנית</span>
+        <div className="flex-1 h-px bg-slate-800" />
+      </div>
+
+      {/* Manual ingredients section */}
       <div className="space-y-2">
         <p className="text-xs text-slate-500 font-medium">מרכיבים שיש לי בבית</p>
         <div className="flex gap-2">
@@ -254,12 +364,12 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
             }}
             placeholder="לדוגמה: ביצים, גבינה, ברוקולי..."
             dir="rtl"
-            disabled={loading}
+            disabled={loading || scanLoading}
             className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
           />
           <button
             onClick={() => suggest(ingredients.trim())}
-            disabled={loading || !ingredients.trim()}
+            disabled={loading || scanLoading || !ingredients.trim()}
             className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-medium transition-colors shrink-0 text-slate-200"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
