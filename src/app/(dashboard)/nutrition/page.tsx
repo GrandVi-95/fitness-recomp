@@ -14,8 +14,12 @@ import {
   Trash2,
   Check,
   X,
+  Camera,
+  ScanLine,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+const SUGAR_TARGET = 50 // g/day — matches dashboard and weeklyReport
 
 // ─────────────────────────────────────────────────────────────
 // טיפוסים
@@ -23,9 +27,18 @@ import { cn } from "@/lib/utils"
 
 interface MacroTotals {
   calories: number
-  protein: number
-  carbs: number
-  fat: number
+  protein:  number
+  carbs:    number
+  fat:      number
+  sugar?:   number
+}
+
+interface ScanResult {
+  ingredients: string
+  calories:    number
+  protein:     number
+  carbs:       number
+  fat:         number
 }
 
 interface FoodItem {
@@ -282,7 +295,13 @@ export default function NutritionPage() {
 
   const [openMeal, setOpenMeal] = useState<string | null>(null)
   const [dietaryPreference, setDietaryPreference] = useState("vegetarian")
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef  = useRef<HTMLTextAreaElement>(null)
+  const scanInputRef = useRef<HTMLInputElement>(null)
+
+  // Camera scan state
+  const [scanLoading, setScanLoading] = useState(false)
+  const [scanResult,  setScanResult]  = useState<ScanResult | null>(null)
+  const [scanError,   setScanError]   = useState<string | null>(null)
 
   // Edit / delete state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -419,7 +438,6 @@ export default function NutritionPage() {
 
   const handleUseSuggestion = useCallback((ingredientsText: string) => {
     setNlpText(ingredientsText)
-    // Defer focus+scroll until after the state update is painted
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (!el) return
@@ -428,12 +446,53 @@ export default function NutritionPage() {
     })
   }, [])
 
-  const targets = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
-  const totals = todayData?.totals ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanLoading(true)
+    setScanResult(null)
+    setScanError(null)
+    try {
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader   = new FileReader()
+        reader.onload  = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const res  = await fetch("/api/ai/analyze-image", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ imageBase64 }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setScanError(data.error ?? "שגיאה בניתוח התמונה")
+        return
+      }
+      const result = data as ScanResult
+      setScanResult(result)
+      // Auto-fill the NLP text field with detected ingredients
+      setNlpText(result.ingredients ?? "")
+      requestAnimationFrame(() => {
+        const el = textareaRef.current
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+    } catch {
+      setScanError("שגיאה בניתוח התמונה — נסה שוב")
+    } finally {
+      setScanLoading(false)
+      if (scanInputRef.current) scanInputRef.current.value = ""
+    }
+  }
+
+  const targets  = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
+  const totals   = todayData?.totals  ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
 
-  const calRemain = targets.calories - totals.calories
-  const protRemain = targets.protein - totals.protein
+  const calRemain  = targets.calories - totals.calories
+  const protRemain = targets.protein  - totals.protein
+  const sugarToday = totals.sugar ?? 0
+  const sugarPct   = Math.min((sugarToday / SUGAR_TARGET) * 100, 100)
 
   return (
     <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
@@ -503,6 +562,28 @@ export default function NutritionPage() {
             />
           </div>
         </div>
+
+        {/* סרגל סוכר */}
+        <div className="pt-1">
+          <div className="flex justify-between text-[11px] mb-1">
+            <span className="text-slate-400 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+              סוכר יומי
+            </span>
+            <span className={sugarPct >= 100 ? "text-rose-400 font-semibold" : "text-slate-500"}>
+              {Math.round(sugarToday)} / {SUGAR_TARGET} גר'
+            </span>
+          </div>
+          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-700",
+                sugarPct >= 100 ? "bg-rose-500" : "bg-rose-400"
+              )}
+              style={{ width: `${sugarPct}%` }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* ╔══════════════════════════════════════════════════╗
@@ -565,6 +646,57 @@ export default function NutritionPage() {
           >
             {parsing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
           </button>
+        </div>
+
+        {/* סריקת ארוחה — מצלמה */}
+        <div className="space-y-2">
+          <input
+            ref={scanInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleScan}
+          />
+          <button
+            onClick={() => scanInputRef.current?.click()}
+            disabled={scanLoading || parsing}
+            className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-teal-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-teal-300 transition-colors"
+          >
+            {scanLoading ? (
+              <>
+                <Loader2 size={13} className="animate-spin text-teal-400" />
+                <span className="text-teal-300">מנתח תמונה...</span>
+              </>
+            ) : (
+              <>
+                <Camera size={13} className="text-teal-400" />
+                סרוק ארוחה עם מצלמה
+              </>
+            )}
+          </button>
+
+          {scanResult && (
+            <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-1.5" dir="rtl">
+              <p className="text-[11px] text-teal-400 font-semibold flex items-center gap-1.5">
+                <ScanLine size={12} /> זוהו מרכיבים — הועברו לשדה הקלט
+              </p>
+              <p className="text-xs text-slate-400 leading-relaxed">{scanResult.ingredients}</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
+                <span className="text-orange-400">{scanResult.calories} קק"ל</span>
+                <span className="text-indigo-400">{scanResult.protein}ג' חלב'</span>
+                <span className="text-emerald-400">{scanResult.carbs}ג' פחמ'</span>
+                <span className="text-amber-400">{scanResult.fat}ג' שומן</span>
+              </div>
+            </div>
+          )}
+
+          {scanError && (
+            <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
+              <AlertCircle size={13} className="shrink-0" />
+              {scanError}
+            </div>
+          )}
         </div>
 
         {/* שגיאה */}

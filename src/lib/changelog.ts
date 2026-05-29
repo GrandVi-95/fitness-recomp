@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.2.1",
+    description:
+      "Refactored camera scanner to Meal Logger and added Sugar meter to the Nutrition page.",
+  },
+  {
     version: "v1.2.0",
     description:
       "Feature: Secure image-based meal recognition with transient in-memory processing.",
@@ -66,4 +71,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.2.0"
+export const APP_VERSION = "v1.2.1"
