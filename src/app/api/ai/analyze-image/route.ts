@@ -9,7 +9,9 @@ const ANALYZE_PROMPT =
   'Analyze this image of food. Identify the ingredients and estimate their quantities in grams. ' +
   'Return a flat JSON object EXACTLY like this: { "ingredients": "comma separated list of ingredients with estimated grams in Hebrew", "calories": number, "protein": number, "carbs": number, "fat": number }.'
 
-const VISION_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+const VISION_MODEL   = "gemini-2.5-flash"
+const MAX_RETRIES    = 3
+const RETRY_DELAY_MS = 1000
 
 function resolveGeminiKey(aiProvider: string | null, userApiKey: string | null): string | null {
   if (aiProvider === "gemini" && userApiKey) return userApiKey
@@ -43,22 +45,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let rawText  = ""
+    const url     = `https://generativelanguage.googleapis.com/v1beta/models/${VISION_MODEL}:generateContent?key=${apiKey}`
+    const payload = {
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: ANALYZE_PROMPT },
+        ],
+      }],
+      generationConfig: { maxOutputTokens: 1024, temperature: 0.1 },
+    }
+
+    let rawText   = ""
     let lastError = ""
 
-    for (const model of VISION_MODELS) {
-      const url     = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-      const payload = {
-        contents: [{
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: base64Data } },
-            { text: ANALYZE_PROMPT },
-          ],
-        }],
-        generationConfig: { maxOutputTokens: 1024, temperature: 0.1 },
-      }
-
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const res = await fetch(url, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,21 +68,30 @@ export async function POST(request: NextRequest) {
       })
 
       if (res.ok) {
-        console.log("[analyze-image] model used:", model)
+        console.log(`[analyze-image] success on attempt ${attempt}`)
         const data = await res.json()
         rawText = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
         break
       }
 
       const errBody = await res.text().catch(() => "(unreadable)")
-      console.error(`[analyze-image] ${model} HTTP ${res.status}:`, errBody)
+      console.error(`[analyze-image] attempt ${attempt} HTTP ${res.status}:`, errBody)
+
       if (res.status === 401 || res.status === 403) {
         return NextResponse.json({ error: "מפתח Gemini API לא תקין" }, { status: 500 })
       }
+
+      if ((res.status === 503 || res.status === 429) && attempt < MAX_RETRIES) {
+        console.warn(`[analyze-image] retryable ${res.status} — waiting ${RETRY_DELAY_MS}ms before retry ${attempt + 1}/${MAX_RETRIES}`)
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
+        continue
+      }
+
       lastError = `${res.status}: ${errBody}`
+      break
     }
 
-    if (!rawText) throw new Error(`All vision models failed. Last: ${lastError}`)
+    if (!rawText) throw new Error(`${VISION_MODEL} failed after ${MAX_RETRIES} attempts. Last: ${lastError}`)
 
     const result = JSON.parse(stripMarkdownFences(rawText)) as {
       ingredients: string

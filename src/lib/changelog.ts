@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.2.2",
+    description:
+      "Fixed image analyzer crashes by adding automatic 503/429 retry logic.",
+  },
+  {
     version: "v1.2.1",
     description:
       "Refactored camera scanner to Meal Logger and added Sugar meter to the Nutrition page.",
@@ -71,4 +76,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.2.1"
+export const APP_VERSION = "v1.2.2"
