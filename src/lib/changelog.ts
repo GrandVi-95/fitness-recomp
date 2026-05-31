@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.2.3",
+    description:
+      "Fixed truncated JSON in image analyzer by setting maxOutputTokens to 8192.",
+  },
+  {
     version: "v1.2.2",
     description:
       "Fixed image analyzer crashes by adding automatic 503/429 retry logic.",
@@ -76,4 +81,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.2.2"
+export const APP_VERSION = "v1.2.3"

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
           { text: ANALYZE_PROMPT },
         ],
       }],
-      generationConfig: { maxOutputTokens: 1024, temperature: 0.1 },
+      generationConfig: { maxOutputTokens: 8192, temperature: 0.1 },
     }
 
     let rawText   = ""
