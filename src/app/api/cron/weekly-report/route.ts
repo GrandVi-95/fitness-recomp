@@ -183,41 +183,19 @@ function buildEmailHtml(report: WeeklyReport, insights: string[]): string {
 </html>`
 }
 
-// ── Route handler ─────────────────────────────────────────────────────────────
+// ── Shared report runner ──────────────────────────────────────────────────────
 
-export async function POST(request: Request) {
-  // Parse body — may be empty (Vercel Cron sends no body)
-  let isTestTrigger = false
+async function runReport(isTest: boolean): Promise<NextResponse> {
   try {
-    const body = await request.json()
-    isTestTrigger = body?.test === true
-  } catch {
-    // Empty body from Vercel Cron — that's fine
-  }
-
-  // Auth:
-  //  • Vercel Cron → must carry "Authorization: Bearer $CRON_SECRET"
-  //  • Manual test → no secret required (single-user demo app)
-  if (!isTestTrigger && process.env.CRON_SECRET) {
-    const authHeader = request.headers.get("authorization")
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-  }
-
-  try {
-    // Load per-user report settings
     const settings = await db.userSettings.findUnique({
       where: { userId: DEMO_USER_ID },
       select: { reportEnabled: true, reportEmail: true },
     })
 
-    // Respect the user's opt-out, but never skip a manual test send
-    if (!isTestTrigger && settings?.reportEnabled === false) {
+    if (!isTest && settings?.reportEnabled === false) {
       return NextResponse.json({ skipped: true, reason: "reports disabled by user" })
     }
 
-    // Recipient: DB setting → env var fallback
     const recipientEmail = settings?.reportEmail?.trim() || process.env.REPORT_EMAIL
     if (!recipientEmail) {
       return NextResponse.json(
@@ -226,11 +204,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // Build the report: test = current week, cron = previous week
-    const weeksAgo = isTestTrigger ? 0 : 1
+    const weeksAgo = isTest ? 0 : 1
     const report   = await getWeeklyReport(DEMO_USER_ID, weeksAgo)
     const insights = buildInsights(report)
-    const subject  = isTestTrigger
+    const subject  = isTest
       ? `[בדיקה] דוח שבועי — ${report.weekStart} עד ${report.weekEnd}`
       : `דוח שבועי — ${report.weekStart} עד ${report.weekEnd}`
 
@@ -247,18 +224,47 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      sent:       true,
-      messageId:  data?.id,
-      recipient:  recipientEmail,
-      period:     { start: report.weekStart, end: report.weekEnd },
-      isTest:     isTestTrigger,
+      sent:      true,
+      messageId: data?.id,
+      recipient: recipientEmail,
+      period:    { start: report.weekStart, end: report.weekEnd },
+      isTest,
       insights,
     })
   } catch (err) {
-    console.error("[POST /api/cron/weekly-report]", err)
-    return NextResponse.json(
-      { error: "שגיאה בשליחת הדוח השבועי" },
-      { status: 500 },
-    )
+    console.error("[weekly-report] runReport error:", err)
+    return NextResponse.json({ error: "שגיאה בשליחת הדוח השבועי" }, { status: 500 })
   }
+}
+
+function checkCronAuth(request: Request): boolean {
+  if (!process.env.CRON_SECRET) return true
+  return request.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`
+}
+
+// ── Route handlers ────────────────────────────────────────────────────────────
+
+// GET — invoked by Vercel Cron (Vercel sends GET, not POST, for cron jobs)
+export async function GET(request: Request) {
+  if (!checkCronAuth(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  return runReport(false)
+}
+
+// POST — manual trigger from the Settings page (supports { test: true } body)
+export async function POST(request: Request) {
+  let isTest = false
+  try {
+    const body = await request.json()
+    isTest = body?.test === true
+  } catch {
+    // empty body is fine
+  }
+
+  if (!isTest && !checkCronAuth(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  return runReport(isTest)
 }

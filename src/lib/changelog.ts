@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.2.4",
+    description:
+      "Fixed Vercel Cron not firing by adding GET handler to weekly-report route.",
+  },
+  {
     version: "v1.2.3",
     description:
       "Fixed truncated JSON in image analyzer by setting maxOutputTokens to 8192.",
@@ -81,4 +86,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.2.3"
+export const APP_VERSION = "v1.2.4"
