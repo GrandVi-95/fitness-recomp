@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.3.4",
+    description:
+      "Fixed Vercel build crash by separating pure nutrition utilities from server-side database logic.",
+  },
+  {
     version: "v1.3.3",
     description:
       "Audit Phase 3: Refined macro logic (protein floor, adjusted total sugar limit), added offline resync queue for the gym, and secured image payload endpoints.",
@@ -106,4 +111,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.3.3"
+export const APP_VERSION = "v1.3.4"

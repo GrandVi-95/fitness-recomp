@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getTodayNutrition, computeTargets } from "@/lib/nutrition"
+import { computeTargets } from "@/lib/nutrition"
+import { getTodayNutrition } from "@/lib/nutrition-server"
 
 const DEMO_USER_ID = "demo-user"
 

@@ -13,7 +13,8 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
-import { getTodayNutrition, getTodayBounds, computeTargets, SUGAR_TARGET } from "@/lib/nutrition"
+import { computeTargets, SUGAR_TARGET } from "@/lib/nutrition"
+import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition-server"
 import { cn } from "@/lib/utils"
 import VersionBadge from "@/components/dashboard/ChangelogModal"
 
