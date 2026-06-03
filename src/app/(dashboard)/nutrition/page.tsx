@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import MealSuggester from "@/components/dashboard/MealSuggester"
+import { SUGAR_TARGET } from "@/lib/nutrition"
 import {
   Send,
   Flame,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const SUGAR_TARGET = 50 // g/day — matches dashboard and weeklyReport
+// SUGAR_TARGET is imported from @/lib/nutrition (shared with dashboard and weeklyReport)
 
 // ─────────────────────────────────────────────────────────────
 // טיפוסים

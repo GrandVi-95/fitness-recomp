@@ -8,9 +8,12 @@ import {
 } from "react"
 import {
   Play,
+  Pause,
   Trophy,
   CheckCircle2,
   ArrowLeft,
+  ArrowUp,
+  ArrowDown,
   ChevronRight,
   ChevronLeft,
   Dumbbell,
@@ -19,9 +22,10 @@ import {
   Minus,
   Plus,
   Info,
+  Timer,
+  RotateCcw,
 } from "lucide-react"
 import { useGymStore } from "@/store/gymStore"
-import { useRestTimer } from "@/hooks/useRestTimer"
 import RestTimerOverlay from "@/components/gym/RestTimerOverlay"
 import FinishModal from "@/components/gym/FinishModal"
 import { cn } from "@/lib/utils"
@@ -131,7 +135,7 @@ function StepperInput({
               onChange={(e) => setInputVal(e.target.value)}
               onBlur={commitEdit}
               onKeyDown={(e) => {
-                if (e.key === "Enter") commitEdit()
+                if (e.key === "Enter") { e.stopPropagation(); commitEdit() }
                 if (e.key === "Escape") setEditing(false)
               }}
               className="w-full text-center text-xl font-black bg-transparent focus:outline-none px-1"
@@ -148,6 +152,85 @@ function StepperInput({
           className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none"
         >
           <Plus size={20} className="text-slate-300" strokeWidth={2.5} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// ExerciseTimer — שעון עצר לתרגילים סטטיים (פלאנק וכו')
+// ─────────────────────────────────────────────────────────────
+
+function ExerciseTimer({ onLogTime }: { onLogTime?: (secs: number) => void }) {
+  const [elapsed, setElapsed] = useState(0)
+  const [running, setRunning] = useState(false)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const start = () => {
+    if (running) return
+    setRunning(true)
+    intervalRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
+  }
+
+  const pause = () => {
+    if (!running) return
+    setRunning(false)
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+  }
+
+  const reset = () => {
+    pause()
+    setElapsed(0)
+    setRunning(false)
+  }
+
+  const logTime = () => {
+    if (elapsed === 0) return
+    pause()
+    onLogTime?.(elapsed)
+    // Reset after logging so the timer is ready for the next hold
+    setElapsed(0)
+    setRunning(false)
+  }
+
+  useEffect(() => () => {
+    if (intervalRef.current) clearInterval(intervalRef.current)
+  }, [])
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 flex items-center gap-3">
+      <Timer size={14} className="text-teal-400 shrink-0" />
+      <span className="font-mono text-lg font-black tabular-nums text-teal-300 w-14 select-none">
+        {formatElapsed(elapsed)}
+      </span>
+      <p className="text-[11px] text-slate-600 flex-1">טיימר תרגיל</p>
+      <div className="flex gap-1.5">
+        {elapsed > 0 && onLogTime && (
+          <button
+            onClick={logTime}
+            className="h-8 px-2.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-indigo-100 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+            aria-label="שמור זמן"
+          >
+            <CheckCircle2 size={11} /> שמור
+          </button>
+        )}
+        <button
+          onClick={running ? pause : start}
+          className="w-8 h-8 rounded-lg bg-teal-600/20 hover:bg-teal-600/40 text-teal-400 flex items-center justify-center transition-colors"
+          aria-label={running ? "השהה" : "התחל"}
+        >
+          {running
+            ? <Pause size={13} />
+            : <Play size={13} fill="currentColor" />}
+        </button>
+        <button
+          onClick={reset}
+          disabled={elapsed === 0 && !running}
+          className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center transition-colors disabled:opacity-30"
+          aria-label="אפס"
+        >
+          <RotateCcw size={13} />
         </button>
       </div>
     </div>
@@ -203,8 +286,8 @@ export default function GymPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
-  const status = useGymStore((s) => s.status)
-  const { isActive: restActive } = useRestTimer()
+  const status     = useGymStore((s) => s.status)
+  const restActive = useGymStore((s) => s.restActive)
 
   if (!mounted) {
     return (
@@ -389,37 +472,50 @@ function WorkoutPicker() {
 const WEIGHT_STEP = 2.5
 
 function ActiveSession() {
-  const {
-    sessionId,
-    workoutName,
-    exercises,
-    currentExIdx,
-    loggedSets,
-    inputWeightKg,
-    inputReps,
-    inputRpe,
-    startedAt,
-    logSet,
-    updateSetServerId,
-    adjustWeight,
-    adjustReps,
-    setWeight,
-    setReps,
-    setRpe,
-    nextExercise,
-    prevExercise,
-    startRest,
-    markFinished,
-  } = useGymStore()
+  // Granular selectors — each hook only re-renders this component when its
+  // own slice changes.  Critically, rest-timer ticks (restActive/restStartedAt)
+  // are NOT selected here, so the active session view stays still during rests.
+  const sessionId      = useGymStore((s) => s.sessionId)
+  const workoutName    = useGymStore((s) => s.workoutName)
+  const exercises      = useGymStore((s) => s.exercises)
+  const currentExIdx   = useGymStore((s) => s.currentExIdx)
+  const loggedSets     = useGymStore((s) => s.loggedSets)
+  const inputWeightKg  = useGymStore((s) => s.inputWeightKg)
+  const inputReps      = useGymStore((s) => s.inputReps)
+  const inputRpe       = useGymStore((s) => s.inputRpe)
+  const startedAt      = useGymStore((s) => s.startedAt)
+  // Actions are stable references — selecting them individually never triggers re-renders
+  const logSet             = useGymStore((s) => s.logSet)
+  const updateSetServerId  = useGymStore((s) => s.updateSetServerId)
+  const adjustWeight       = useGymStore((s) => s.adjustWeight)
+  const adjustReps         = useGymStore((s) => s.adjustReps)
+  const setWeight          = useGymStore((s) => s.setWeight)
+  const setReps            = useGymStore((s) => s.setReps)
+  const setRpe             = useGymStore((s) => s.setRpe)
+  const swapExercises      = useGymStore((s) => s.swapExercises)
+  const nextExercise       = useGymStore((s) => s.nextExercise)
+  const prevExercise       = useGymStore((s) => s.prevExercise)
+  const startRest          = useGymStore((s) => s.startRest)
+  const markFinished       = useGymStore((s) => s.markFinished)
+  const addPendingSync     = useGymStore((s) => s.addPendingSync)
+  const flushPendingSync   = useGymStore((s) => s.flushPendingSync)
 
   const [isWarmup, setIsWarmup] = useState(false)
   const [showRpe, setShowRpe] = useState(false)
 
   const elapsed = useElapsedTime(startedAt)
 
+  // Flush any offline-queued sets when the session first becomes active
+  useEffect(() => { void flushPendingSync() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Wrap markFinished to drain the sync queue first
+  const handleFinish = useCallback(async () => {
+    await flushPendingSync()
+    markFinished()
+  }, [flushPendingSync, markFinished])
+
   const currentEx = exercises[currentExIdx]
-  const nextEx = exercises[currentExIdx + 1] ?? null
-  const totalEx = exercises.length
+  const totalEx   = exercises.length
 
   if (!currentEx) return null
 
@@ -470,9 +566,11 @@ function ActiveSession() {
       if (res.ok) {
         const { id } = await res.json()
         updateSetServerId(tempId, id)
+      } else {
+        addPendingSync({ sessionId, tempId, payload: setData })
       }
-    } catch (err) {
-      console.error("Set save failed (stored locally):", err)
+    } catch {
+      addPendingSync({ sessionId, tempId, payload: setData })
     }
   }, [
     sessionId,
@@ -486,7 +584,45 @@ function ActiveSession() {
     logSet,
     startRest,
     updateSetServerId,
+    addPendingSync,
   ])
+
+  // ── תיעוד החזקה סטטית (פלאנק וכד') ──────────────────────────────────────────
+  const handleLogHold = useCallback(async (durationSecs: number) => {
+    if (!sessionId || !currentEx) return
+    const allSetsForEx = loggedSets[currentEx.exerciseId] ?? []
+    const setNumber    = allSetsForEx.filter((s) => !s.isWarmup).length + 1
+    const setData      = {
+      exerciseId: currentEx.exerciseId,
+      setNumber,
+      reps: 0,
+      weightKg: 0,
+      rpe,
+      isWarmup: false,
+      durationSecs,
+    }
+    const tempId = logSet(setData)
+    startRest(currentEx.restSeconds, {
+      exerciseName: currentEx.name,
+      weightKg: 0,
+      reps: durationSecs,
+      setNumber,
+      isWarmup: false,
+    })
+    try {
+      const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(setData),
+      })
+      if (res.ok) {
+        const { id } = await res.json()
+        updateSetServerId(tempId, id)
+      }
+    } catch {
+      addPendingSync({ sessionId, tempId, payload: setData })
+    }
+  }, [sessionId, currentEx, rpe, loggedSets, logSet, startRest, updateSetServerId, addPendingSync])
 
   // Enter = תעד סט
   useEffect(() => {
@@ -511,7 +647,7 @@ function ActiveSession() {
             {formatElapsed(elapsed)}
           </span>
           <button
-            onClick={markFinished}
+            onClick={handleFinish}
             className="text-xs text-slate-600 hover:text-red-400 transition-colors font-medium px-2"
           >
             סיים
@@ -652,7 +788,7 @@ function ActiveSession() {
           <CheckCircle2 size={30} className="text-green-400" />
           <p className="font-bold text-green-400 text-lg">כל הסטים הושלמו!</p>
           <p className="text-xs text-slate-500">
-            {nextEx
+            {currentExIdx < totalEx - 1
               ? `לחץ "תרגיל הבא" להמשך`
               : `לחץ "סיים אימון" כשמוכן`}
           </p>
@@ -790,30 +926,63 @@ function ActiveSession() {
         </div>
       )}
 
-      {/* ── תצוגה מקדימה של תרגיל הבא ─────────────────────── */}
-      {nextEx && (
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-3.5 flex items-center gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] text-slate-600 font-semibold uppercase mb-0.5">
-              הבא
-            </p>
-            <p className="text-sm font-semibold truncate">{nextEx.name}</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {nextEx.targetSets} × {nextEx.targetReps}
-            </p>
-          </div>
-          <div className="text-end shrink-0">
-            {nextEx.previousPerformance ? (
-              <p className="text-xs text-indigo-400 font-medium">
-                קודם: {nextEx.previousPerformance.topSetWeightKg > 0
-                  ? `${nextEx.previousPerformance.topSetWeightKg} ק"ג`
-                  : "BW"}
-              </p>
-            ) : (
-              <p className="text-xs text-amber-400">פעם ראשונה</p>
-            )}
-          </div>
-          <ChevronLeft size={16} className="text-slate-700 shrink-0" />
+      {/* ── טיימר תרגיל — key resets the component on exercise change ─────────── */}
+      <ExerciseTimer key={currentExIdx} onLogTime={handleLogHold} />
+
+      {/* ── תרגילים קרובים + סידור מחדש ────────────────────────── */}
+      {exercises.slice(currentExIdx + 1).length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] text-slate-600 font-semibold uppercase tracking-wider px-1">
+            קרובים
+          </p>
+          {exercises.slice(currentExIdx + 1).map((ex, relIdx) => {
+            const absIdx = currentExIdx + 1 + relIdx
+            const isFirst = relIdx === 0
+            const isLast  = absIdx === exercises.length - 1
+            return (
+              <div
+                key={ex.exerciseId}
+                className="bg-slate-900/70 border border-slate-800 rounded-2xl px-3 py-2.5 flex items-center gap-2"
+              >
+                {/* ↑ / ↓ reorder buttons */}
+                <div className="flex flex-col gap-0.5 shrink-0">
+                  <button
+                    onClick={() => swapExercises(absIdx, absIdx - 1)}
+                    disabled={isFirst}
+                    className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                    aria-label="הזז למעלה"
+                  >
+                    <ArrowUp size={11} strokeWidth={2.5} />
+                  </button>
+                  <button
+                    onClick={() => swapExercises(absIdx, absIdx + 1)}
+                    disabled={isLast}
+                    className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                    aria-label="הזז למטה"
+                  >
+                    <ArrowDown size={11} strokeWidth={2.5} />
+                  </button>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{ex.name}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {ex.targetSets} × {ex.targetReps}
+                  </p>
+                </div>
+
+                {ex.previousPerformance ? (
+                  <p className="text-xs text-indigo-400 font-medium shrink-0">
+                    {ex.previousPerformance.topSetWeightKg > 0
+                      ? `${ex.previousPerformance.topSetWeightKg} ק"ג`
+                      : "BW"}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-400 shrink-0">פעם ראשונה</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -839,12 +1008,13 @@ function ActiveSession() {
             </button>
           ) : (
             <button
-              onClick={markFinished}
+              onClick={handleFinish}
               className="flex items-center gap-2 bg-green-600 hover:bg-green-500 rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
             >
               <CheckCircle2 size={16} /> סיים אימון
             </button>
-          ))}
+          ))
+        }
       </div>
 
       <div className="h-2" />

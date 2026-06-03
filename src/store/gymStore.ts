@@ -16,6 +16,7 @@ export interface LoggedSet {
   weightKg: number
   rpe: number           // 1–10
   isWarmup: boolean
+  durationSecs?: number // populated for static holds (plank, wall-sit, etc.)
   loggedAt: number      // Date.now() timestamp — survives serialisation
 }
 
@@ -59,6 +60,20 @@ export interface LastLoggedSetInfo {
 
 type GymStatus = "idle" | "active" | "finished"
 
+export interface SyncQueueItem {
+  sessionId: string
+  tempId:    string
+  payload: {
+    exerciseId:    string
+    setNumber:     number
+    reps:          number
+    weightKg:      number
+    rpe:           number
+    isWarmup:      boolean
+    durationSecs?: number
+  }
+}
+
 interface GymState {
   // ── Session ────────────────────────────────────────────────
   sessionId: string | null
@@ -89,6 +104,9 @@ interface GymState {
   fatigueLevel: number          // 1–5
   sleepHours: number | null     // hours slept before session
 
+  // ── Offline sync queue ─────────────────────────────────────
+  pendingSync: SyncQueueItem[]  // sets that failed to POST, persisted for retry
+
   // ── Actions ────────────────────────────────────────────────
   startSession: (p: {
     sessionId: string
@@ -105,6 +123,7 @@ interface GymState {
   setWeight: (exerciseId: string, value: number) => void
   setReps: (exerciseId: string, value: number) => void
   setRpe: (exerciseId: string, value: number) => void
+  swapExercises: (idxA: number, idxB: number) => void
   nextExercise: () => void
   prevExercise: () => void
   startRest: (durationSecs: number, info: LastLoggedSetInfo) => void
@@ -114,6 +133,8 @@ interface GymState {
   setSleepHours: (hours: number | null) => void
   markFinished: () => void
   resetSession: () => void
+  addPendingSync: (item: SyncQueueItem) => void
+  flushPendingSync: () => Promise<void>
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -151,6 +172,7 @@ export const useGymStore = create<GymState>()(
       lastLoggedSetInfo: null,
       fatigueLevel: 3,
       sleepHours: null,
+      pendingSync: [],
 
       // ── Actions ────────────────────────────────────────────
       startSession: ({ sessionId, workoutId, workoutName, exercises }) => {
@@ -265,6 +287,17 @@ export const useGymStore = create<GymState>()(
           inputRpe: { ...state.inputRpe, [exerciseId]: value },
         })),
 
+      swapExercises: (idxA, idxB) =>
+        set((state) => {
+          const exercises = [...state.exercises]
+          if (
+            idxA < 0 || idxB < 0 ||
+            idxA >= exercises.length || idxB >= exercises.length
+          ) return {}
+          ;[exercises[idxA], exercises[idxB]] = [exercises[idxB], exercises[idxA]]
+          return { exercises }
+        }),
+
       nextExercise: () =>
         set((state) => ({
           currentExIdx: Math.min(
@@ -300,6 +333,33 @@ export const useGymStore = create<GymState>()(
       setSleepHours: (hours) => set({ sleepHours: hours }),
 
       markFinished: () => set({ status: "finished", restActive: false }),
+
+      addPendingSync: (item) =>
+        set((state) => ({ pendingSync: [...state.pendingSync, item] })),
+
+      flushPendingSync: async () => {
+        const { pendingSync, updateSetServerId } = get()
+        if (pendingSync.length === 0) return
+        const failed: SyncQueueItem[] = []
+        for (const item of pendingSync) {
+          try {
+            const res = await fetch(`/api/gym/sessions/${item.sessionId}/sets`, {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify(item.payload),
+            })
+            if (res.ok) {
+              const { id } = await res.json()
+              updateSetServerId(item.tempId, id)
+            } else {
+              failed.push(item)
+            }
+          } catch {
+            failed.push(item)
+          }
+        }
+        set({ pendingSync: failed })
+      },
 
       resetSession: () =>
         set({

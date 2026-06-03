@@ -13,13 +13,12 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
-import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition"
+import { getTodayNutrition, getTodayBounds, computeTargets, SUGAR_TARGET } from "@/lib/nutrition"
 import { cn } from "@/lib/utils"
 import VersionBadge from "@/components/dashboard/ChangelogModal"
 
 const DEMO_USER_ID  = "demo-user"
 const TZ_OFFSET_MS  = 3 * 60 * 60 * 1000 // Israel UTC+3
-const SUGAR_TARGET  = 50                   // g/day — matches SUGAR_LIMIT_G in weeklyReport
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -101,15 +100,16 @@ async function getDashboardData() {
   ])
 
   // ── Targets ──────────────────────────────────────────────────────────────────
-  const settings    = user?.userSettings
+  const settings     = user?.userSettings
   const latestWeight = latestMetric?.weightKg ?? null
-  const targetCalories = user?.targetCalories ?? 2600
-  let   targetProtein  = user?.targetProtein  ?? 185
-  if (settings?.autoProteinGoal && latestWeight) {
-    targetProtein = Math.round(latestWeight * 2.2)
-  }
-  const targetFats  = user?.targetFats  ?? Math.round((targetCalories * 0.25) / 9)
-  const targetCarbs = user?.targetCarbs ?? Math.round((targetCalories - targetProtein * 4 - targetFats * 9) / 4)
+  const { calories: targetCalories, protein: targetProtein, fat: targetFats, carbs: targetCarbs } = computeTargets({
+    targetCalories:  user?.targetCalories,
+    targetProtein:   user?.targetProtein,
+    targetFats:      user?.targetFats,
+    targetCarbs:     user?.targetCarbs,
+    autoProteinGoal: settings?.autoProteinGoal,
+    weightKg:        latestWeight,
+  })
 
   // ── Next workout ──────────────────────────────────────────────────────────────
   let nextWorkout: { name: string; dayLabel: string } | null = null

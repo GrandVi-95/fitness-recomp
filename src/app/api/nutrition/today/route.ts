@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getTodayNutrition } from "@/lib/nutrition"
+import { getTodayNutrition, computeTargets } from "@/lib/nutrition"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -16,7 +16,9 @@ export async function GET() {
         where: { id: DEMO_USER_ID },
         select: {
           targetCalories: true,
-          targetProtein: true,
+          targetProtein:  true,
+          targetFats:     true,
+          targetCarbs:    true,
           userSettings: { select: { autoProteinGoal: true } },
         },
       }),
@@ -27,24 +29,19 @@ export async function GET() {
       }),
     ])
 
-    // Compute targets — respect autoProteinGoal
-    const targetCalories = user?.targetCalories ?? 2600
-    let targetProtein    = user?.targetProtein  ?? 185
-    if (user?.userSettings?.autoProteinGoal && latestMetric?.weightKg) {
-      targetProtein = Math.round(latestMetric.weightKg * 2.1)
-    }
-    const targetCarbs = Math.round((targetCalories * 0.5) / 4)
-    const targetFat   = Math.round((targetCalories * 0.25) / 9)
+    const { calories, protein, carbs, fat } = computeTargets({
+      targetCalories:  user?.targetCalories,
+      targetProtein:   user?.targetProtein,
+      targetFats:      user?.targetFats,
+      targetCarbs:     user?.targetCarbs,
+      autoProteinGoal: user?.userSettings?.autoProteinGoal,
+      weightKg:        latestMetric?.weightKg,
+    })
 
     return NextResponse.json({
       totals,
       byMealType,
-      targets: {
-        calories: targetCalories,
-        protein: targetProtein,
-        carbs: targetCarbs,
-        fat: targetFat,
-      },
+      targets: { calories, protein, carbs, fat },
     })
   } catch (err) {
     console.error("[GET /api/nutrition/today]", err)

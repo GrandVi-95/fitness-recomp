@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { db } from "@/lib/db"
+import { callGemini, stripMarkdownFences } from "@/lib/ai"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -53,8 +54,12 @@ function resolveApiKey(provider: string, userApiKey: string | null): string | nu
 
 const SYSTEM_PROMPT =
   "You are a sports nutritionist API endpoint. Respond with a valid JSON object. No greetings, no text outside the JSON.\n\n" +
+  "MACRO SCIENCE RULES:\n" +
+  "• Calories = hard ceiling. Never exceed.\n" +
+  "• Protein = minimum floor. Meeting or EXCEEDING the protein target is always good for body recomposition. Do NOT cap protein.\n" +
+  "• Fat / Carbs = soft targets. Adjust freely to stay within the calorie ceiling.\n\n" +
   "GRACEFUL FAILURE RULES — apply in this exact priority order:\n" +
-  "1. MACRO OVERRIDE: If hitting 0 g fat (or any near-zero macro) makes a real meal impossible, IGNORE that limit. Prioritize Calories first, then Protein. A slightly over-fat edible meal beats an infinite generation loop.\n" +
+  "1. MACRO OVERRIDE: If hitting 0 g fat (or any near-zero macro) makes a real meal impossible, IGNORE that fat limit. Prioritize Calories first, then Protein (≥ target). A slightly over-fat edible meal beats a generation loop.\n" +
   "2. TRANSPARENCY: Include a top-level \"warning\" field (string). If you violated the fat/carb limit to produce a realistic meal, set it to: \"חריגה קלה בשומן לצורך איזון ערכים תזונתיים.\" — otherwise set it to an empty string \"\".\n" +
   "3. FAIL-SAFE: If you still cannot find a solution, STOP immediately. Return the closest approximation you have computed so far and close the JSON object. Do NOT loop, do NOT add more ingredients trying to fix the math."
 
@@ -84,19 +89,17 @@ function buildPrompt(
     ? `\n\n**כלל חלוקת ארוחות (חובה):** הכמות הנותרת (${remaining.calories} קק"ל / ${remaining.protein} גר' חלבון) גדולה מדי לארוחה אחת סבירה. עליך לחלק את ההצעה בדיוק לשתי ארוחות נפרדות (לדוגמה: ארוחה עיקרית + חטיף לילה). השתמש בפורמט הכפול המפורט למטה.`
     : ""
 
-  // Pre-compute hard ceilings to embed as explicit numbers in the prompt
-  const maxProtein  = remaining.protein + 5
   const maxCalories = remaining.calories
 
   const jsonSchema = needsSplit
-    ? `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0","meal2_name":"...","meal2_ingredients":"מרכיב א, מרכיב ב","meal2_macros":"calories:0,protein:0,carbs:0,fat:0","warning":""}`
-    : `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0","warning":""}`
+    ? `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0","meal2_name":"...","meal2_ingredients":"מרכיב א, מרכיב ב","meal2_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0","warning":""}`
+    : `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0","warning":""}`
 
   return `תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות את יעדי המאקרו שנותרו להיום עבור ספורטאי עם תזונה ${dietLabel}ית.
 
 יעדי מאקרו שנותרו:
 - קלוריות: ${remaining.calories} קק"ל (תקרה מוחלטת: ≤ ${maxCalories})
-- חלבון: ${remaining.protein} גר' (תקרה מוחלטת: ≤ ${maxProtein} גר')
+- חלבון: ${remaining.protein} גר' (מינימום — עלייה בחלבון מותרת ומועילה)
 - פחמימות: ${remaining.carbs} גר'
 - שומן: ${remaining.fats} גר'
 - סוג ארוחה: ${mealTypeLabel}
@@ -104,7 +107,7 @@ function buildPrompt(
 
 כללים מחייבים:
 1. סך הקלוריות ≤ ${maxCalories}. אם יש קונפליקט, קצץ פחמימות — לא קלוריות.
-2. סך החלבון ≤ ${maxProtein} גר'. אל תחרוג.
+2. חלבון: הגע לפחות ל-${remaining.protein} גר'. עלייה בחלבון מעבר ליעד — מותרת ומעודדת.
 3. ${ingredientsInstruction}
 4. הארוחה חייבת להיות ריאלית ומפתה — לא חומרי גלם לא מבושלים.
 5. תבלינים/שמנים/ממרחים: עד 20 גר' לכל מרכיב. אבקת חלבון: עד סקופ אחד (~30 גר').
@@ -116,13 +119,6 @@ ${jsonSchema}`
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function stripMarkdownFences(raw: string): string {
-  return raw
-    .replace(/```(?:json)?\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim()
-}
 
 interface FlatMeal {
   meal1_name?: string
@@ -139,7 +135,7 @@ function parseMacroString(s: string = "") {
     const m = s.match(new RegExp(key + "\\s*:?\\s*(\\d+(?:\\.\\d+)?)", "i"))
     return m ? Math.round(parseFloat(m[1])) : 0
   }
-  return { calories: num("calories"), protein: num("protein"), carbs: num("carbs"), fat: num("fat"), sugar: 0 }
+  return { calories: num("calories"), protein: num("protein"), carbs: num("carbs"), fat: num("fat"), sugar: num("sugar") }
 }
 
 function parseIngredientString(s: string = "") {
@@ -204,45 +200,6 @@ async function callOpenAI(prompt: string, apiKey: string): Promise<string> {
   return (data.choices[0]?.message?.content ?? "").trim()
 }
 
-const GEMINI_MODELS = [
-  "gemini-3.1-flash",
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-]
-
-async function callGemini(prompt: string, apiKey: string): Promise<string> {
-  let lastError = ""
-  for (const model of GEMINI_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-    const payload = {
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 8192, temperature: 0.1 },
-    }
-    console.log("[GEMINI EXACT PAYLOAD]:", JSON.stringify(payload, null, 2))
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) {
-      console.log("[Gemini] Successfully used model:", model)
-      const data = await res.json()
-      console.log("[Gemini] Finish reason:", data?.candidates?.[0]?.finishReason)
-      return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim()
-    }
-    const errorBody = await res.text().catch(() => "(unreadable)")
-    console.error(`[callGemini suggest-meal] HTTP ${res.status}:`, errorBody)
-    if (res.status === 401 || res.status === 403) {
-      throw new Error("Gemini API key is invalid or does not have access")
-    }
-    console.warn(`[Gemini] Model failed, trying next: ${model} (${res.status})`)
-    lastError = `${res.status}: ${errorBody}`
-  }
-  throw new Error(`Gemini: all models failed. Last error — ${lastError}`)
-}
-
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -283,7 +240,11 @@ export async function POST(request: NextRequest) {
     if (provider === "openai") {
       suggestion = await callOpenAI(prompt, apiKey)
     } else if (provider === "gemini") {
-      suggestion = await callGemini(prompt, apiKey)
+      suggestion = await callGemini(
+        apiKey,
+        [{ role: "user", parts: [{ text: prompt }] }],
+        { systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] } },
+      )
     } else {
       suggestion = await callAnthropic(prompt, apiKey)
     }

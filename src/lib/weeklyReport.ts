@@ -1,8 +1,9 @@
 import { db } from "@/lib/db"
+import { SUGAR_TARGET } from "@/lib/nutrition"
 
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000 // Israel UTC+3
 
-export const SUGAR_LIMIT_G = 50
+export const SUGAR_LIMIT_G = SUGAR_TARGET
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

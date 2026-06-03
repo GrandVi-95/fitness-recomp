@@ -5,6 +5,26 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.3.3",
+    description:
+      "Audit Phase 3: Refined macro logic (protein floor, adjusted total sugar limit), added offline resync queue for the gym, and secured image payload endpoints.",
+  },
+  {
+    version: "v1.3.2",
+    description:
+      "Audit Phase 2: Unified AI routes, optimized gym render performance, and enabled static hold data logging.",
+  },
+  {
+    version: "v1.3.1",
+    description:
+      "Audit Phase 1: Fixed macro math synchronization, Enter-key double-log bug, and activated AI sugar tracking.",
+  },
+  {
+    version: "v1.3.0",
+    description:
+      "Feature: Added in-workout timer for static holds and dynamic exercise reordering.",
+  },
+  {
     version: "v1.2.4",
     description:
       "Fixed Vercel Cron not firing by adding GET handler to weekly-report route.",
@@ -86,4 +106,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.2.4"
+export const APP_VERSION = "v1.3.3"
