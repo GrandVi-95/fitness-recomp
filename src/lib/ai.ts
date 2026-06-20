@@ -38,6 +38,41 @@ export function buildInlineDataPart(data: string, mimeType: string): GeminiPart 
   return { inlineData: { mimeType, data } }
 }
 
+/**
+ * Sanitize a raw model response and parse it as JSON.
+ *
+ * LLMs occasionally produce malformed JSON in these ways:
+ *   • Prepend / append explanatory prose outside the `{…}` block
+ *   • Embed literal newlines or tabs inside string values (invalid per RFC 8259)
+ *   • Leave a trailing comma before `}` or `]`
+ *
+ * This function handles all three, then delegates to `JSON.parse`.
+ * On failure it logs the exact faulty string and re-throws so callers can
+ * return a structured 422 instead of a generic 500.
+ */
+export function sanitizeAndParseJson<T = unknown>(raw: string): T {
+  // 1. Collapse literal newlines / tabs — they are invalid inside JSON strings
+  let cleaned = raw
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\t/g, " ")
+  // 2. Remove trailing commas before } or ] (another common LLM quirk)
+  cleaned = cleaned.replace(/,(\s*[}\]])/g, "$1")
+  // 3. Extract the outermost {...} block in case the model prepended prose
+  const start = cleaned.indexOf("{")
+  const end   = cleaned.lastIndexOf("}")
+  if (start === -1 || end === -1 || end <= start) {
+    console.error("[sanitizeAndParseJson] No JSON object found. Raw input:", raw.slice(0, 300))
+    throw new SyntaxError("No JSON object found in model response")
+  }
+  const jsonSlice = cleaned.slice(start, end + 1)
+  try {
+    return JSON.parse(jsonSlice) as T
+  } catch (err) {
+    console.error("[sanitizeAndParseJson] JSON.parse failed. Sanitized slice:", jsonSlice.slice(0, 300))
+    throw err
+  }
+}
+
 // ── Core caller ───────────────────────────────────────────────────────────────
 
 /**

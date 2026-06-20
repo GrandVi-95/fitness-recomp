@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { callGemini } from "@/lib/ai"
+import { callGemini, sanitizeAndParseJson } from "@/lib/ai"
 
 const DEMO_USER_ID = "demo-user"
 
 const RECIPE_PROMPT =
   "You are a precise nutrition calculator. The user will describe the ingredients of an ENTIRE RECIPE BATCH. " +
   "Your job is to calculate the TOTAL cumulative macronutrients for the whole batch — NOT per serving. " +
-  "Sum up every ingredient listed. Return ONLY a JSON object exactly like this: " +
+  "Sum up every ingredient listed. " +
+  "Return ONLY a raw JSON object — no markdown fences, no explanatory text before or after. " +
+  "The object must contain EXACTLY these 5 fields and nothing else: " +
   '{ "totalCalories": number, "totalProtein": number, "totalCarbs": number, "totalFat": number, "totalSugar": number }. ' +
-  "All values are numbers (no units). Be precise based on the exact quantities mentioned."
+  "All values must be plain numbers (no units, no quotes). " +
+  "CRITICAL: The JSON must be strictly valid RFC 8259. " +
+  "Do NOT include any additional fields. " +
+  "Do NOT use literal newlines, carriage returns, or unescaped double quotes inside any value."
 
 function resolveGeminiKey(aiProvider: string | null, userApiKey: string | null): string | null {
   if (aiProvider === "gemini" && userApiKey) return userApiKey
@@ -41,7 +46,7 @@ export async function POST(request: NextRequest) {
       generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
     })
 
-    const result = JSON.parse(rawText) as {
+    let result: {
       totalCalories: number
       totalProtein:  number
       totalCarbs:    number
@@ -49,12 +54,22 @@ export async function POST(request: NextRequest) {
       totalSugar:    number
     }
 
+    try {
+      result = sanitizeAndParseJson(rawText)
+    } catch (parseErr) {
+      console.error("[POST /api/ai/analyze-recipe] JSON parse failed:", parseErr)
+      return NextResponse.json(
+        { error: "המודל החזיר תשובה לא תקינה — נסה לנסח את הרכיבים מחדש" },
+        { status: 422 },
+      )
+    }
+
     return NextResponse.json({
-      totalCalories: Math.round(result.totalCalories),
-      totalProtein:  Math.round(result.totalProtein  * 10) / 10,
-      totalCarbs:    Math.round(result.totalCarbs),
-      totalFat:      Math.round(result.totalFat      * 10) / 10,
-      totalSugar:    Math.round(result.totalSugar    * 10) / 10,
+      totalCalories: Math.round(result.totalCalories  ?? 0),
+      totalProtein:  Math.round((result.totalProtein  ?? 0) * 10) / 10,
+      totalCarbs:    Math.round(result.totalCarbs     ?? 0),
+      totalFat:      Math.round((result.totalFat      ?? 0) * 10) / 10,
+      totalSugar:    Math.round((result.totalSugar    ?? 0) * 10) / 10,
     })
   } catch (err) {
     console.error("[POST /api/ai/analyze-recipe]", err)

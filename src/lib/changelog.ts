@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.5.1",
+    description:
+      "Fixed JSON parsing vulnerability for recipe analysis by enforcing strict string escaping and adding pre-parse sanitation.",
+  },
+  {
     version: "v1.5.0",
     description:
       "Feature: Added Recipe Builder and Leftover Logger with fractional serving options and 25% default portion shortcuts.",
@@ -121,4 +126,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.5.0"
+export const APP_VERSION = "v1.5.1"
