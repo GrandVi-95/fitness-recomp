@@ -43,7 +43,11 @@ export async function POST(request: NextRequest) {
       role: "user",
       parts: [{ text: `${RECIPE_PROMPT}\n\nרכיבי המתכון:\n${ingredientsText}` }],
     }], {
-      generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+      generationConfig: {
+        temperature:      0.1,
+        maxOutputTokens:  2048,
+        responseMimeType: "application/json",
+      },
     })
 
     let result: {

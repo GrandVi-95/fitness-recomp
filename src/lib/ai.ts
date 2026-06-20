@@ -22,8 +22,9 @@ export interface GeminiContent {
 export interface GeminiCallOptions {
   systemInstruction?: { parts: { text: string }[] }
   generationConfig?: {
-    maxOutputTokens?: number
-    temperature?:     number
+    maxOutputTokens?:  number
+    temperature?:      number
+    responseMimeType?: string  // e.g. "application/json" to enable Gemini native JSON mode
   }
 }
 
@@ -93,8 +94,11 @@ export async function callGemini(
     ...(options.systemInstruction && { systemInstruction: options.systemInstruction }),
     contents,
     generationConfig: {
-      maxOutputTokens: options.generationConfig?.maxOutputTokens ?? 8192,
-      temperature:     options.generationConfig?.temperature     ?? 0.1,
+      maxOutputTokens:  options.generationConfig?.maxOutputTokens  ?? 8192,
+      temperature:      options.generationConfig?.temperature      ?? 0.1,
+      ...(options.generationConfig?.responseMimeType && {
+        responseMimeType: options.generationConfig.responseMimeType,
+      }),
     },
   }
 
