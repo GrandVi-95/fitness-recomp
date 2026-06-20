@@ -225,6 +225,24 @@ model NutritionFoodItem {
 }
 
 // ─────────────────────────────────────────────
+// RECIPES (leftover / batch logging)
+// ─────────────────────────────────────────────
+
+model Recipe {
+  id               String   @id @default(cuid())
+  userId           String
+  name             String
+  ingredients      String   @default("")   // raw text description saved for reference
+  totalCalories    Float    @default(0)
+  totalProtein     Float    @default(0)
+  totalCarbs       Float    @default(0)
+  totalFat         Float    @default(0)
+  totalSugar       Float    @default(0)
+  defaultServingPct Float   @default(25)   // % of total batch per standard portion
+  createdAt        DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
 // BODY METRICS & PROGRESS
 // ─────────────────────────────────────────────
 

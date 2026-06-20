@@ -33,6 +33,11 @@ export function stripMarkdownFences(raw: string): string {
   return raw.replace(/```(?:json)?\n?/g, "").replace(/```\n?/g, "").trim()
 }
 
+// Convenience builder for multimodal inline data parts (images, audio, video, etc.)
+export function buildInlineDataPart(data: string, mimeType: string): GeminiPart {
+  return { inlineData: { mimeType, data } }
+}
+
 // ── Core caller ───────────────────────────────────────────────────────────────
 
 /**

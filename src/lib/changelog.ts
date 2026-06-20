@@ -5,6 +5,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.5.0",
+    description:
+      "Feature: Added Recipe Builder and Leftover Logger with fractional serving options and 25% default portion shortcuts.",
+  },
+  {
+    version: "v1.4.0",
+    description:
+      "Feature: Added multimodal voice-to-meal logging using Gemini audio analysis for seamless single-sentence daily tracking.",
+  },
+  {
     version: "v1.3.4",
     description:
       "Fixed Vercel build crash by separating pure nutrition utilities from server-side database logic.",
@@ -111,4 +121,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.3.4"
+export const APP_VERSION = "v1.5.0"

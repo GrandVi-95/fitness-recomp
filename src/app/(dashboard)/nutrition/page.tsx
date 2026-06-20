@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import MealSuggester from "@/components/dashboard/MealSuggester"
+import RecipePanel   from "@/components/dashboard/RecipePanel"
 import { SUGAR_TARGET } from "@/lib/nutrition"
 import {
   Send,
@@ -17,6 +18,7 @@ import {
   X,
   Camera,
   ScanLine,
+  Mic,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -40,6 +42,16 @@ interface ScanResult {
   protein:     number
   carbs:       number
   fat:         number
+}
+
+interface VoiceMeal {
+  mealName:    string
+  ingredients: string
+  calories:    number
+  protein:     number
+  carbs:       number
+  fat:         number
+  sugar:       number
 }
 
 interface FoodItem {
@@ -304,6 +316,17 @@ export default function NutritionPage() {
   const [scanResult,  setScanResult]  = useState<ScanResult | null>(null)
   const [scanError,   setScanError]   = useState<string | null>(null)
 
+  // Voice recording state
+  const [voiceState,   setVoiceState]   = useState<"idle" | "recording" | "processing">("idle")
+  const [voiceTimer,   setVoiceTimer]   = useState(0)
+  const [voiceMeals,   setVoiceMeals]   = useState<VoiceMeal[] | null>(null)
+  const [voiceError,   setVoiceError]   = useState<string | null>(null)
+  const [loggingVoice, setLoggingVoice] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef   = useRef<Blob[]>([])
+  const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mediaStreamRef   = useRef<MediaStream | null>(null)
+
   // Edit / delete state
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
@@ -486,6 +509,119 @@ export default function NutritionPage() {
     }
   }
 
+  // ── Voice recording ──────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop())
+    }
+  }, [])
+
+  const formatTimer = (s: number) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+
+  const getSupportedMimeType = (): string => {
+    const types = ["audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]
+    for (const t of types) {
+      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) return t
+    }
+    return "audio/webm"
+  }
+
+  const processVoiceRecording = async (mimeType: string) => {
+    setVoiceError(null)
+    try {
+      const baseMime    = mimeType.split(";")[0] || "audio/webm"
+      const blob        = new Blob(audioChunksRef.current, { type: baseMime })
+      const audioBase64 = await new Promise<string>((resolve, reject) => {
+        const reader   = new FileReader()
+        reader.onload  = () => resolve((reader.result as string).split(",")[1])
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      const res  = await fetch("/api/ai/analyze-voice", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ audioBase64, mimeType: baseMime }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setVoiceError(data.error ?? "שגיאה בניתוח ההקלטה")
+        return
+      }
+      setVoiceMeals(data.meals ?? [])
+    } catch {
+      setVoiceError("שגיאה בניתוח ההקלטה — נסה שוב")
+    } finally {
+      setVoiceState("idle")
+    }
+  }
+
+  const handleVoiceClick = async () => {
+    if (voiceState === "recording") {
+      mediaRecorderRef.current?.stop()
+      setVoiceState("processing")
+      return
+    }
+    if (voiceState !== "idle") return
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("הדפדפן אינו תומך בהקלטת שמע — נסה ב-Chrome או Safari")
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+      const mimeType = getSupportedMimeType()
+      const recorder = new MediaRecorder(stream, { mimeType })
+      audioChunksRef.current = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+      recorder.onstop = () => {
+        mediaStreamRef.current?.getTracks().forEach((t) => t.stop())
+        if (timerRef.current) clearInterval(timerRef.current)
+        processVoiceRecording(mimeType).catch(console.error)
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setVoiceState("recording")
+      setVoiceTimer(0)
+      timerRef.current = setInterval(() => setVoiceTimer((t) => t + 1), 1000)
+    } catch {
+      setVoiceError("לא ניתן לגשת למיקרופון — בדוק הרשאות")
+    }
+  }
+
+  const mapMealNameToType = (mealName: string): MealType => {
+    if (mealName.includes("בוקר")) return "breakfast"
+    if (mealName.includes("צהריים")) return "lunch"
+    if (mealName.includes("ערב")) return "dinner"
+    return "snack"
+  }
+
+  const handleLogAllMeals = async () => {
+    if (!voiceMeals?.length) return
+    setLoggingVoice(true)
+    try {
+      for (const meal of voiceMeals) {
+        await fetch("/api/nutrition/log", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            text:     meal.ingredients,
+            mealType: mapMealNameToType(meal.mealName),
+          }),
+        })
+      }
+      setVoiceMeals(null)
+      await fetchToday()
+    } catch {
+      setVoiceError("שגיאה ברישום הארוחות — נסה שוב")
+    } finally {
+      setLoggingVoice(false)
+    }
+  }
+
   const targets  = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
   const totals   = todayData?.totals  ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
@@ -649,7 +785,7 @@ export default function NutritionPage() {
           </button>
         </div>
 
-        {/* סריקת ארוחה — מצלמה */}
+        {/* סריקת ארוחה — מצלמה + הקלטת קול */}
         <div className="space-y-2">
           <input
             ref={scanInputRef}
@@ -659,23 +795,56 @@ export default function NutritionPage() {
             className="hidden"
             onChange={handleScan}
           />
-          <button
-            onClick={() => scanInputRef.current?.click()}
-            disabled={scanLoading || parsing}
-            className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-teal-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-teal-300 transition-colors"
-          >
-            {scanLoading ? (
-              <>
-                <Loader2 size={13} className="animate-spin text-teal-400" />
-                <span className="text-teal-300">מנתח תמונה...</span>
-              </>
-            ) : (
-              <>
-                <Camera size={13} className="text-teal-400" />
-                סרוק ארוחה עם מצלמה
-              </>
-            )}
-          </button>
+          <div className="flex gap-2">
+            {/* Camera button */}
+            <button
+              onClick={() => scanInputRef.current?.click()}
+              disabled={scanLoading || parsing || voiceState !== "idle"}
+              className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-teal-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-teal-300 transition-colors"
+            >
+              {scanLoading ? (
+                <>
+                  <Loader2 size={13} className="animate-spin text-teal-400" />
+                  <span className="text-teal-300">מנתח...</span>
+                </>
+              ) : (
+                <>
+                  <Camera size={13} className="text-teal-400" />
+                  מצלמה
+                </>
+              )}
+            </button>
+            {/* Mic button */}
+            <button
+              onClick={handleVoiceClick}
+              disabled={parsing || scanLoading}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-medium transition-colors border",
+                voiceState === "recording"
+                  ? "bg-red-900/30 border-red-500/50 text-red-400 hover:bg-red-900/50"
+                  : voiceState === "processing"
+                  ? "bg-slate-800 border-slate-700 text-teal-300 opacity-100 cursor-not-allowed"
+                  : "bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-violet-600/50 text-slate-400 hover:text-violet-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              )}
+            >
+              {voiceState === "recording" ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  {formatTimer(voiceTimer)}
+                </>
+              ) : voiceState === "processing" ? (
+                <>
+                  <Loader2 size={13} className="animate-spin text-teal-400" />
+                  מפענח...
+                </>
+              ) : (
+                <>
+                  <Mic size={13} className="text-violet-400" />
+                  הקלטת קול
+                </>
+              )}
+            </button>
+          </div>
 
           {scanResult && (
             <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-1.5" dir="rtl">
@@ -696,6 +865,56 @@ export default function NutritionPage() {
             <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
               <AlertCircle size={13} className="shrink-0" />
               {scanError}
+            </div>
+          )}
+
+          {voiceError && (
+            <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+              <AlertCircle size={13} className="shrink-0" />
+              {voiceError}
+            </div>
+          )}
+
+          {voiceMeals && voiceMeals.length > 0 && (
+            <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 space-y-2.5" dir="rtl">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-violet-400 font-semibold flex items-center gap-1.5">
+                  <Mic size={12} /> זוהו {voiceMeals.length} ארוחות
+                </p>
+                <button
+                  onClick={() => setVoiceMeals(null)}
+                  className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                  aria-label="סגור"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+              {voiceMeals.map((meal, i) => (
+                <div key={i} className="bg-slate-900/70 rounded-lg p-2.5 space-y-1">
+                  <p className="text-xs font-semibold text-violet-300">{meal.mealName}</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">{meal.ingredients}</p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
+                    <span className="text-orange-400">{meal.calories} קק"ל</span>
+                    <span className="text-indigo-400">{meal.protein}ג' חלב'</span>
+                    <span className="text-emerald-400">{meal.carbs}ג' פחמ'</span>
+                    <span className="text-amber-400">{meal.fat}ג' שומן</span>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={handleLogAllMeals}
+                disabled={loggingVoice}
+                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
+              >
+                {loggingVoice ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Check size={13} />
+                )}
+                {loggingVoice
+                  ? "רושם ארוחות..."
+                  : `רשום את כל הארוחות (${voiceMeals.length})`}
+              </button>
             </div>
           )}
         </div>
@@ -738,6 +957,9 @@ export default function NutritionPage() {
           </div>
         )}
       </div>
+
+      {/* ── מתכונים שמורים ───────────────────────────────── */}
+      <RecipePanel selectedMeal={selectedMeal} onLogSuccess={fetchToday} />
 
       {/* ── הצעת ארוחה ───────────────────────────────────── */}
       <MealSuggester
