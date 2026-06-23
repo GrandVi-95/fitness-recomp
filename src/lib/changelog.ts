@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.5.5",
+    description:
+      "Emergency fix: Stripped all deprecated/404ing models from fallback array and restricted core to stabilized gemini-2.5 architecture with aggressive 503 retry backoff.",
+  },
+  {
     version: "v1.5.4",
     description:
       "Audit Phase 5.4: Stabilized 503 retry mechanics on the primary gemini-2.5-flash model while keeping the known-working production model array intact.",
@@ -136,4 +141,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.5.4"
+export const APP_VERSION = "v1.5.5"

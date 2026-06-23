@@ -4,9 +4,9 @@
 // Handles: model fallback, 503/429 retry-backoff, secure header auth, and
 // markdown fence stripping so callers always receive clean text.
 
-const GEMINI_MODELS   = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+const GEMINI_MODELS   = ["gemini-2.5-flash", "gemini-2.5-pro"]
 const MAX_RETRIES     = 3
-const RETRY_DELAY_MS  = 1000
+const RETRY_DELAY_MS  = 1500
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
