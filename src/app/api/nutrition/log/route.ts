@@ -185,7 +185,59 @@ async function callGemini(userMessage: string, apiKey: string): Promise<string> 
  */
 export async function POST(request: Request) {
   try {
-    const { text, mealType = "snack" } = await request.json()
+    const { text, mealType = "snack", directItems } = await request.json()
+
+    // Direct log path — skip AI re-analysis and write pre-computed values from the editable review card
+    if (Array.isArray(directItems) && directItems.length > 0) {
+      const log = await db.nutritionLog.create({
+        data: {
+          userId:   DEMO_USER_ID,
+          mealType,
+          rawInput: directItems.map((it: { name: string }) => it.name).join(", "),
+          date:     new Date(),
+          foodItems: {
+            create: directItems.map((item: {
+              name: string; calories: number; protein: number
+              carbs: number; fat: number; sugar?: number
+            }) => ({
+              name:         item.name,
+              quantity:     1,
+              unit:         "serving",
+              calories:     Math.round(item.calories  * 10) / 10,
+              protein:      Math.round(item.protein   * 10) / 10,
+              carbs:        Math.round(item.carbs     * 10) / 10,
+              fat:          Math.round(item.fat       * 10) / 10,
+              fiber:        0,
+              sugar:        Math.round((item.sugar    ?? 0) * 10) / 10,
+              saturatedFat: 0,
+            })),
+          },
+        },
+        include: { foodItems: true },
+      })
+      revalidatePath("/dashboard")
+      revalidatePath("/recovery")
+      const totals = log.foodItems.reduce(
+        (acc, item) => ({
+          calories: acc.calories + item.calories,
+          protein:  acc.protein  + item.protein,
+          carbs:    acc.carbs    + item.carbs,
+          fat:      acc.fat      + item.fat,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      )
+      return NextResponse.json({
+        logId:    log.id,
+        mealType: log.mealType,
+        items:    log.foodItems,
+        totals: {
+          calories: Math.round(totals.calories),
+          protein:  Math.round(totals.protein  * 10) / 10,
+          carbs:    Math.round(totals.carbs),
+          fat:      Math.round(totals.fat       * 10) / 10,
+        },
+      })
+    }
 
     if (!text?.trim()) {
       return NextResponse.json({ error: "נדרש תיאור מזון" }, { status: 400 })

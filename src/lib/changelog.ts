@@ -5,6 +5,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.6.2",
+    description:
+      "Feature: Implemented Rest Day Macro Cycling toggle with automated carb and calorie reduction for non-training recovery days.",
+  },
+  {
+    version: "v1.6.1",
+    description:
+      "Feature: Added inline editing to AI review cards before logging.",
+  },
+  {
     version: "v1.6.0",
     description:
       "Feature: Upgraded primary core AI engine to verified gemini-3.5-flash with a clean production fallback chain (2.5-flash/2.5-pro) to ensure zero-latency processing for voice, image, and recipe logging.",
@@ -146,4 +156,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.6.0"
+export const APP_VERSION = "v1.6.2"

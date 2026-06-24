@@ -331,6 +331,9 @@ export default function NutritionPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
 
+  // Training day / rest day cycling toggle — persisted per calendar day (Israel UTC+3)
+  const [isTrainingDay, setIsTrainingDay] = useState(true)
+
   // ── שליפת נתוני היום ────────────────────────────────────
   const fetchToday = useCallback(async () => {
     try {
@@ -350,6 +353,19 @@ export default function NutritionPage() {
       .then((d) => { if (d.dietaryPreference) setDietaryPreference(d.dietaryPreference) })
       .catch(() => {})
   }, [fetchToday])
+
+  // Sync training-day toggle with localStorage on mount (Israel UTC+3 date key)
+  useEffect(() => {
+    const israelDate = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
+    const saved = localStorage.getItem(`training-day-${israelDate}`)
+    if (saved !== null) setIsTrainingDay(saved === "true")
+  }, [])
+
+  const handleToggleTrainingDay = (val: boolean) => {
+    const israelDate = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
+    localStorage.setItem(`training-day-${israelDate}`, String(val))
+    setIsTrainingDay(val)
+  }
 
   // ── שליחת קלט NLP ───────────────────────────────────────
   const handleParse = async () => {
@@ -599,6 +615,12 @@ export default function NutritionPage() {
     return "snack"
   }
 
+  const updateVoiceMeal = (index: number, updates: Partial<VoiceMeal>) => {
+    setVoiceMeals(prev =>
+      prev ? prev.map((m, i) => (i === index ? { ...m, ...updates } : m)) : null,
+    )
+  }
+
   const handleLogAllMeals = async () => {
     if (!voiceMeals?.length) return
     setLoggingVoice(true)
@@ -608,8 +630,15 @@ export default function NutritionPage() {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({
-            text:     meal.ingredients,
-            mealType: mapMealNameToType(meal.mealName),
+            mealType:    mapMealNameToType(meal.mealName),
+            directItems: [{
+              name:     meal.mealName,
+              calories: meal.calories,
+              protein:  meal.protein,
+              carbs:    meal.carbs,
+              fat:      meal.fat,
+              sugar:    meal.sugar,
+            }],
           }),
         })
       }
@@ -622,7 +651,15 @@ export default function NutritionPage() {
     }
   }
 
-  const targets  = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
+  const baseTargets = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
+  const targets = (() => {
+    if (isTrainingDay) return baseTargets
+    // Rest day: -15% calories. Protein and fat preserved for muscle recovery.
+    // Carbs absorb the full reduction (the only macro that can flex without compromise).
+    const restCal   = Math.round(baseTargets.calories * 0.85)
+    const restCarbs = Math.round(Math.max(0, (restCal - baseTargets.protein * 4 - baseTargets.fat * 9) / 4))
+    return { ...baseTargets, calories: restCal, carbs: restCarbs }
+  })()
   const totals   = todayData?.totals  ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
 
@@ -638,6 +675,37 @@ export default function NutritionPage() {
         <h1 className="text-2xl font-bold">תזונה יומית</h1>
         <p className="text-sm text-slate-400 mt-0.5">מעקב מאקרו צמחוני</p>
       </div>
+
+      {/* ── Toggle: יום אימון / יום מנוחה ─────────────────── */}
+      <div className="flex items-center gap-2 bg-slate-900/60 rounded-2xl p-1.5" dir="rtl">
+        <button
+          onClick={() => handleToggleTrainingDay(true)}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+            isTrainingDay
+              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+              : "text-slate-400 hover:text-slate-200",
+          )}
+        >
+          <span>🏋️</span> יום אימון
+        </button>
+        <button
+          onClick={() => handleToggleTrainingDay(false)}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+            !isTrainingDay
+              ? "bg-slate-600 text-white shadow-lg shadow-slate-500/20"
+              : "text-slate-400 hover:text-slate-200",
+          )}
+        >
+          <span>🛌</span> יום מנוחה
+        </button>
+      </div>
+      {!isTrainingDay && (
+        <p className="text-[11px] text-slate-500 text-center -mt-3" dir="rtl">
+          יעד קלוריות הופחת ב-15% · פחמימות מותאמות · חלבון נשמר מלא
+        </p>
+      )}
 
       {/* ╔══════════════════════════════════════════════════╗
           ║            כרטיס סיכום מאקרו יומי               ║
@@ -890,14 +958,67 @@ export default function NutritionPage() {
                 </button>
               </div>
               {voiceMeals.map((meal, i) => (
-                <div key={i} className="bg-slate-900/70 rounded-lg p-2.5 space-y-1">
-                  <p className="text-xs font-semibold text-violet-300">{meal.mealName}</p>
-                  <p className="text-xs text-slate-400 leading-relaxed">{meal.ingredients}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
-                    <span className="text-orange-400">{meal.calories} קק"ל</span>
-                    <span className="text-indigo-400">{meal.protein}ג' חלב'</span>
-                    <span className="text-emerald-400">{meal.carbs}ג' פחמ'</span>
-                    <span className="text-amber-400">{meal.fat}ג' שומן</span>
+                <div key={i} className="bg-slate-900/70 rounded-lg p-2.5 space-y-1.5">
+                  <input
+                    type="text"
+                    value={meal.mealName}
+                    onChange={e => updateVoiceMeal(i, { mealName: e.target.value })}
+                    className="w-full bg-transparent text-xs font-semibold text-violet-300 focus:outline-none border-b border-violet-500/20 focus:border-violet-400/60 pb-0.5 transition-colors"
+                    dir="rtl"
+                  />
+                  <textarea
+                    value={meal.ingredients}
+                    onChange={e => updateVoiceMeal(i, { ingredients: e.target.value })}
+                    rows={2}
+                    className="w-full bg-transparent text-xs text-slate-400 leading-relaxed focus:outline-none border-b border-slate-600/20 focus:border-slate-500/40 resize-none transition-colors pb-0.5"
+                    dir="rtl"
+                  />
+                  <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold pt-0.5">
+                    <label className="flex items-center gap-0.5 text-orange-400">
+                      <input
+                        type="number"
+                        value={meal.calories}
+                        onChange={e => updateVoiceMeal(i, { calories: Number(e.target.value) || 0 })}
+                        className="w-10 bg-transparent text-orange-400 text-[11px] font-semibold focus:outline-none text-center border-b border-orange-400/30 focus:border-orange-400/60"
+                      />
+                      קק&quot;ל
+                    </label>
+                    <label className="flex items-center gap-0.5 text-indigo-400">
+                      <input
+                        type="number"
+                        value={meal.protein}
+                        onChange={e => updateVoiceMeal(i, { protein: Number(e.target.value) || 0 })}
+                        className="w-8 bg-transparent text-indigo-400 text-[11px] font-semibold focus:outline-none text-center border-b border-indigo-400/30 focus:border-indigo-400/60"
+                      />
+                      ג&apos; חלב&apos;
+                    </label>
+                    <label className="flex items-center gap-0.5 text-emerald-400">
+                      <input
+                        type="number"
+                        value={meal.carbs}
+                        onChange={e => updateVoiceMeal(i, { carbs: Number(e.target.value) || 0 })}
+                        className="w-8 bg-transparent text-emerald-400 text-[11px] font-semibold focus:outline-none text-center border-b border-emerald-400/30 focus:border-emerald-400/60"
+                      />
+                      ג&apos; פחמ&apos;
+                    </label>
+                    <label className="flex items-center gap-0.5 text-amber-400">
+                      <input
+                        type="number"
+                        value={meal.fat}
+                        onChange={e => updateVoiceMeal(i, { fat: Number(e.target.value) || 0 })}
+                        className="w-8 bg-transparent text-amber-400 text-[11px] font-semibold focus:outline-none text-center border-b border-amber-400/30 focus:border-amber-400/60"
+                      />
+                      ג&apos; שומן
+                    </label>
+                    <label className="flex items-center gap-0.5 text-pink-400">
+                      <input
+                        type="number"
+                        value={meal.sugar}
+                        onChange={e => updateVoiceMeal(i, { sugar: Number(e.target.value) || 0 })}
+                        className="w-8 bg-transparent text-pink-400 text-[11px] font-semibold focus:outline-none text-center border-b border-pink-400/30 focus:border-pink-400/60"
+                      />
+                      ג&apos; סוכר
+                    </label>
                   </div>
                 </div>
               ))}
