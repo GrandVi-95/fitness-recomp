@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
+import { GEMINI_MODELS } from "@/lib/ai"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -142,13 +143,6 @@ async function callOpenAI(userMessage: string, apiKey: string): Promise<string> 
   const data = await res.json()
   return data.choices[0]?.message?.content ?? ""
 }
-
-const GEMINI_MODELS = [
-  "gemini-3.1-flash",
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-]
 
 async function callGemini(userMessage: string, apiKey: string): Promise<string> {
   let lastError = ""

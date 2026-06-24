@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.6.4",
+    description:
+      "Critical: Eliminated hardcoded deprecated model array in nutrition log route, linked to verified core shared models, and finalized editable cards, rest-day cycling, and quick-coffee logger.",
+  },
+  {
     version: "v1.6.3",
     description:
       "Feature: Added Quick-Log Coffee Milk button with customizable volume and pre-configured Tnuva/Oatly Barista presets.",
@@ -161,4 +166,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.6.3"
+export const APP_VERSION = "v1.6.4"
