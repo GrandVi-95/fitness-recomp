@@ -3,7 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import MealSuggester from "@/components/dashboard/MealSuggester"
 import RecipePanel   from "@/components/dashboard/RecipePanel"
-import { SUGAR_TARGET } from "@/lib/nutrition"
+import {
+  SUGAR_TARGET,
+  MILK_PRESETS,
+  DEFAULT_MILK_PRESET_ID,
+  DEFAULT_MILK_VOLUME_ML,
+} from "@/lib/nutrition"
 import {
   Send,
   Flame,
@@ -19,6 +24,8 @@ import {
   Camera,
   ScanLine,
   Mic,
+  Coffee,
+  Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -334,6 +341,13 @@ export default function NutritionPage() {
   // Training day / rest day cycling toggle — persisted per calendar day (Israel UTC+3)
   const [isTrainingDay, setIsTrainingDay] = useState(true)
 
+  // Coffee quick-log — preset and volume persisted in localStorage
+  const [preferredMilkPreset, setPreferredMilkPreset] = useState(DEFAULT_MILK_PRESET_ID)
+  const [defaultMilkVolumeMl, setDefaultMilkVolumeMl] = useState(DEFAULT_MILK_VOLUME_ML)
+  const [coffeeLogging,       setCoffeeLogging]       = useState(false)
+  const [coffeeSuccess,       setCoffeeSuccess]       = useState(false)
+  const [showCoffeeSettings,  setShowCoffeeSettings]  = useState(false)
+
   // ── שליפת נתוני היום ────────────────────────────────────
   const fetchToday = useCallback(async () => {
     try {
@@ -365,6 +379,59 @@ export default function NutritionPage() {
     const israelDate = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
     localStorage.setItem(`training-day-${israelDate}`, String(val))
     setIsTrainingDay(val)
+  }
+
+  // Restore coffee preferences from localStorage on mount
+  useEffect(() => {
+    const preset = localStorage.getItem("coffee-milk-preset")
+    const volume = localStorage.getItem("coffee-milk-volume")
+    if (preset && MILK_PRESETS[preset]) setPreferredMilkPreset(preset)
+    if (volume) setDefaultMilkVolumeMl(Number(volume) || DEFAULT_MILK_VOLUME_ML)
+  }, [])
+
+  const handleLogCoffee = async () => {
+    if (coffeeLogging) return
+    const preset = MILK_PRESETS[preferredMilkPreset]
+    if (!preset) return
+    setCoffeeLogging(true)
+    setCoffeeSuccess(false)
+    const factor = defaultMilkVolumeMl / 100
+    try {
+      const res = await fetch("/api/nutrition/log", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          mealType:    "snack",
+          directItems: [{
+            name:     `קפה + ${preset.name} (${defaultMilkVolumeMl}מ"ל)`,
+            calories: Math.round(preset.calories * factor * 10) / 10,
+            protein:  Math.round(preset.protein  * factor * 10) / 10,
+            carbs:    Math.round(preset.carbs    * factor * 10) / 10,
+            fat:      Math.round(preset.fat      * factor * 10) / 10,
+            sugar:    Math.round(preset.sugar    * factor * 10) / 10,
+          }],
+        }),
+      })
+      if (res.ok) {
+        setCoffeeSuccess(true)
+        await fetchToday()
+        setTimeout(() => setCoffeeSuccess(false), 2500)
+      }
+    } catch {
+      // silent — loading state resets in finally
+    } finally {
+      setCoffeeLogging(false)
+    }
+  }
+
+  const handleSetMilkPreset = (id: string) => {
+    setPreferredMilkPreset(id)
+    localStorage.setItem("coffee-milk-preset", id)
+  }
+
+  const handleSetMilkVolume = (vol: number) => {
+    setDefaultMilkVolumeMl(vol)
+    localStorage.setItem("coffee-milk-volume", String(vol))
   }
 
   // ── שליחת קלט NLP ───────────────────────────────────────
@@ -671,9 +738,99 @@ export default function NutritionPage() {
   return (
     <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
       {/* ── כותרת ─────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold">תזונה יומית</h1>
-        <p className="text-sm text-slate-400 mt-0.5">מעקב מאקרו צמחוני</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">תזונה יומית</h1>
+          <p className="text-sm text-slate-400 mt-0.5">מעקב מאקרו צמחוני</p>
+        </div>
+
+        {/* ── Coffee quick-log cluster ─────────────────────── */}
+        <div className="relative flex items-center gap-1.5 mt-1">
+          <button
+            onClick={handleLogCoffee}
+            disabled={coffeeLogging}
+            className={cn(
+              "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
+              coffeeSuccess
+                ? "bg-emerald-600/80 text-white"
+                : "bg-slate-800 text-amber-400 hover:bg-slate-700 active:scale-95",
+            )}
+            title="רשום קפה עם חלב"
+          >
+            {coffeeLogging ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : coffeeSuccess ? (
+              <Check size={16} />
+            ) : (
+              <Coffee size={16} />
+            )}
+          </button>
+          <button
+            onClick={() => setShowCoffeeSettings(v => !v)}
+            className={cn(
+              "flex items-center justify-center w-7 h-7 rounded-lg transition-all",
+              showCoffeeSettings ? "bg-slate-600 text-white" : "text-slate-500 hover:text-slate-300",
+            )}
+            title="הגדרות קפה"
+          >
+            <Settings size={13} />
+          </button>
+
+          {showCoffeeSettings && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowCoffeeSettings(false)} />
+              <div
+                className="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-700/60 rounded-2xl p-3 shadow-xl z-50 space-y-3"
+                dir="rtl"
+              >
+                <p className="text-[11px] font-bold text-slate-300">סוג חלב</p>
+                <div className="space-y-1">
+                  {Object.values(MILK_PRESETS).map(preset => (
+                    <button
+                      key={preset.id}
+                      onClick={() => handleSetMilkPreset(preset.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all",
+                        preferredMilkPreset === preset.id
+                          ? "bg-amber-500/20 text-amber-300 font-semibold"
+                          : "text-slate-400 hover:bg-slate-700/50",
+                      )}
+                    >
+                      <span>{preset.name}</span>
+                      <span className="text-[10px] opacity-60">{preset.calories} קק&quot;ל/100מ&quot;ל</span>
+                    </button>
+                  ))}
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-300 mb-1.5">כמות (מ&quot;ל)</p>
+                  <div className="flex gap-1.5">
+                    {[100, 125, 150, 200].map(vol => (
+                      <button
+                        key={vol}
+                        onClick={() => handleSetMilkVolume(vol)}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                          defaultMilkVolumeMl === vol
+                            ? "bg-amber-500/20 text-amber-300"
+                            : "bg-slate-700/50 text-slate-400 hover:bg-slate-700",
+                        )}
+                      >
+                        {vol}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 text-center border-t border-slate-700/40 pt-2">
+                  {(() => {
+                    const p = MILK_PRESETS[preferredMilkPreset]
+                    const f = defaultMilkVolumeMl / 100
+                    return `${Math.round(p.calories * f)} קק"ל · ${Math.round(p.carbs * f * 10) / 10}ג' פחמ' · ${Math.round(p.protein * f * 10) / 10}ג' חלב'`
+                  })()}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Toggle: יום אימון / יום מנוחה ─────────────────── */}

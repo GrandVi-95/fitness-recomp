@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.6.3",
+    description:
+      "Feature: Added Quick-Log Coffee Milk button with customizable volume and pre-configured Tnuva/Oatly Barista presets.",
+  },
+  {
     version: "v1.6.2",
     description:
       "Feature: Implemented Rest Day Macro Cycling toggle with automated carb and calorie reduction for non-training recovery days.",
@@ -156,4 +161,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.6.2"
+export const APP_VERSION = "v1.6.3"

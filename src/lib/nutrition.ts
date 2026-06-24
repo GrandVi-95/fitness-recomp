@@ -25,6 +25,38 @@ export interface MacroTargets {
  *  • carbs = targetCarbs (DB override) OR energy-balance residual
  *    (calories − protein×4 − fat×9) / 4
  */
+// ─── Coffee milk presets (values per 100 ml) ─────────────────────────────────
+
+export interface MilkPreset {
+  id:       string
+  name:     string
+  calories: number
+  carbs:    number
+  fat:      number
+  protein:  number
+  sugar:    number
+}
+
+export const MILK_PRESETS: Record<string, MilkPreset> = {
+  tnuva_oat_barista: {
+    id: "tnuva_oat_barista", name: "תנובה שיבולת שועל Barista",
+    calories: 61, carbs: 7.5, fat: 3.0, protein: 0.8, sugar: 4.0,
+  },
+  oatly_barista: {
+    id: "oatly_barista", name: "Oatly Barista",
+    calories: 59, carbs: 6.5, fat: 3.0, protein: 1.0, sugar: 3.4,
+  },
+  tnuva_soy_barista: {
+    id: "tnuva_soy_barista", name: "תנובה סויה Barista",
+    calories: 43, carbs: 2.2, fat: 2.2, protein: 3.3, sugar: 1.5,
+  },
+}
+
+export const DEFAULT_MILK_PRESET_ID = "tnuva_oat_barista"
+export const DEFAULT_MILK_VOLUME_ML = 125
+
+// ─── Macro target calculator — single source of truth ────────────────────────
+
 export function computeTargets(params: {
   targetCalories:   number | null | undefined
   targetProtein:    number | null | undefined
