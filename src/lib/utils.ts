@@ -136,7 +136,10 @@ export function formatRestTime(seconds: number): string {
 
 // ── TDEE / calorie targets ────────────────────────────────
 
-export const PROTEIN_MULTIPLIER = 2.2 // g protein per kg bodyweight
+// 2.5 g/kg compensates for the lower DIAAS (~0.55–0.65) of vegetarian protein
+// sources (tofu, seitan, legumes) vs. the ~1.0 of animal proteins the standard
+// 2.2 g/kg hypertrophy figure assumes (van Vliet 2015; Gorissen 2018).
+export const PROTEIN_MULTIPLIER = 2.5 // g protein per kg bodyweight
 
 /**
  * Mifflin-St Jeor BMR.

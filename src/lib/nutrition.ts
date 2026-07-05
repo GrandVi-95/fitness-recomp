@@ -9,7 +9,11 @@
 // without triggering false-positive red alerts on whole-food days.
 export const SUGAR_TARGET = 100 // g/day
 
-// ─── Macro target calculator — single source of truth ────────────────────────
+// On rest days total carbs drop, so a fixed 100 g ceiling would silently become
+// a much larger share of the carb budget — scale it down instead.
+export const REST_DAY_SUGAR_TARGET = 75 // g/day
+
+// ─── Macro target types ───────────────────────────────────────────────────────
 
 export interface MacroTargets {
   calories: number
@@ -18,13 +22,6 @@ export interface MacroTargets {
   fat:      number
 }
 
-/**
- * Canonical macro target formula used by every screen.
- *  • autoProteinGoal + weightKg → protein = weight × 2.2 g/kg
- *  • fat  = targetFats  (DB override) OR 25 % of calories
- *  • carbs = targetCarbs (DB override) OR energy-balance residual
- *    (calories − protein×4 − fat×9) / 4
- */
 // ─── Coffee milk presets (values per 100 ml) ─────────────────────────────────
 
 export interface MilkPreset {
@@ -57,6 +54,14 @@ export const DEFAULT_MILK_VOLUME_ML = 125
 
 // ─── Macro target calculator — single source of truth ────────────────────────
 
+/**
+ * Canonical macro target formula used by every screen.
+ *  • autoProteinGoal + weightKg → protein = weight × 2.5 g/kg
+ *    (2.5 rather than 2.2 to offset the lower DIAAS of vegetarian proteins)
+ *  • fat  = targetFats  (DB override) OR 25 % of calories
+ *  • carbs = targetCarbs (DB override) OR energy-balance residual
+ *    (calories − protein×4 − fat×9) / 4
+ */
 export function computeTargets(params: {
   targetCalories:   number | null | undefined
   targetProtein:    number | null | undefined
@@ -67,7 +72,7 @@ export function computeTargets(params: {
 }): MacroTargets {
   const calories = params.targetCalories ?? 2600
   const protein  = (params.autoProteinGoal && params.weightKg)
-    ? Math.round(params.weightKg * 2.2)
+    ? Math.round(params.weightKg * 2.5)
     : (params.targetProtein ?? 185)
   const fat   = params.targetFats  != null
     ? params.targetFats
@@ -76,4 +81,25 @@ export function computeTargets(params: {
     ? params.targetCarbs
     : Math.round((calories - protein * 4 - fat * 9) / 4)
   return { calories, protein, carbs, fat }
+}
+
+// ─── Rest-day macro cycling ───────────────────────────────────────────────────
+
+/**
+ * Rest-day targets for a hypertrophy focus: 15 % calorie deficit, protein
+ * untouched. The deficit is split between fat (35 %) and carbs (65 %) rather
+ * than letting carbs absorb it all — glycogen resynthesis peaks in the
+ * 24–48 h post-exercise window, so rest days still need meaningful carbohydrate
+ * (Helms/Aragon/Fitschen 2014; ISSN position stand).
+ */
+export function computeRestDayTargets(base: MacroTargets): MacroTargets {
+  const deficit = Math.round(base.calories * 0.15)
+  const fatCut  = Math.round((deficit * 0.35) / 9) // kcal → g fat
+  const carbCut = Math.round((deficit * 0.65) / 4) // kcal → g carbs
+  return {
+    calories: base.calories - deficit,
+    protein:  base.protein,
+    carbs:    Math.max(0, base.carbs - carbCut),
+    fat:      Math.max(0, base.fat - fatCut),
+  }
 }

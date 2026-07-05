@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import MealSuggester from "@/components/dashboard/MealSuggester"
 import RecipePanel   from "@/components/dashboard/RecipePanel"
 import {
   SUGAR_TARGET,
+  REST_DAY_SUGAR_TARGET,
   MILK_PRESETS,
   DEFAULT_MILK_PRESET_ID,
   DEFAULT_MILK_VOLUME_ML,
+  computeRestDayTargets,
 } from "@/lib/nutrition"
 import {
   Send,
@@ -346,6 +348,7 @@ export default function NutritionPage() {
   const [defaultMilkVolumeMl, setDefaultMilkVolumeMl] = useState(DEFAULT_MILK_VOLUME_ML)
   const [coffeeLogging,       setCoffeeLogging]       = useState(false)
   const [coffeeSuccess,       setCoffeeSuccess]       = useState(false)
+  const [coffeeError,         setCoffeeError]         = useState<string | null>(null)
   const [showCoffeeSettings,  setShowCoffeeSettings]  = useState(false)
 
   // ── שליפת נתוני היום ────────────────────────────────────
@@ -368,8 +371,11 @@ export default function NutritionPage() {
       .catch(() => {})
   }, [fetchToday])
 
-  // Sync training-day toggle with localStorage on mount (Israel UTC+3 date key)
-  useEffect(() => {
+  // Sync training-day toggle with localStorage (Israel UTC+3 date key).
+  // useLayoutEffect (not useEffect) so the saved value applies BEFORE first
+  // paint — a rest-day user never sees a flash of full training targets —
+  // while keeping server/client initial markup identical (no hydration mismatch).
+  useLayoutEffect(() => {
     const israelDate = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
     const saved = localStorage.getItem(`training-day-${israelDate}`)
     if (saved !== null) setIsTrainingDay(saved === "true")
@@ -381,8 +387,8 @@ export default function NutritionPage() {
     setIsTrainingDay(val)
   }
 
-  // Restore coffee preferences from localStorage on mount
-  useEffect(() => {
+  // Restore coffee preferences from localStorage before first paint
+  useLayoutEffect(() => {
     const preset = localStorage.getItem("coffee-milk-preset")
     const volume = localStorage.getItem("coffee-milk-volume")
     if (preset && MILK_PRESETS[preset]) setPreferredMilkPreset(preset)
@@ -395,6 +401,7 @@ export default function NutritionPage() {
     if (!preset) return
     setCoffeeLogging(true)
     setCoffeeSuccess(false)
+    setCoffeeError(null)
     const factor = defaultMilkVolumeMl / 100
     try {
       const res = await fetch("/api/nutrition/log", {
@@ -416,9 +423,11 @@ export default function NutritionPage() {
         setCoffeeSuccess(true)
         await fetchToday()
         setTimeout(() => setCoffeeSuccess(false), 2500)
+      } else {
+        setCoffeeError("הקפה לא נרשם — נסה שוב")
       }
     } catch {
-      // silent — loading state resets in finally
+      setCoffeeError("שגיאת חיבור — הקפה לא נרשם")
     } finally {
       setCoffeeLogging(false)
     }
@@ -691,9 +700,13 @@ export default function NutritionPage() {
   const handleLogAllMeals = async () => {
     if (!voiceMeals?.length) return
     setLoggingVoice(true)
-    try {
-      for (const meal of voiceMeals) {
-        await fetch("/api/nutrition/log", {
+    setVoiceError(null)
+    // Track failures per meal: committed meals leave the review set immediately,
+    // so a retry after a partial failure never double-logs what already saved.
+    const failed: VoiceMeal[] = []
+    for (const meal of voiceMeals) {
+      try {
+        const res = await fetch("/api/nutrition/log", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({
@@ -708,32 +721,35 @@ export default function NutritionPage() {
             }],
           }),
         })
+        if (!res.ok) failed.push(meal)
+      } catch {
+        failed.push(meal)
       }
-      setVoiceMeals(null)
-      await fetchToday()
-    } catch {
-      setVoiceError("שגיאה ברישום הארוחות — נסה שוב")
-    } finally {
-      setLoggingVoice(false)
     }
+    if (failed.length > 0) {
+      setVoiceMeals(failed)
+      setVoiceError(
+        failed.length === voiceMeals.length
+          ? "שגיאה ברישום הארוחות — נסה שוב"
+          : `${failed.length} מתוך ${voiceMeals.length} ארוחות לא נרשמו — נסה שוב`,
+      )
+    } else {
+      setVoiceMeals(null)
+    }
+    await fetchToday()
+    setLoggingVoice(false)
   }
 
   const baseTargets = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
-  const targets = (() => {
-    if (isTrainingDay) return baseTargets
-    // Rest day: -15% calories. Protein and fat preserved for muscle recovery.
-    // Carbs absorb the full reduction (the only macro that can flex without compromise).
-    const restCal   = Math.round(baseTargets.calories * 0.85)
-    const restCarbs = Math.round(Math.max(0, (restCal - baseTargets.protein * 4 - baseTargets.fat * 9) / 4))
-    return { ...baseTargets, calories: restCal, carbs: restCarbs }
-  })()
+  const targets = isTrainingDay ? baseTargets : computeRestDayTargets(baseTargets)
   const totals   = todayData?.totals  ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
 
   const calRemain  = targets.calories - totals.calories
   const protRemain = targets.protein  - totals.protein
-  const sugarToday = totals.sugar ?? 0
-  const sugarPct   = Math.min((sugarToday / SUGAR_TARGET) * 100, 100)
+  const sugarToday  = totals.sugar ?? 0
+  const sugarTarget = isTrainingDay ? SUGAR_TARGET : REST_DAY_SUGAR_TARGET
+  const sugarPct    = Math.min((sugarToday / sugarTarget) * 100, 100)
 
   return (
     <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
@@ -833,6 +849,13 @@ export default function NutritionPage() {
         </div>
       </div>
 
+      {coffeeError && (
+        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+          <AlertCircle size={13} className="shrink-0" />
+          {coffeeError}
+        </div>
+      )}
+
       {/* ── Toggle: יום אימון / יום מנוחה ─────────────────── */}
       <div className="flex items-center gap-2 bg-slate-900/60 rounded-2xl p-1.5" dir="rtl">
         <button
@@ -860,7 +883,7 @@ export default function NutritionPage() {
       </div>
       {!isTrainingDay && (
         <p className="text-[11px] text-slate-500 text-center -mt-3" dir="rtl">
-          יעד קלוריות הופחת ב-15% · פחמימות מותאמות · חלבון נשמר מלא
+          יעד קלוריות הופחת ב-15% · פחמימות ושומן מותאמים · חלבון נשמר מלא
         </p>
       )}
 
@@ -933,7 +956,7 @@ export default function NutritionPage() {
               סוכר יומי
             </span>
             <span className={sugarPct >= 100 ? "text-rose-400 font-semibold" : "text-slate-500"}>
-              {Math.round(sugarToday)} / {SUGAR_TARGET} גר'
+              {Math.round(sugarToday)} / {sugarTarget} גר'
             </span>
           </div>
           <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { GEMINI_MODELS } from "@/lib/ai"
+import { callGemini as callGeminiShared } from "@/lib/ai"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -104,7 +104,7 @@ async function callAnthropic(userMessage: string, apiKey: string): Promise<strin
   try {
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
+      max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],
     })
@@ -121,57 +121,62 @@ async function callAnthropic(userMessage: string, apiKey: string): Promise<strin
 }
 
 async function callOpenAI(userMessage: string, apiKey: string): Promise<string> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: 1024,
-    }),
-  })
-  if (res.status === 401) {
-    throw new Error("API_KEY_INVALID: מפתח OpenAI לא תקין — בדוק את המפתח בדף ההגדרות")
-  }
-  if (!res.ok) throw new Error(`OpenAI error: ${res.status}`)
-  const data = await res.json()
-  return data.choices[0]?.message?.content ?? ""
-}
-
-async function callGemini(userMessage: string, apiKey: string): Promise<string> {
-  let lastError = ""
-  for (const model of GEMINI_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-    const res = await fetch(url, {
+  const MAX_ATTEMPTS = 3
+  const RETRY_DELAY_MS = 1500
+  let lastStatus = 0
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: userMessage }] }],
-        generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 8192,
       }),
     })
     if (res.ok) {
-      console.log("[Gemini] Successfully used model:", model)
       const data = await res.json()
-      console.log("[Gemini] Finish reason:", data?.candidates?.[0]?.finishReason)
-      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+      return data.choices[0]?.message?.content ?? ""
     }
-    const errorBody = await res.text().catch(() => "(unreadable)")
-    console.error(`[callGemini nutrition/log] HTTP ${res.status}:`, errorBody)
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
+      throw new Error("API_KEY_INVALID: מפתח OpenAI לא תקין — בדוק את המפתח בדף ההגדרות")
+    }
+    lastStatus = res.status
+    if ((res.status === 429 || res.status === 503) && attempt < MAX_ATTEMPTS) {
+      console.warn(`[callOpenAI] attempt ${attempt} → ${res.status}, retrying in ${RETRY_DELAY_MS}ms`)
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+      continue
+    }
+    break
+  }
+  throw new Error(`OpenAI error: ${lastStatus}`)
+}
+
+// Delegates to the shared utility (header auth, 503/429 retry-backoff, model
+// fallback) and translates its auth error into this route's API_KEY_ protocol.
+async function callGemini(userMessage: string, apiKey: string): Promise<string> {
+  try {
+    return await callGeminiShared(
+      apiKey,
+      [{ role: "user", parts: [{ text: userMessage }] }],
+      {
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
+      },
+    )
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes("invalid or does not have access")) {
       throw new Error("API_KEY_INVALID: מפתח Gemini לא תקין — בדוק את המפתח בדף ההגדרות")
     }
-    console.warn(`[Gemini] Model failed, trying next: ${model} (${res.status})`)
-    lastError = `${res.status}: ${errorBody}`
+    throw err
   }
-  throw new Error(`Gemini: all models failed. Last error — ${lastError}`)
 }
 
 /** POST /api/nutrition/log
@@ -183,26 +188,42 @@ export async function POST(request: Request) {
 
     // Direct log path — skip AI re-analysis and write pre-computed values from the editable review card
     if (Array.isArray(directItems) && directItems.length > 0) {
+      // Clamp to finite, non-negative, plausible values — a client bug sending
+      // NaN/Infinity/negatives would otherwise silently corrupt daily totals.
+      const clampMacro = (v: unknown, max: number): number => {
+        const n = typeof v === "number" && Number.isFinite(v) ? v : 0
+        return Math.round(Math.min(Math.max(n, 0), max) * 10) / 10
+      }
+      const sanitized = directItems
+        .map((item: Record<string, unknown>) => ({
+          name:     typeof item.name === "string" ? item.name.trim().slice(0, 200) : "",
+          calories: clampMacro(item.calories, 5000),
+          protein:  clampMacro(item.protein,  500),
+          carbs:    clampMacro(item.carbs,    1000),
+          fat:      clampMacro(item.fat,      500),
+          sugar:    clampMacro(item.sugar,    500),
+        }))
+        .filter((item) => item.name.length > 0)
+      if (sanitized.length === 0) {
+        return NextResponse.json({ error: "פריטים לא תקינים — חסר שם מזון" }, { status: 400 })
+      }
       const log = await db.nutritionLog.create({
         data: {
           userId:   DEMO_USER_ID,
           mealType,
-          rawInput: directItems.map((it: { name: string }) => it.name).join(", "),
+          rawInput: sanitized.map((it) => it.name).join(", "),
           date:     new Date(),
           foodItems: {
-            create: directItems.map((item: {
-              name: string; calories: number; protein: number
-              carbs: number; fat: number; sugar?: number
-            }) => ({
+            create: sanitized.map((item) => ({
               name:         item.name,
               quantity:     1,
               unit:         "serving",
-              calories:     Math.round(item.calories  * 10) / 10,
-              protein:      Math.round(item.protein   * 10) / 10,
-              carbs:        Math.round(item.carbs     * 10) / 10,
-              fat:          Math.round(item.fat       * 10) / 10,
+              calories:     item.calories,
+              protein:      item.protein,
+              carbs:        item.carbs,
+              fat:          item.fat,
               fiber:        0,
-              sugar:        Math.round((item.sugar    ?? 0) * 10) / 10,
+              sugar:        item.sugar,
               saturatedFat: 0,
             })),
           },

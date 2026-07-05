@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.7.0",
+    description:
+      "Audit Phase 7: Fixed API-key-in-URL leak and missing retry in NLP route, added partial-failure recovery to multi-meal logging, eliminated rest-day target flash, hardened direct-log input validation, and rebalanced rest-day macro cycling (fat/carb split), vegetarian protein target (2.5g/kg), and rest-day sugar ceiling.",
+  },
+  {
     version: "v1.6.4",
     description:
       "Critical: Eliminated hardcoded deprecated model array in nutrition log route, linked to verified core shared models, and finalized editable cards, rest-day cycling, and quick-coffee logger.",
@@ -166,4 +171,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.6.4"
+export const APP_VERSION = "v1.7.0"
