@@ -63,6 +63,21 @@ interface VoiceMeal {
   sugar:       number
 }
 
+interface LabelScan {
+  productName:    string          // editable by user before saving
+  packageWeightG: string          // editable, kept as string for the input field
+  per100g: {
+    calories:      number
+    protein:       number
+    carbs:         number
+    fat:           number
+    sugar:         number
+    fiber:         number
+    saturatedFat:  number
+  }
+  confidence: "high" | "medium" | "low"
+}
+
 interface FoodItem {
   id: string
   name: string
@@ -324,6 +339,16 @@ export default function NutritionPage() {
   const [scanLoading, setScanLoading] = useState(false)
   const [scanResult,  setScanResult]  = useState<ScanResult | null>(null)
   const [scanError,   setScanError]   = useState<string | null>(null)
+
+  // Nutrition label scanner state
+  const labelInputRef = useRef<HTMLInputElement>(null)
+  const [labelLoading,     setLabelLoading]     = useState(false)
+  const [labelScan,        setLabelScan]        = useState<LabelScan | null>(null)
+  const [labelError,       setLabelError]       = useState<string | null>(null)
+  const [labelPortionMode, setLabelPortionMode] = useState<"grams" | "percent">("grams")
+  const [labelPortion,     setLabelPortion]     = useState("50")
+  const [labelSaveProduct, setLabelSaveProduct] = useState(true)
+  const [labelLogging,     setLabelLogging]     = useState(false)
 
   // Voice recording state
   const [voiceState,   setVoiceState]   = useState<"idle" | "recording" | "processing">("idle")
@@ -598,6 +623,105 @@ export default function NutritionPage() {
     } finally {
       setScanLoading(false)
       if (scanInputRef.current) scanInputRef.current.value = ""
+    }
+  }
+
+  // ── סריקת תווית תזונה ────────────────────────────────────────
+  const handleLabelScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLabelLoading(true)
+    setLabelScan(null)
+    setLabelError(null)
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader   = new FileReader()
+        reader.onload  = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const base64 = dataUrl.split(",")[1] ?? ""
+      const res = await fetch("/api/ai/scan-label", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ image: base64, mimeType: file.type || "image/jpeg" }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setLabelError(data.error ?? "שגיאה בסריקת התווית")
+        return
+      }
+      setLabelScan({
+        productName:    data.productName ?? "",
+        packageWeightG: data.packageWeightG ? String(data.packageWeightG) : "",
+        per100g:        data.per100g,
+        confidence:     data.confidence,
+      })
+      setLabelPortionMode("grams")
+      setLabelPortion("50")
+    } catch {
+      setLabelError("שגיאה בסריקת התווית — נסה שוב")
+    } finally {
+      setLabelLoading(false)
+      if (labelInputRef.current) labelInputRef.current.value = ""
+    }
+  }
+
+  // Resolve the portion input to grams (percent mode needs a package weight)
+  const labelPortionGrams = (): number | null => {
+    if (!labelScan) return null
+    const val = parseFloat(labelPortion)
+    if (!Number.isFinite(val) || val <= 0) return null
+    if (labelPortionMode === "grams") return val
+    const pkg = parseFloat(labelScan.packageWeightG)
+    if (!Number.isFinite(pkg) || pkg <= 0) return null
+    return (pkg * val) / 100
+  }
+
+  const handleLogLabelPortion = async () => {
+    if (!labelScan || labelLogging) return
+    const grams = labelPortionGrams()
+    if (!grams) return
+    const name = labelScan.productName.trim() || "מוצר סרוק"
+    setLabelLogging(true)
+    setLabelError(null)
+    const factor = grams / 100
+    try {
+      // Save to product library first so the food exists even if logging fails
+      if (labelSaveProduct) {
+        await fetch("/api/nutrition/products", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ name, per100g: labelScan.per100g }),
+        }).catch(() => {})
+      }
+      const res = await fetch("/api/nutrition/log", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          mealType:    selectedMeal,
+          directItems: [{
+            name,
+            quantity: Math.round(grams),
+            unit:     "g",
+            calories: Math.round(labelScan.per100g.calories * factor * 10) / 10,
+            protein:  Math.round(labelScan.per100g.protein  * factor * 10) / 10,
+            carbs:    Math.round(labelScan.per100g.carbs    * factor * 10) / 10,
+            fat:      Math.round(labelScan.per100g.fat      * factor * 10) / 10,
+            sugar:    Math.round(labelScan.per100g.sugar    * factor * 10) / 10,
+          }],
+        }),
+      })
+      if (!res.ok) {
+        setLabelError("הרישום נכשל — נסה שוב")
+        return
+      }
+      setLabelScan(null)
+      await fetchToday()
+    } catch {
+      setLabelError("שגיאת חיבור — נסה שוב")
+    } finally {
+      setLabelLogging(false)
     }
   }
 
@@ -1043,6 +1167,14 @@ export default function NutritionPage() {
             className="hidden"
             onChange={handleScan}
           />
+          <input
+            ref={labelInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleLabelScan}
+          />
           <div className="flex gap-2">
             {/* Camera button */}
             <button
@@ -1092,7 +1224,153 @@ export default function NutritionPage() {
                 </>
               )}
             </button>
+            {/* Label-scan button */}
+            <button
+              onClick={() => labelInputRef.current?.click()}
+              disabled={labelLoading || parsing || scanLoading || voiceState !== "idle"}
+              className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-cyan-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors"
+            >
+              {labelLoading ? (
+                <>
+                  <Loader2 size={13} className="animate-spin text-cyan-400" />
+                  <span className="text-cyan-300">סורק...</span>
+                </>
+              ) : (
+                <>
+                  <ScanLine size={13} className="text-cyan-400" />
+                  סרוק תווית
+                </>
+              )}
+            </button>
           </div>
+
+          {/* ── כרטיס מנה ממוצר סרוק ─────────────────────────── */}
+          {labelScan && (
+            <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 space-y-2.5" dir="rtl">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-cyan-400 font-semibold flex items-center gap-1.5">
+                  <ScanLine size={12} /> תווית נסרקה
+                  {labelScan.confidence !== "high" && (
+                    <span className="text-amber-400 font-normal">· ודא ערכים — סריקה חלקית</span>
+                  )}
+                </p>
+                <button
+                  onClick={() => setLabelScan(null)}
+                  className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                  aria-label="סגור"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={labelScan.productName}
+                onChange={e => setLabelScan({ ...labelScan, productName: e.target.value })}
+                placeholder="שם המוצר"
+                className="w-full bg-slate-900/70 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 transition-colors"
+              />
+
+              <p className="text-[10px] text-slate-500">
+                ל-100 גרם: {labelScan.per100g.calories} קק"ל · {labelScan.per100g.protein}ג' חלבון · {labelScan.per100g.carbs}ג' פחמ' · {labelScan.per100g.fat}ג' שומן · {labelScan.per100g.sugar}ג' סוכר
+              </p>
+
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-slate-400 shrink-0">משקל אריזה (אופציונלי)</label>
+                <input
+                  type="number"
+                  value={labelScan.packageWeightG}
+                  onChange={e => setLabelScan({ ...labelScan, packageWeightG: e.target.value })}
+                  placeholder="גרם"
+                  className="w-20 bg-slate-900/70 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex bg-slate-900/70 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setLabelPortionMode("grams")}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                      labelPortionMode === "grams" ? "bg-cyan-600 text-white" : "text-slate-400",
+                    )}
+                  >
+                    גרם
+                  </button>
+                  <button
+                    onClick={() => setLabelPortionMode("percent")}
+                    disabled={!parseFloat(labelScan.packageWeightG)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all disabled:opacity-30",
+                      labelPortionMode === "percent" ? "bg-cyan-600 text-white" : "text-slate-400",
+                    )}
+                  >
+                    % מהאריזה
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  value={labelPortion}
+                  onChange={e => setLabelPortion(e.target.value)}
+                  className="w-16 bg-slate-900/70 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+                />
+                <span className="text-[11px] text-slate-500">
+                  {labelPortionMode === "grams" ? "גרם" : "%"}
+                </span>
+              </div>
+
+              {(() => {
+                const grams = labelPortionGrams()
+                if (!grams) return (
+                  <p className="text-[10px] text-amber-400/80">
+                    {labelPortionMode === "percent" && !parseFloat(labelScan.packageWeightG)
+                      ? "הזן משקל אריזה כדי להשתמש באחוזים"
+                      : "הזן כמות תקינה"}
+                  </p>
+                )
+                const f = grams / 100
+                return (
+                  <p className="text-[11px] font-semibold text-slate-300">
+                    {Math.round(grams)} גרם = <span className="text-orange-400">{Math.round(labelScan.per100g.calories * f)} קק"ל</span> · <span className="text-indigo-400">{Math.round(labelScan.per100g.protein * f * 10) / 10}ג' חלב'</span> · <span className="text-emerald-400">{Math.round(labelScan.per100g.carbs * f * 10) / 10}ג' פחמ'</span> · <span className="text-amber-400">{Math.round(labelScan.per100g.fat * f * 10) / 10}ג' שומן</span>
+                  </p>
+                )
+              })()}
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setLabelSaveProduct(v => !v)}
+                  className={cn(
+                    "flex items-center gap-1.5 text-[11px] transition-colors",
+                    labelSaveProduct ? "text-cyan-300" : "text-slate-500",
+                  )}
+                >
+                  <span className={cn(
+                    "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors",
+                    labelSaveProduct ? "bg-cyan-600 border-cyan-500" : "border-slate-600",
+                  )}>
+                    {labelSaveProduct && <Check size={10} className="text-white" />}
+                  </span>
+                  שמור למאגר המוצרים
+                </button>
+              </div>
+
+              <button
+                onClick={handleLogLabelPortion}
+                disabled={labelLogging || !labelPortionGrams()}
+                className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
+              >
+                {labelLogging ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                {labelLogging ? "רושם..." : "רשום מנה"}
+              </button>
+            </div>
+          )}
+
+          {labelError && (
+            <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+              <AlertCircle size={13} className="shrink-0" />
+              {labelError}
+            </div>
+          )}
 
           {scanResult && (
             <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-1.5" dir="rtl">

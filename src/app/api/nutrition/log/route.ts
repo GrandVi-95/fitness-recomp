@@ -197,6 +197,12 @@ export async function POST(request: Request) {
       const sanitized = directItems
         .map((item: Record<string, unknown>) => ({
           name:     typeof item.name === "string" ? item.name.trim().slice(0, 200) : "",
+          quantity: typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
+            ? Math.min(item.quantity, 10000)
+            : 1,
+          unit:     typeof item.unit === "string" && item.unit.trim()
+            ? item.unit.trim().slice(0, 20)
+            : "serving",
           calories: clampMacro(item.calories, 5000),
           protein:  clampMacro(item.protein,  500),
           carbs:    clampMacro(item.carbs,    1000),
@@ -216,8 +222,8 @@ export async function POST(request: Request) {
           foodItems: {
             create: sanitized.map((item) => ({
               name:         item.name,
-              quantity:     1,
-              unit:         "serving",
+              quantity:     item.quantity,
+              unit:         item.unit,
               calories:     item.calories,
               protein:      item.protein,
               carbs:        item.carbs,
