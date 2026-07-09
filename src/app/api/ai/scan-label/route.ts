@@ -9,8 +9,10 @@ const DEMO_USER_ID = "demo-user"
 const MAX_BASE64_LENGTH = 8 * 1024 * 1024
 
 interface ScannedLabel {
-  productName:    string | null
-  packageWeightG: number | null
+  productName:     string | null
+  packageWeightG:  number | null
+  unitWeightG:     number | null   // weight of one serving/unit if the label has a למנה/ליחידה column
+  unitsPerPackage: number | null   // e.g. "4 יחידות" printed on the package
   per100g: {
     calories:      number
     protein:       number
@@ -27,16 +29,20 @@ const SYSTEM_PROMPT = `אתה סורק תוויות תזונה. תקבל תמו�
 תפקידך: לחלץ ערכים תזונתיים אך ורק מטבלת הערכים התזונתיים שבתמונה — ל-100 גרם.
 
 כללים קריטיים:
-1. חלץ ערכים ל-100 גרם בלבד. אם הטבלה מציגה רק "למנה", המר ל-100 גרם לפי משקל המנה המצוין.
+1. חלץ ערכים ל-100 גרם. אם הטבלה מציגה רק "למנה", המר ל-100 גרם לפי משקל המנה המצוין.
 2. אל תנחש ואל תשלים ערכים מהידע הכללי שלך — רק מה שכתוב בתווית. ערך שלא מופיע בתווית → 0.
 3. אם מופיע שם מוצר ברור בתמונה, כלול אותו. אחרת null.
 4. אם מופיע משקל אריזה כולל (למשל "400 גרם"), כלול אותו ב-packageWeightG. אחרת null.
-5. confidence: "high" אם הטבלה קריאה וברורה, "medium" אם חלק מהערכים מטושטשים, "low" אם התמונה אינה תווית תזונה או בלתי קריאה.
+5. עמודת "למנה" / "ליחידה": אם הטבלה כוללת עמודה כזו ומצוין משקל המנה/היחידה (למשל "מנה = 80 גרם" או "ליחידה (95 גרם)"), כלול את המשקל ב-unitWeightG. אחרת null.
+6. אם מצוין מספר יחידות באריזה (למשל "4 שניצלים" או "6 יחידות"), כלול אותו ב-unitsPerPackage. אחרת null.
+7. confidence: "high" אם הטבלה קריאה וברורה, "medium" אם חלק מהערכים מטושטשים, "low" אם התמונה אינה תווית תזונה או בלתי קריאה.
 
 החזר JSON בלבד:
 {
   "productName": "שם המוצר או null",
   "packageWeightG": 400,
+  "unitWeightG": 80,
+  "unitsPerPackage": 5,
   "per100g": {
     "calories": 375,
     "protein": 12.5,
@@ -112,14 +118,17 @@ export async function POST(request: Request) {
       )
     }
 
+    const posInt = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : null
+
     const p = parsed.per100g ?? ({} as ScannedLabel["per100g"])
     const result: ScannedLabel = {
       productName:    typeof parsed.productName === "string" && parsed.productName.trim()
         ? parsed.productName.trim().slice(0, 120)
         : null,
-      packageWeightG: typeof parsed.packageWeightG === "number" && Number.isFinite(parsed.packageWeightG) && parsed.packageWeightG > 0
-        ? Math.round(parsed.packageWeightG)
-        : null,
+      packageWeightG:  posInt(parsed.packageWeightG),
+      unitWeightG:     posInt(parsed.unitWeightG),
+      unitsPerPackage: posInt(parsed.unitsPerPackage),
       per100g: {
         calories:     clamp(p.calories,     900),
         protein:      clamp(p.protein,      100),

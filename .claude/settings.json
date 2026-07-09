@@ -4,7 +4,8 @@
       "Bash(npm install *)",
       "Bash(npm list *)",
       "PowerShell(npx tsc --noEmit 2>$null)",
-      "PowerShell(npx tsc --noEmit)"
+      "PowerShell(npx tsc --noEmit)",
+      "PowerShell(Remove-Item -Recurse -Force \"c:\\\\Users\\\\ido\\\\fitness-recomp\\\\src\\\\app\\\\api\\\\nutrition\\\\products\" -Confirm:$false)"
     ]
   }
 }

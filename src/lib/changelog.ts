@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.8.1",
+    description:
+      "Feature Refinement: Integrated Label Scanner with saved recipes and added unit-based portioning capabilities.",
+  },
+  {
     version: "v1.8.0",
     description:
       "Feature: Launched Phase 8 Multimodal Nutrition Label Scanner with automated OCR macro extraction and flexible portion-logging.",
@@ -176,4 +181,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.8.0"
+export const APP_VERSION = "v1.8.1"

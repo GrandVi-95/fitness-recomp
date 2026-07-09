@@ -64,8 +64,10 @@ interface VoiceMeal {
 }
 
 interface LabelScan {
-  productName:    string          // editable by user before saving
-  packageWeightG: string          // editable, kept as string for the input field
+  productName:     string          // editable by user before saving
+  packageWeightG:  string          // editable, kept as string for the input field
+  unitWeightG:     string          // from the label's למנה/ליחידה column, if present
+  unitsPerPackage: string          // printed on package, or asked from the user
   per100g: {
     calories:      number
     protein:       number
@@ -345,7 +347,7 @@ export default function NutritionPage() {
   const [labelLoading,     setLabelLoading]     = useState(false)
   const [labelScan,        setLabelScan]        = useState<LabelScan | null>(null)
   const [labelError,       setLabelError]       = useState<string | null>(null)
-  const [labelPortionMode, setLabelPortionMode] = useState<"grams" | "percent">("grams")
+  const [labelPortionMode, setLabelPortionMode] = useState<"units" | "grams" | "percent">("grams")
   const [labelPortion,     setLabelPortion]     = useState("50")
   const [labelSaveProduct, setLabelSaveProduct] = useState(true)
   const [labelLogging,     setLabelLogging]     = useState(false)
@@ -652,13 +654,18 @@ export default function NutritionPage() {
         return
       }
       setLabelScan({
-        productName:    data.productName ?? "",
-        packageWeightG: data.packageWeightG ? String(data.packageWeightG) : "",
-        per100g:        data.per100g,
-        confidence:     data.confidence,
+        productName:     data.productName ?? "",
+        packageWeightG:  data.packageWeightG  ? String(data.packageWeightG)  : "",
+        unitWeightG:     data.unitWeightG     ? String(data.unitWeightG)     : "",
+        unitsPerPackage: data.unitsPerPackage ? String(data.unitsPerPackage) : "",
+        per100g:         data.per100g,
+        confidence:      data.confidence,
       })
-      setLabelPortionMode("grams")
-      setLabelPortion("50")
+      // Pre-packaged items are eaten by the piece — default to unit mode when
+      // the label gave us (or lets us derive) a unit weight.
+      const hasUnit = !!data.unitWeightG || (!!data.packageWeightG && !!data.unitsPerPackage)
+      setLabelPortionMode(hasUnit ? "units" : "grams")
+      setLabelPortion(hasUnit ? "1" : "50")
     } catch {
       setLabelError("שגיאה בסריקת התווית — נסה שוב")
     } finally {
@@ -667,15 +674,44 @@ export default function NutritionPage() {
     }
   }
 
-  // Resolve the portion input to grams (percent mode needs a package weight)
+  const posNum = (s: string): number | null => {
+    const n = parseFloat(s)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  // Weight of one unit: from the label's per-unit column, or derived as
+  // packageWeight / unitsPerPackage when the user tells us the piece count.
+  const labelUnitWeightG = (): number | null => {
+    if (!labelScan) return null
+    const direct = posNum(labelScan.unitWeightG)
+    if (direct) return direct
+    const pkg   = posNum(labelScan.packageWeightG)
+    const units = posNum(labelScan.unitsPerPackage)
+    return pkg && units ? pkg / units : null
+  }
+
+  // Whole-package weight: printed on the label, or unitWeight × unitsPerPackage
+  const labelPackageGrams = (): number | null => {
+    if (!labelScan) return null
+    const pkg = posNum(labelScan.packageWeightG)
+    if (pkg) return pkg
+    const unit  = posNum(labelScan.unitWeightG)
+    const units = posNum(labelScan.unitsPerPackage)
+    return unit && units ? unit * units : null
+  }
+
+  // Resolve the portion input to grams for the selected mode
   const labelPortionGrams = (): number | null => {
     if (!labelScan) return null
     const val = parseFloat(labelPortion)
     if (!Number.isFinite(val) || val <= 0) return null
     if (labelPortionMode === "grams") return val
-    const pkg = parseFloat(labelScan.packageWeightG)
-    if (!Number.isFinite(pkg) || pkg <= 0) return null
-    return (pkg * val) / 100
+    if (labelPortionMode === "units") {
+      const unit = labelUnitWeightG()
+      return unit ? unit * val : null
+    }
+    const pkg = labelPackageGrams()
+    return pkg ? (pkg * val) / 100 : null
   }
 
   const handleLogLabelPortion = async () => {
@@ -687,12 +723,29 @@ export default function NutritionPage() {
     setLabelError(null)
     const factor = grams / 100
     try {
-      // Save to product library first so the food exists even if logging fails
-      if (labelSaveProduct) {
-        await fetch("/api/nutrition/products", {
+      // Save as a zero-prep recipe (shared store with Saved Recipes) so the
+      // product shows up in the recipes menu for one-tap future portions.
+      // Requires whole-package totals — hence the labelPackageGrams() guard.
+      const pkgGrams = labelPackageGrams()
+      if (labelSaveProduct && pkgGrams) {
+        const pf = pkgGrams / 100
+        const unitW = labelUnitWeightG()
+        await fetch("/api/recipes", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ name, per100g: labelScan.per100g }),
+          body:    JSON.stringify({
+            name,
+            ingredients:   `מוצר סרוק מתווית · אריזה ${Math.round(pkgGrams)} גרם · ל-100 גרם: ${labelScan.per100g.calories} קק"ל, ${labelScan.per100g.protein}ג' חלבון`,
+            totalCalories: Math.round(labelScan.per100g.calories * pf),
+            totalProtein:  Math.round(labelScan.per100g.protein  * pf * 10) / 10,
+            totalCarbs:    Math.round(labelScan.per100g.carbs    * pf),
+            totalFat:      Math.round(labelScan.per100g.fat      * pf * 10) / 10,
+            totalSugar:    Math.round(labelScan.per100g.sugar    * pf * 10) / 10,
+            // One unit as the default serving when known, else the standard 25%
+            defaultServingPct: unitW
+              ? Math.round((unitW / pkgGrams) * 1000) / 10
+              : 25,
+          }),
         }).catch(() => {})
       }
       const res = await fetch("/api/nutrition/log", {
@@ -1286,10 +1339,19 @@ export default function NutritionPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex bg-slate-900/70 rounded-lg p-0.5">
                   <button
-                    onClick={() => setLabelPortionMode("grams")}
+                    onClick={() => { setLabelPortionMode("units"); setLabelPortion("1") }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                      labelPortionMode === "units" ? "bg-cyan-600 text-white" : "text-slate-400",
+                    )}
+                  >
+                    יחידות
+                  </button>
+                  <button
+                    onClick={() => { setLabelPortionMode("grams"); setLabelPortion("50") }}
                     className={cn(
                       "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
                       labelPortionMode === "grams" ? "bg-cyan-600 text-white" : "text-slate-400",
@@ -1298,8 +1360,8 @@ export default function NutritionPage() {
                     גרם
                   </button>
                   <button
-                    onClick={() => setLabelPortionMode("percent")}
-                    disabled={!parseFloat(labelScan.packageWeightG)}
+                    onClick={() => { setLabelPortionMode("percent"); setLabelPortion("25") }}
+                    disabled={!labelPackageGrams()}
                     className={cn(
                       "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all disabled:opacity-30",
                       labelPortionMode === "percent" ? "bg-cyan-600 text-white" : "text-slate-400",
@@ -1315,23 +1377,45 @@ export default function NutritionPage() {
                   className="w-16 bg-slate-900/70 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
                 />
                 <span className="text-[11px] text-slate-500">
-                  {labelPortionMode === "grams" ? "גרם" : "%"}
+                  {labelPortionMode === "units" ? "יח'" : labelPortionMode === "grams" ? "גרם" : "%"}
                 </span>
               </div>
+
+              {/* Unit weight unknown → ask for the piece count to derive it */}
+              {labelPortionMode === "units" && !labelUnitWeightG() && (
+                <div className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-3 py-2">
+                  <span className="text-[11px] text-amber-300/90 shrink-0">כמה יחידות יש באריזה כולה?</span>
+                  <input
+                    type="number"
+                    value={labelScan.unitsPerPackage}
+                    onChange={e => setLabelScan({ ...labelScan, unitsPerPackage: e.target.value })}
+                    placeholder="4"
+                    className="w-14 bg-slate-900/70 rounded-lg px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+                  />
+                  {!posNum(labelScan.packageWeightG) && (
+                    <span className="text-[10px] text-slate-500">(נדרש גם משקל אריזה)</span>
+                  )}
+                </div>
+              )}
 
               {(() => {
                 const grams = labelPortionGrams()
                 if (!grams) return (
                   <p className="text-[10px] text-amber-400/80">
-                    {labelPortionMode === "percent" && !parseFloat(labelScan.packageWeightG)
+                    {labelPortionMode === "units"
+                      ? "הזן משקל אריזה ומספר יחידות כדי לחשב משקל יחידה"
+                      : labelPortionMode === "percent" && !labelPackageGrams()
                       ? "הזן משקל אריזה כדי להשתמש באחוזים"
                       : "הזן כמות תקינה"}
                   </p>
                 )
                 const f = grams / 100
+                const prefix = labelPortionMode === "units"
+                  ? `${labelPortion} יח' (${Math.round(grams)} גרם)`
+                  : `${Math.round(grams)} גרם`
                 return (
                   <p className="text-[11px] font-semibold text-slate-300">
-                    {Math.round(grams)} גרם = <span className="text-orange-400">{Math.round(labelScan.per100g.calories * f)} קק"ל</span> · <span className="text-indigo-400">{Math.round(labelScan.per100g.protein * f * 10) / 10}ג' חלב'</span> · <span className="text-emerald-400">{Math.round(labelScan.per100g.carbs * f * 10) / 10}ג' פחמ'</span> · <span className="text-amber-400">{Math.round(labelScan.per100g.fat * f * 10) / 10}ג' שומן</span>
+                    {prefix} = <span className="text-orange-400">{Math.round(labelScan.per100g.calories * f)} קק"ל</span> · <span className="text-indigo-400">{Math.round(labelScan.per100g.protein * f * 10) / 10}ג' חלב'</span> · <span className="text-emerald-400">{Math.round(labelScan.per100g.carbs * f * 10) / 10}ג' פחמ'</span> · <span className="text-amber-400">{Math.round(labelScan.per100g.fat * f * 10) / 10}ג' שומן</span>
                   </p>
                 )
               })()}
@@ -1339,19 +1423,23 @@ export default function NutritionPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setLabelSaveProduct(v => !v)}
+                  disabled={!labelPackageGrams()}
                   className={cn(
-                    "flex items-center gap-1.5 text-[11px] transition-colors",
-                    labelSaveProduct ? "text-cyan-300" : "text-slate-500",
+                    "flex items-center gap-1.5 text-[11px] transition-colors disabled:opacity-40",
+                    labelSaveProduct && labelPackageGrams() ? "text-cyan-300" : "text-slate-500",
                   )}
                 >
                   <span className={cn(
                     "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors",
-                    labelSaveProduct ? "bg-cyan-600 border-cyan-500" : "border-slate-600",
+                    labelSaveProduct && labelPackageGrams() ? "bg-cyan-600 border-cyan-500" : "border-slate-600",
                   )}>
-                    {labelSaveProduct && <Check size={10} className="text-white" />}
+                    {labelSaveProduct && !!labelPackageGrams() && <Check size={10} className="text-white" />}
                   </span>
-                  שמור למאגר המוצרים
+                  שמור למתכונים שלי
                 </button>
+                {!labelPackageGrams() && (
+                  <span className="text-[10px] text-slate-500">(נדרש משקל אריזה לשמירה)</span>
+                )}
               </div>
 
               <button
