@@ -81,9 +81,12 @@ model Exercise {
   name             String  @unique
   primaryMuscle    String  // chest | back | shoulders | biceps | triceps | legs | core
   secondaryMuscles String  @default("[]") // JSON array stored as string
-  equipment        String  @default("barbell") // barbell | dumbbell | cable | machine | bodyweight | kettlebell
+  equipment        String  @default("barbell") // barbell | dumbbell | cable | machine | bodyweight | kettlebell | household
   instructions     String?
   isCompound       Boolean @default(true)
+  // weight_reps (default) | reps_only (bodyweight — weight optional) |
+  // duration (isometric holds — logged as seconds, not weight×reps)
+  trackingType     String  @default("weight_reps")
 
   workoutExercises WorkoutExercise[]
   setLogs          SetLog[]
@@ -109,9 +112,12 @@ model Workout {
   id           String   @id @default(cuid())
   planId       String
   name         String                   // "Push Day A", "Pull Day B"
-  dayLabel     String                   // Push | Pull | Legs | A | B
+  dayLabel     String                   // Push | Pull | Legs | A | B | A-Home | B-Home ...
   order        Int
   muscleGroups String   @default("[]")  // JSON array — ["chest","shoulders","triceps"]
+  // gym | home — home workouts are fully separate rows with their own exercise
+  // rows, so their set history can never mix with gym history
+  environment  String   @default("gym")
 
   plan      WorkoutPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
   exercises WorkoutExercise[]
@@ -154,15 +160,16 @@ model WorkoutSession {
 }
 
 model SetLog {
-  id         String   @id @default(cuid())
-  sessionId  String
-  exerciseId String
-  setNumber  Int
-  reps       Int
-  weightKg   Float
-  rpe        Int?     // Rate of Perceived Exertion 1–10
-  isWarmup   Boolean  @default(false)
-  loggedAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  sessionId    String
+  exerciseId   String
+  setNumber    Int
+  reps         Int
+  weightKg     Float
+  rpe          Int?     // Rate of Perceived Exertion 1–10
+  isWarmup     Boolean  @default(false)
+  durationSecs Int?     // static holds (plank, wall-sit): hold time in seconds
+  loggedAt     DateTime @default(now())
 
   session  WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   exercise Exercise       @relation(fields: [exerciseId], references: [id])

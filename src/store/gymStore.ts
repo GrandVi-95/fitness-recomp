@@ -20,16 +20,20 @@ export interface LoggedSet {
   loggedAt: number      // Date.now() timestamp — survives serialisation
 }
 
+export type TrackingType = "weight_reps" | "reps_only" | "duration"
+
 export interface PreviousPerformance {
   sessionDate: string   // "Apr 10"
-  sets: { reps: number; weightKg: number; rpe?: number }[]
+  sets: { reps: number; weightKg: number; rpe?: number; durationSecs?: number }[]
   topSetWeightKg: number
+  topDurationSecs?: number  // best hold time (duration exercises)
   totalVolume: number
 }
 
 export interface ExerciseBaseline {
   weightKg: number
   reps: number | null  // null when no history yet
+  durationSecs?: number | null  // anchor for duration exercises
   // true = last 2 sessions matched → athlete consolidated, consider increasing
   // false = most-recent session used as anchor (athlete still adapting)
   isConfirmed: boolean
@@ -40,10 +44,11 @@ export interface SessionExercise {
   exerciseId: string
   name: string
   primaryMuscle: string
-  equipment: string    // "barbell" | "bodyweight" | ...
+  equipment: string    // "barbell" | "bodyweight" | "household" | ...
+  trackingType?: TrackingType  // optional for backwards-compat with persisted sessions
   order: number
   targetSets: number
-  targetReps: string   // "8-12" | "5" | "AMRAP"
+  targetReps: string   // "8-12" | "5" | "AMRAP" | seconds range for duration
   restSeconds: number
   notes?: string
   previousPerformance: PreviousPerformance | null
@@ -56,6 +61,7 @@ export interface LastLoggedSetInfo {
   reps: number
   setNumber: number
   isWarmup: boolean
+  durationSecs?: number  // set when the logged set was a timed hold
 }
 
 type GymStatus = "idle" | "active" | "finished"
@@ -93,6 +99,7 @@ interface GymState {
   inputWeightKg: Record<string, number>
   inputReps: Record<string, number>
   inputRpe: Record<string, number>
+  inputDurationSecs: Record<string, number>  // duration-tracked exercises
 
   // ── Rest timer ─────────────────────────────────────────────
   restActive: boolean
@@ -123,6 +130,8 @@ interface GymState {
   setWeight: (exerciseId: string, value: number) => void
   setReps: (exerciseId: string, value: number) => void
   setRpe: (exerciseId: string, value: number) => void
+  adjustDuration: (exerciseId: string, delta: number) => void
+  setDuration: (exerciseId: string, value: number) => void
   swapExercises: (idxA: number, idxB: number) => void
   nextExercise: () => void
   prevExercise: () => void
@@ -166,6 +175,7 @@ export const useGymStore = create<GymState>()(
       inputWeightKg: {},
       inputReps: {},
       inputRpe: {},
+      inputDurationSecs: {},
       restActive: false,
       restStartedAt: null,
       restDurationSecs: 90,
@@ -179,6 +189,7 @@ export const useGymStore = create<GymState>()(
         const inputWeightKg: Record<string, number> = {}
         const inputReps: Record<string, number> = {}
         const inputRpe: Record<string, number> = {}
+        const inputDurationSecs: Record<string, number> = {}
 
         for (const ex of exercises) {
           // Prefer the server-computed baseline (driven by last-2-session comparison).
@@ -186,10 +197,15 @@ export const useGymStore = create<GymState>()(
           inputWeightKg[ex.exerciseId] =
             ex.baseline?.weightKg ?? ex.previousPerformance?.topSetWeightKg ?? 0
           // Use the baseline's confirmed reps when available, otherwise parse the
-          // target rep string (e.g. "8-12" → 8).
+          // target rep string (e.g. "8-12" → 8). `||` (not ??) so duration sets
+          // whose history has reps 0 fall through to the target parse.
           inputReps[ex.exerciseId] =
-            ex.baseline?.reps ?? parseDefaultReps(ex.targetReps)
+            ex.baseline?.reps || parseDefaultReps(ex.targetReps)
           inputRpe[ex.exerciseId] = 7
+          // Duration anchor: best previous hold, else lower bound of the
+          // seconds target (e.g. "30-60" → 30)
+          inputDurationSecs[ex.exerciseId] =
+            ex.baseline?.durationSecs || parseDefaultReps(ex.targetReps)
         }
 
         set({
@@ -204,6 +220,7 @@ export const useGymStore = create<GymState>()(
           inputWeightKg,
           inputReps,
           inputRpe,
+          inputDurationSecs,
           restActive: false,
           restStartedAt: null,
           restDurationSecs: 90,
@@ -285,6 +302,25 @@ export const useGymStore = create<GymState>()(
       setRpe: (exerciseId, value) =>
         set((state) => ({
           inputRpe: { ...state.inputRpe, [exerciseId]: value },
+        })),
+
+      adjustDuration: (exerciseId, delta) =>
+        set((state) => ({
+          inputDurationSecs: {
+            ...state.inputDurationSecs,
+            [exerciseId]: Math.max(
+              5,
+              (state.inputDurationSecs[exerciseId] ?? 30) + delta
+            ),
+          },
+        })),
+
+      setDuration: (exerciseId, value) =>
+        set((state) => ({
+          inputDurationSecs: {
+            ...state.inputDurationSecs,
+            [exerciseId]: Math.max(5, Math.floor(value)),
+          },
         })),
 
       swapExercises: (idxA, idxB) =>
@@ -374,6 +410,7 @@ export const useGymStore = create<GymState>()(
           inputWeightKg: {},
           inputReps: {},
           inputRpe: {},
+          inputDurationSecs: {},
           restActive: false,
           restStartedAt: null,
           lastLoggedSetInfo: null,

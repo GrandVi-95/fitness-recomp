@@ -13,7 +13,7 @@ export async function POST(
     const { sessionId } = await params
     const body = await request.json()
 
-    const { exerciseId, setNumber, reps, weightKg, rpe, isWarmup } = body
+    const { exerciseId, setNumber, reps, weightKg, rpe, isWarmup, durationSecs } = body
 
     if (!exerciseId || setNumber == null || reps == null || weightKg == null) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -28,6 +28,10 @@ export async function POST(
         weightKg: Math.round(weightKg * 10) / 10,
         rpe: rpe != null ? Math.min(10, Math.max(1, Math.round(rpe))) : null,
         isWarmup: isWarmup ?? false,
+        durationSecs:
+          typeof durationSecs === "number" && Number.isFinite(durationSecs) && durationSecs > 0
+            ? Math.round(durationSecs)
+            : null,
         loggedAt: new Date(),
       },
     })

@@ -9,11 +9,16 @@ const DEMO_USER_ID = "demo-user"
  * is ready for progressive overload on the next session.
  */
 function setsMatch(
-  a: { reps: number; weightKg: number }[],
-  b: { reps: number; weightKg: number }[],
+  a: { reps: number; weightKg: number; durationSecs: number | null }[],
+  b: { reps: number; weightKg: number; durationSecs: number | null }[],
 ): boolean {
   if (a.length === 0 || a.length !== b.length) return false
-  return a.every((s, i) => s.weightKg === b[i].weightKg && s.reps === b[i].reps)
+  return a.every(
+    (s, i) =>
+      s.weightKg === b[i].weightKg &&
+      s.reps === b[i].reps &&
+      (s.durationSecs ?? 0) === (b[i].durationSecs ?? 0),
+  )
 }
 
 /** POST /api/gym/sessions
@@ -75,6 +80,10 @@ export async function POST(request: Request) {
 
         const topSetWeightKg =
           latestSets.length > 0 ? Math.max(...latestSets.map((s) => s.weightKg)) : 0
+        const topDurationSecs =
+          latestSets.length > 0
+            ? Math.max(...latestSets.map((s) => s.durationSecs ?? 0))
+            : 0
         const totalVolume = latestSets.reduce(
           (sum, s) => sum + s.weightKg * s.reps,
           0,
@@ -96,6 +105,7 @@ export async function POST(request: Request) {
           primaryMuscle: we.exercise.primaryMuscle,
           secondaryMuscles,
           equipment: we.exercise.equipment,
+          trackingType: we.exercise.trackingType,
           order: we.order,
           targetSets: we.targetSets,
           targetReps: we.targetReps,
@@ -112,19 +122,24 @@ export async function POST(request: Request) {
                     reps: s.reps,
                     weightKg: s.weightKg,
                     rpe: s.rpe ?? undefined,
+                    durationSecs: s.durationSecs ?? undefined,
                   })),
                   topSetWeightKg,
+                  topDurationSecs,
                   totalVolume,
                 }
               : null,
           // Baseline drives the auto-fill in the gym UI.
-          // isConfirmed = true  → athlete did identical weight+reps two sessions in a row
+          // isConfirmed = true  → athlete did identical performance two sessions in a row
           // isConfirmed = false → most recent session is the best available anchor
+          // Bodyweight (weight 0) and duration exercises anchor on reps/seconds,
+          // so any prior working set qualifies as a baseline — not just weighted ones.
           baseline:
-            topSetWeightKg > 0
+            latestSets.length > 0
               ? {
                   weightKg: topSetWeightKg,
                   reps: suggestedReps,
+                  durationSecs: topDurationSecs > 0 ? topDurationSecs : null,
                   isConfirmed,
                 }
               : null,

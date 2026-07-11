@@ -276,6 +276,7 @@ const EQUIPMENT_HE: Record<string, string> = {
   machine:    "מכונה",
   bodyweight: "משקל גוף",
   kettlebell: "קטלבל",
+  household:  "אביזר ביתי",
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -316,6 +317,7 @@ interface WorkoutOption {
   id: string
   name: string
   dayLabel: string
+  environment?: "gym" | "home"
   muscleGroups: string[]
   exerciseCount: number
   lastSession: { date: string; durationMins: number | null } | null
@@ -327,10 +329,14 @@ function WorkoutPicker() {
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState(false)
+  // Environment toggle — persisted so the app opens where you train
+  const [environment, setEnvironment] = useState<"gym" | "home">("gym")
 
   const { startSession } = useGymStore()
 
   useEffect(() => {
+    const saved = localStorage.getItem("workout-environment")
+    if (saved === "home" || saved === "gym") setEnvironment(saved)
     fetch("/api/gym/workouts")
       .then((r) => r.json())
       .then((data) => {
@@ -343,6 +349,16 @@ function WorkoutPicker() {
       })
       .finally(() => setLoading(false))
   }, [])
+
+  const handleSetEnvironment = (env: "gym" | "home") => {
+    localStorage.setItem("workout-environment", env)
+    setEnvironment(env)
+  }
+
+  // Legacy workouts predate the environment column and default to "gym"
+  const visibleWorkouts = workouts?.filter(
+    (w) => (w.environment ?? "gym") === environment,
+  )
 
   const handleStart = async (workoutId: string, workoutName: string) => {
     setStarting(workoutId)
@@ -364,12 +380,44 @@ function WorkoutPicker() {
     <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Dumbbell size={22} className="text-indigo-400" /> מצב חדר כושר
+          <Dumbbell size={22} className="text-indigo-400" />
+          {environment === "gym" ? "מצב חדר כושר" : "מצב אימון ביתי"}
         </h1>
         {planName && (
           <p className="text-sm text-slate-400 mt-0.5">{planName}</p>
         )}
       </div>
+
+      {/* ── Toggle: חדר כושר / אימון ביתי ──────────────────── */}
+      <div className="flex items-center gap-2 bg-slate-900/60 rounded-2xl p-1.5" dir="rtl">
+        <button
+          onClick={() => handleSetEnvironment("gym")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+            environment === "gym"
+              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+              : "text-slate-400 hover:text-slate-200",
+          )}
+        >
+          <span>🏋️</span> חדר כושר
+        </button>
+        <button
+          onClick={() => handleSetEnvironment("home")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+            environment === "home"
+              ? "bg-teal-600 text-white shadow-lg shadow-teal-500/25"
+              : "text-slate-400 hover:text-slate-200",
+          )}
+        >
+          <span>🏡</span> אימון ביתי
+        </button>
+      </div>
+      {environment === "home" && (
+        <p className="text-[11px] text-slate-500 text-center -mt-3" dir="rtl">
+          מעקב ביתי נפרד לחלוטין — לא משפיע על היסטוריית חדר הכושר
+        </p>
+      )}
 
       {fetchError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-3 flex items-center gap-2 text-sm text-red-400">
@@ -386,16 +434,20 @@ function WorkoutPicker() {
             />
           ))}
         </div>
-      ) : workouts?.length === 0 ? (
+      ) : visibleWorkouts?.length === 0 ? (
         <div className="bg-slate-900 rounded-2xl p-6 text-center">
-          <p className="text-slate-400">לא נמצאו תוכניות אימון.</p>
+          <p className="text-slate-400">
+            {environment === "home"
+              ? "לא נמצאו אימונים ביתיים."
+              : "לא נמצאו תוכניות אימון."}
+          </p>
           <p className="text-xs text-slate-600 mt-1">
             צור תוכנית תחילה בלשונית האימונים.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {workouts?.map((w) => (
+          {visibleWorkouts?.map((w) => (
             <div
               key={w.id}
               className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3"
@@ -480,9 +532,10 @@ function ActiveSession() {
   const exercises      = useGymStore((s) => s.exercises)
   const currentExIdx   = useGymStore((s) => s.currentExIdx)
   const loggedSets     = useGymStore((s) => s.loggedSets)
-  const inputWeightKg  = useGymStore((s) => s.inputWeightKg)
-  const inputReps      = useGymStore((s) => s.inputReps)
-  const inputRpe       = useGymStore((s) => s.inputRpe)
+  const inputWeightKg      = useGymStore((s) => s.inputWeightKg)
+  const inputReps          = useGymStore((s) => s.inputReps)
+  const inputRpe           = useGymStore((s) => s.inputRpe)
+  const inputDurationSecs  = useGymStore((s) => s.inputDurationSecs)
   const startedAt      = useGymStore((s) => s.startedAt)
   // Actions are stable references — selecting them individually never triggers re-renders
   const logSet             = useGymStore((s) => s.logSet)
@@ -492,6 +545,8 @@ function ActiveSession() {
   const setWeight          = useGymStore((s) => s.setWeight)
   const setReps            = useGymStore((s) => s.setReps)
   const setRpe             = useGymStore((s) => s.setRpe)
+  const adjustDuration     = useGymStore((s) => s.adjustDuration)
+  const setDuration        = useGymStore((s) => s.setDuration)
   const swapExercises      = useGymStore((s) => s.swapExercises)
   const nextExercise       = useGymStore((s) => s.nextExercise)
   const prevExercise       = useGymStore((s) => s.prevExercise)
@@ -525,9 +580,15 @@ function ActiveSession() {
   const setsCompleted = workingSets.length
   const allSetsComplete = setsCompleted >= currentEx.targetSets
 
-  const weight = inputWeightKg[currentEx.exerciseId] ?? 0
-  const reps = inputReps[currentEx.exerciseId] ?? 8
-  const rpe = inputRpe[currentEx.exerciseId] ?? 7
+  const weight   = inputWeightKg[currentEx.exerciseId] ?? 0
+  const reps     = inputReps[currentEx.exerciseId] ?? 8
+  const rpe      = inputRpe[currentEx.exerciseId] ?? 7
+  const duration = inputDurationSecs[currentEx.exerciseId] ?? 30
+
+  // Tracking mode — duration exercises (wall sit, plank taps) log seconds,
+  // not weight×reps. reps_only (push-ups, pull-ups) keeps an optional
+  // added-weight field defaulting to bodyweight (0).
+  const isDuration = currentEx.trackingType === "duration"
 
   // ── תיעוד סט ──────────────────────────────────────────────
   const handleLogSet = useCallback(async () => {
@@ -535,24 +596,35 @@ function ActiveSession() {
 
     const setNumber = isWarmup ? warmupSets.length + 1 : workingSets.length + 1
 
-    const setData = {
-      exerciseId: currentEx.exerciseId,
-      setNumber,
-      reps,
-      weightKg: weight,
-      rpe,
-      isWarmup,
-    }
+    const setData = isDuration
+      ? {
+          exerciseId: currentEx.exerciseId,
+          setNumber,
+          reps: 0,
+          weightKg: 0,
+          rpe,
+          isWarmup,
+          durationSecs: duration,
+        }
+      : {
+          exerciseId: currentEx.exerciseId,
+          setNumber,
+          reps,
+          weightKg: weight,
+          rpe,
+          isWarmup,
+        }
 
     const tempId = logSet(setData)
 
     if (!isWarmup) {
       startRest(currentEx.restSeconds, {
         exerciseName: currentEx.name,
-        weightKg: weight,
-        reps,
+        weightKg: isDuration ? 0 : weight,
+        reps: isDuration ? 0 : reps,
         setNumber,
         isWarmup: false,
+        ...(isDuration && { durationSecs: duration }),
       })
       setIsWarmup(false)
     }
@@ -578,6 +650,8 @@ function ActiveSession() {
     weight,
     reps,
     rpe,
+    duration,
+    isDuration,
     isWarmup,
     workingSets.length,
     warmupSets.length,
@@ -605,9 +679,10 @@ function ActiveSession() {
     startRest(currentEx.restSeconds, {
       exerciseName: currentEx.name,
       weightKg: 0,
-      reps: durationSecs,
+      reps: 0,
       setNumber,
       isWarmup: false,
+      durationSecs,
     })
     try {
       const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
@@ -677,6 +752,7 @@ function ActiveSession() {
         <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
           <span className="font-medium text-slate-400">
             {currentEx.targetSets} × {currentEx.targetReps}
+            {isDuration && " שנ'"}
           </span>
           <span className="text-slate-700">·</span>
           <span className="flex items-center gap-1">
@@ -703,7 +779,9 @@ function ActiveSession() {
               </span>
             </div>
             <span className="text-[11px] text-amber-700">
-              {currentEx.previousPerformance.totalVolume.toLocaleString()} ק"ג סה"כ
+              {(currentEx.previousPerformance.topDurationSecs ?? 0) > 0
+                ? `שיא: ${currentEx.previousPerformance.topDurationSecs} שנ'`
+                : `${currentEx.previousPerformance.totalVolume.toLocaleString()} ק"ג סה"כ`}
             </span>
           </div>
 
@@ -716,13 +794,21 @@ function ActiveSession() {
                 <span className="text-[10px] text-amber-700 font-semibold me-0.5">
                   {i + 1}
                 </span>
-                <span className="text-sm font-black text-amber-100">
-                  {s.weightKg > 0 ? `${s.weightKg}ק"ג` : "BW"}
-                </span>
-                <span className="text-amber-700 text-xs mx-0.5">×</span>
-                <span className="text-sm font-black text-amber-100">
-                  {s.reps}
-                </span>
+                {(s.durationSecs ?? 0) > 0 ? (
+                  <span className="text-sm font-black text-amber-100">
+                    {s.durationSecs} שנ'
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-sm font-black text-amber-100">
+                      {s.weightKg > 0 ? `${s.weightKg}ק"ג` : "BW"}
+                    </span>
+                    <span className="text-amber-700 text-xs mx-0.5">×</span>
+                    <span className="text-sm font-black text-amber-100">
+                      {s.reps}
+                    </span>
+                  </>
+                )}
                 {s.rpe != null && (
                   <span className="text-[10px] text-amber-700 ms-0.5">
                     @{s.rpe}
@@ -836,44 +922,67 @@ function ActiveSession() {
             </button>
           </div>
 
-          {/* ── משקל + חזרות ──────────────────────────────────── */}
-          <div className="flex gap-3">
-            <StepperInput
-              label={
-                currentEx.equipment === "bodyweight"
-                  ? "משקל נוסף (ק\"ג)"
-                  : "משקל (ק\"ג)"
-              }
-              value={weight}
-              onAdjust={(delta) =>
-                adjustWeight(currentEx.exerciseId, delta)
-              }
-              onSet={(v) => setWeight(currentEx.exerciseId, v)}
-              step={WEIGHT_STEP}
-              min={0}
-              isDecimal
-            />
-            <StepperInput
-              label="חזרות"
-              value={reps}
-              onAdjust={(delta) =>
-                adjustReps(currentEx.exerciseId, delta)
-              }
-              onSet={(v) => setReps(currentEx.exerciseId, v)}
-              step={1}
-              min={1}
-            />
-          </div>
+          {/* ── קלט לפי סוג מעקב ─────────────────────────────── */}
+          {isDuration ? (
+            /* תרגיל איזומטרי — שניות × סטים במקום משקל × חזרות */
+            <div className="flex gap-3">
+              <StepperInput
+                label="זמן החזקה (שניות)"
+                value={duration}
+                onAdjust={(delta) =>
+                  adjustDuration(currentEx.exerciseId, delta)
+                }
+                onSet={(v) => setDuration(currentEx.exerciseId, v)}
+                step={5}
+                min={5}
+              />
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <StepperInput
+                label={
+                  currentEx.trackingType === "reps_only" ||
+                  currentEx.equipment === "bodyweight"
+                    ? "משקל נוסף (ק\"ג)"
+                    : "משקל (ק\"ג)"
+                }
+                value={weight}
+                onAdjust={(delta) =>
+                  adjustWeight(currentEx.exerciseId, delta)
+                }
+                onSet={(v) => setWeight(currentEx.exerciseId, v)}
+                step={WEIGHT_STEP}
+                min={0}
+                isDecimal
+              />
+              <StepperInput
+                label="חזרות"
+                value={reps}
+                onAdjust={(delta) =>
+                  adjustReps(currentEx.exerciseId, delta)
+                }
+                onSet={(v) => setReps(currentEx.exerciseId, v)}
+                step={1}
+                min={1}
+              />
+            </div>
+          )}
 
           {/* Previous performance hint near inputs */}
           {currentEx.previousPerformance && (
             <p className="text-[11px] text-amber-600/80 text-center -mt-1">
               פעם קודמת:{" "}
-              {currentEx.previousPerformance.topSetWeightKg > 0
-                ? `${currentEx.previousPerformance.topSetWeightKg} ק"ג`
-                : "BW"}
-              {currentEx.previousPerformance.sets[0] != null &&
-                ` × ${currentEx.previousPerformance.sets[0].reps} חזרות`}
+              {isDuration && (currentEx.previousPerformance.topDurationSecs ?? 0) > 0 ? (
+                `${currentEx.previousPerformance.topDurationSecs} שניות החזקה`
+              ) : (
+                <>
+                  {currentEx.previousPerformance.topSetWeightKg > 0
+                    ? `${currentEx.previousPerformance.topSetWeightKg} ק"ג`
+                    : "BW"}
+                  {currentEx.previousPerformance.sets[0] != null &&
+                    ` × ${currentEx.previousPerformance.sets[0].reps} חזרות`}
+                </>
+              )}
             </p>
           )}
 
@@ -973,7 +1082,9 @@ function ActiveSession() {
 
                 {ex.previousPerformance ? (
                   <p className="text-xs text-indigo-400 font-medium shrink-0">
-                    {ex.previousPerformance.topSetWeightKg > 0
+                    {(ex.previousPerformance.topDurationSecs ?? 0) > 0
+                      ? `${ex.previousPerformance.topDurationSecs} שנ'`
+                      : ex.previousPerformance.topSetWeightKg > 0
                       ? `${ex.previousPerformance.topSetWeightKg} ק"ג`
                       : "BW"}
                   </p>

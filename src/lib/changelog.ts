@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.9.0",
+    description:
+      "Feature: Implemented Home vs. Gym workout environments with completely isolated data tracking and dynamic metric fields for bodyweight/isometric exercises.",
+  },
+  {
     version: "v1.8.1",
     description:
       "Feature Refinement: Integrated Label Scanner with saved recipes and added unit-based portioning capabilities.",
@@ -181,4 +186,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.8.1"
+export const APP_VERSION = "v1.9.0"

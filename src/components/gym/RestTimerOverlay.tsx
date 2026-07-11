@@ -84,15 +84,23 @@ export default function RestTimerOverlay() {
         <p className="text-slate-400 text-sm mb-8 text-center">
           {lastLoggedSetInfo.exerciseName}
           {" · "}
-          <span className="text-slate-200 font-semibold">
-            {lastLoggedSetInfo.weightKg > 0
-              ? `${lastLoggedSetInfo.weightKg} ק"ג`
-              : "BW"}
-          </span>
-          {" × "}
-          <span className="text-slate-200 font-semibold">
-            {lastLoggedSetInfo.reps} חזרות
-          </span>
+          {lastLoggedSetInfo.durationSecs ? (
+            <span className="text-slate-200 font-semibold">
+              {lastLoggedSetInfo.durationSecs} שניות החזקה
+            </span>
+          ) : (
+            <>
+              <span className="text-slate-200 font-semibold">
+                {lastLoggedSetInfo.weightKg > 0
+                  ? `${lastLoggedSetInfo.weightKg} ק"ג`
+                  : "BW"}
+              </span>
+              {" × "}
+              <span className="text-slate-200 font-semibold">
+                {lastLoggedSetInfo.reps} חזרות
+              </span>
+            </>
+          )}
         </p>
       )}
 
