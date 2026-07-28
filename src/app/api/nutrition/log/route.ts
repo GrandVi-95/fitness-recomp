@@ -20,6 +20,27 @@ interface ParsedFoodItem {
   saturatedFat?: number
 }
 
+// 1 g protein = 4 kcal. A meal spending under ~10% of its calories on protein
+// is "expensive" for a vegetarian hypertrophy diet — everything above reads as
+// reasonably protein-dense. This must stay in sync with the ratio described in
+// SYSTEM_PROMPT below.
+const LOW_PROTEIN_RATIO_THRESHOLD = 0.10
+
+// Deterministic backup for the rare case an LLM omits the optional `insight`
+// field despite the instruction — keeps the nudge feature from silently
+// disappearing on a flaky response.
+function computeFallbackInsight(items: ParsedFoodItem[]): string {
+  const totals = items.reduce(
+    (acc, i) => ({ calories: acc.calories + i.calories, protein: acc.protein + i.protein }),
+    { calories: 0, protein: 0 },
+  )
+  if (totals.calories <= 0) return ""
+  const ratio = (totals.protein * 4) / totals.calories
+  return ratio < LOW_PROTEIN_RATIO_THRESHOLD
+    ? "ארוחה זו יחסית דלה בחלבון לכמות הקלוריות שלה — כדאי לשקול להוסיף טופו, סייטן או קטניות בפעם הבאה."
+    : "יחס חלבון-קלוריות טוב לארוחה הזו — כל הכבוד!"
+}
+
 // ── Hebrew NLP prompt (shared across providers) ─────────────────────────────
 const SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה באפליקציית כושר צמחונית.
 תפקידך: לחלץ פריטי מזון מטקסט בעברית ולהתאים אותם למסד נתוני המזון הנתון.
@@ -32,6 +53,16 @@ const SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה באפליקצי�
 5. אם מזון לא נמצא במסד הנתונים, כלול אותו עם הערכה מציאותית ו-matchedFoodId כ-null.
 6. שם המזון בתשובה יכול להיות בעברית.
 7. חשב גם sugar (סוכר, תת-קבוצה של פחמימות) ו-saturatedFat (שומן רווי, תת-קבוצה של שומן) לפי per100g אם קיים, אחרת הערך מציאותי.
+
+8. נדנוד AI (insight) — אחרי שחילצת את כל הפריטים, חשב את סך הקלוריות וסך החלבון של הארוחה
+   כולה, וגזור יחס חלבון-קלוריות: (סך חלבון × 4) / סך קלוריות.
+   - אם היחס נמוך מ-0.10 (הארוחה "יקרה" בקלוריות/פחמימות/שומן אך דלה בחלבון עבור ספורטאי
+     צמחוני בעל מטרת היפרטרופיה): כתוב טיפ עדין וקצר (משפט אחד בעברית) איך לשפר את הארוחה
+     בפעם הבאה — למשל להחליף חלב שיבולת שועל בחלב סויה, להוסיף חלק מקוביית טופו, או
+     להשתמש בסייטן. אל תשתמש בטון שיפוטי או מטיל אשמה — הכוונה חיובית בלבד, לא ציון.
+   - אם היחס גבוה (הארוחה עשירה בחלבון יחסית לקלוריות): כתוב משפט עידוד קצר וחם, למשל
+     "פצצת התאוששות! יחס חלבון-קלוריות מעולה."
+   - המשפט חייב להיות קצר (עד כ-20 מילים), חיובי או עדין, ולעולם לא ביקורתי או מטיל אשמה.
 
 החזר תשובה בפורמט JSON בלבד (ללא טקסט נוסף לפני או אחרי):
 {
@@ -49,7 +80,8 @@ const SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה באפליקצי�
       "sugar": 1,
       "saturatedFat": 3
     }
-  ]
+  ],
+  "insight": "משפט אחד בעברית לפי כלל 8 לעיל"
 }`
 
 function buildUserMessage(text: string, foodList: object[]): string {
@@ -184,10 +216,16 @@ async function callGemini(userMessage: string, apiKey: string): Promise<string> 
  */
 export async function POST(request: Request) {
   try {
-    const { text, mealType = "snack", directItems } = await request.json()
+    const { text, mealType = "snack", directItems, insight: rawInsight } = await request.json()
 
     // Direct log path — skip AI re-analysis and write pre-computed values from the editable review card
     if (Array.isArray(directItems) && directItems.length > 0) {
+      // The only source for a real insight here is an upstream AI call the client
+      // already made (e.g. the voice-meal analyzer) — quick-logs (coffee, label
+      // scanner) simply omit it, so this stays undefined/null for those.
+      const directInsight = typeof rawInsight === "string" && rawInsight.trim()
+        ? rawInsight.trim().slice(0, 300)
+        : null
       // Clamp to finite, non-negative, plausible values — a client bug sending
       // NaN/Infinity/negatives would otherwise silently corrupt daily totals.
       const clampMacro = (v: unknown, max: number): number => {
@@ -219,6 +257,7 @@ export async function POST(request: Request) {
           mealType,
           rawInput: sanitized.map((it) => it.name).join(", "),
           date:     new Date(),
+          insight:  directInsight,
           foodItems: {
             create: sanitized.map((item) => ({
               name:         item.name,
@@ -251,6 +290,7 @@ export async function POST(request: Request) {
         logId:    log.id,
         mealType: log.mealType,
         items:    log.foodItems,
+        insight:  log.insight ?? undefined,
         totals: {
           calories: Math.round(totals.calories),
           protein:  Math.round(totals.protein  * 10) / 10,
@@ -336,7 +376,7 @@ export async function POST(request: Request) {
     }
 
     // ── Parse JSON from response ──────────────────────────────────────────
-    let parsed: { items: ParsedFoodItem[] }
+    let parsed: { items: ParsedFoodItem[]; insight?: string }
     try {
       const jsonText = extractJsonText(rawText)
       parsed = JSON.parse(jsonText)
@@ -355,6 +395,10 @@ export async function POST(request: Request) {
       )
     }
 
+    const insight = typeof parsed.insight === "string" && parsed.insight.trim()
+      ? parsed.insight.trim().slice(0, 300)
+      : computeFallbackInsight(parsed.items)
+
     // ── Save to DB ────────────────────────────────────────────────────────
     const log = await db.nutritionLog.create({
       data: {
@@ -362,6 +406,7 @@ export async function POST(request: Request) {
         mealType,
         rawInput: text,
         date: new Date(),
+        insight: insight || null,
         foodItems: {
           create: parsed.items.map((item) => ({
             foodId: item.matchedFoodId ?? undefined,
@@ -398,6 +443,7 @@ export async function POST(request: Request) {
       logId: log.id,
       mealType: log.mealType,
       items: log.foodItems,
+      insight: log.insight ?? undefined,
       totals: {
         calories: Math.round(totals.calories),
         protein: Math.round(totals.protein * 10) / 10,

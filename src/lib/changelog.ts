@@ -5,6 +5,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.10.0",
+    description:
+      "Feature: Introduced AI Nudging with dynamic, vegetarian-friendly protein insights for logged meals.",
+  },
+  {
+    version: "v1.9.1",
+    description:
+      "Fix: Unlocked exercise reordering to allow moving the first exercise down when gym equipment is unavailable.",
+  },
+  {
     version: "v1.9.0",
     description:
       "Feature: Implemented Home vs. Gym workout environments with completely isolated data tracking and dynamic metric fields for bodyweight/isometric exercises.",
@@ -186,4 +196,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.9.0"
+export const APP_VERSION = "v1.10.0"

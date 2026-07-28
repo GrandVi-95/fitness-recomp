@@ -9,8 +9,15 @@ const DEMO_USER_ID = "demo-user"
 const VOICE_PROMPT =
   'Listen to this audio log of a user describing what they ate. Identify all distinct meals mentioned. ' +
   'For each meal, estimate the components and calculate metrics. ' +
+  'Also evaluate each meal\'s protein-to-calorie ratio ((protein grams × 4) / calories) for a vegetarian ' +
+  'athlete pursuing hypertrophy. If the ratio is under 0.10 (the meal is calorie/carb/fat "expensive" but ' +
+  'low in protein), write one short, gentle Hebrew sentence suggesting a concrete swap or addition for next ' +
+  'time — e.g. swapping oat milk for soy milk, adding a fraction of a tofu block, or using seitan. Never be ' +
+  'judgmental or guilt-inducing. If the ratio is high (protein-dense relative to calories), write one short, ' +
+  'warm Hebrew encouragement instead, e.g. "פצצת התאוששות! יחס חלבון-קלוריות מעולה." Put this sentence in an ' +
+  '"insight" field on that meal. ' +
   'Return a JSON object with a single top-level \'meals\' array formatted EXACTLY like this: ' +
-  '{ "meals": [ { "mealName": "בוקר/צהריים/ערב/נשנוש", "ingredients": "comma separated list of ingredients with estimated grams in Hebrew", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number } ] }.'
+  '{ "meals": [ { "mealName": "בוקר/צהריים/ערב/נשנוש", "ingredients": "comma separated list of ingredients with estimated grams in Hebrew", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number, "insight": "one Hebrew sentence per the rule above" } ] }.'
 
 interface VoiceMeal {
   mealName:    string
@@ -20,6 +27,7 @@ interface VoiceMeal {
   carbs:       number
   fat:         number
   sugar:       number
+  insight?:    string
 }
 
 function resolveGeminiKey(aiProvider: string | null, userApiKey: string | null): string | null {

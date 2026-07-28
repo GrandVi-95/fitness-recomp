@@ -206,6 +206,10 @@ model NutritionLog {
   mealType  String   @default("snack") // breakfast | lunch | dinner | snack | pre_workout | post_workout
   rawInput  String?  // original natural-language text from user
   notes     String?
+  // AI nudge: one gentle Hebrew sentence on protein density / macro efficiency.
+  // Only populated when an LLM parsed the meal (free-text NLP) — quick-log paths
+  // (voice batch, coffee, label scanner) skip the AI call and leave this null.
+  insight   String?
 
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodItems NutritionFoodItem[]

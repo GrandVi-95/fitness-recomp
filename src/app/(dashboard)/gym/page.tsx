@@ -745,24 +745,48 @@ function ActiveSession() {
       </div>
 
       {/* ── שם תרגיל ───────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-[2rem] font-black leading-none tracking-tight">
-          {currentEx.name}
-        </h1>
-        <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
-          <span className="font-medium text-slate-400">
-            {currentEx.targetSets} × {currentEx.targetReps}
-            {isDuration && " שנ'"}
-          </span>
-          <span className="text-slate-700">·</span>
-          <span className="flex items-center gap-1">
-            <Clock size={12} className="text-slate-600" />
-            {currentEx.restSeconds} שנ' מנוחה
-          </span>
-          <span className="text-slate-700">·</span>
-          <span className="capitalize text-slate-600">
-            {EQUIPMENT_HE[currentEx.equipment] ?? currentEx.equipment}
-          </span>
+      <div className="flex items-start gap-2.5">
+        {/* סידור מחדש — מאפשר להזיז את התרגיל הנוכחי (כולל הראשון) אם המכונה תפוסה */}
+        <div className="flex flex-col gap-1 pt-1 shrink-0">
+          <button
+            onClick={() => swapExercises(currentExIdx, currentExIdx - 1)}
+            disabled={currentExIdx === 0}
+            className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 flex items-center justify-center text-slate-500 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+            aria-label="הזז תרגיל זה למעלה"
+            title="הזז למעלה"
+          >
+            <ArrowUp size={13} strokeWidth={2.5} />
+          </button>
+          <button
+            onClick={() => swapExercises(currentExIdx, currentExIdx + 1)}
+            disabled={currentExIdx === totalEx - 1}
+            className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 flex items-center justify-center text-slate-500 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+            aria-label="הזז תרגיל זה למטה"
+            title="הזז למטה — למשל אם המכונה תפוסה"
+          >
+            <ArrowDown size={13} strokeWidth={2.5} />
+          </button>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[2rem] font-black leading-none tracking-tight">
+            {currentEx.name}
+          </h1>
+          <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
+            <span className="font-medium text-slate-400">
+              {currentEx.targetSets} × {currentEx.targetReps}
+              {isDuration && " שנ'"}
+            </span>
+            <span className="text-slate-700">·</span>
+            <span className="flex items-center gap-1">
+              <Clock size={12} className="text-slate-600" />
+              {currentEx.restSeconds} שנ' מנוחה
+            </span>
+            <span className="text-slate-700">·</span>
+            <span className="capitalize text-slate-600">
+              {EQUIPMENT_HE[currentEx.equipment] ?? currentEx.equipment}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1046,18 +1070,18 @@ function ActiveSession() {
           </p>
           {exercises.slice(currentExIdx + 1).map((ex, relIdx) => {
             const absIdx = currentExIdx + 1 + relIdx
-            const isFirst = relIdx === 0
             const isLast  = absIdx === exercises.length - 1
             return (
               <div
                 key={ex.exerciseId}
                 className="bg-slate-900/70 border border-slate-800 rounded-2xl px-3 py-2.5 flex items-center gap-2"
               >
-                {/* ↑ / ↓ reorder buttons */}
+                {/* ↑ / ↓ reorder buttons — the first upcoming exercise can always move
+                    up into the active slot (absIdx - 1 is always a valid target: it's
+                    either the previous upcoming exercise or the current exercise) */}
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <button
                     onClick={() => swapExercises(absIdx, absIdx - 1)}
-                    disabled={isFirst}
                     className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
                     aria-label="הזז למעלה"
                   >

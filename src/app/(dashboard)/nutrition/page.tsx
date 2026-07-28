@@ -28,6 +28,7 @@ import {
   Mic,
   Coffee,
   Settings,
+  Lightbulb,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -61,6 +62,7 @@ interface VoiceMeal {
   carbs:       number
   fat:         number
   sugar:       number
+  insight?:    string   // AI nudge — protein density tip or encouragement
 }
 
 interface LabelScan {
@@ -89,6 +91,7 @@ interface FoodItem {
   protein: number
   carbs: number
   fat: number
+  insight?: string   // AI nudge for the meal this item belongs to
 }
 
 interface TodayData {
@@ -207,6 +210,7 @@ function FoodItemRow({
   onDelete: () => void
 }) {
   const [qtyStr, setQtyStr] = useState(String(item.quantity))
+  const [showInsight, setShowInsight] = useState(false)
 
   // Keep local input in sync if parent item changes
   useEffect(() => {
@@ -274,36 +278,47 @@ function FoodItemRow({
   }
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 py-1.5 transition-opacity",
-        isDeleting && "opacity-30 pointer-events-none"
-      )}
-    >
-      <div className="flex-1 min-w-0">
-        <span className="text-sm text-slate-300 truncate block">{item.name}</span>
-        <span className="text-xs text-slate-600">
-          {item.quantity} {item.unit}
-        </span>
-      </div>
+    <div className={cn("py-1.5 transition-opacity", isDeleting && "opacity-30 pointer-events-none")}>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <span className="text-sm text-slate-300 truncate flex items-center gap-1">
+            {item.name}
+            {item.insight && (
+              <button
+                onClick={() => setShowInsight((v) => !v)}
+                className={cn(
+                  "shrink-0 transition-colors",
+                  showInsight ? "text-amber-300" : "text-amber-500/70 hover:text-amber-400",
+                )}
+                aria-label="טיפ תזונתי מה-AI"
+                title={item.insight}
+              >
+                <Lightbulb size={12} />
+              </button>
+            )}
+          </span>
+          <span className="text-xs text-slate-600">
+            {item.quantity} {item.unit}
+          </span>
+        </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-xs text-slate-500">{Math.round(item.calories)} קק"ל</span>
-        <span className="text-xs text-indigo-400 font-medium">{Math.round(item.protein)} ח'</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-xs text-slate-500">{Math.round(item.calories)} קק"ל</span>
+          <span className="text-xs text-indigo-400 font-medium">{Math.round(item.protein)} ח'</span>
 
-        <button
-          onClick={onEditStart}
-          className="p-1 rounded text-slate-600 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
-          aria-label="ערוך"
-        >
-          <Pencil size={12} />
-        </button>
+          <button
+            onClick={onEditStart}
+            className="p-1 rounded text-slate-600 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+            aria-label="ערוך"
+          >
+            <Pencil size={12} />
+          </button>
 
-        <button
-          onClick={onDelete}
-          disabled={isDeleting}
-          className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-          aria-label="מחק"
+          <button
+            onClick={onDelete}
+            disabled={isDeleting}
+            className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            aria-label="מחק"
         >
           {isDeleting ? (
             <Loader2 size={12} className="animate-spin" />
@@ -311,7 +326,14 @@ function FoodItemRow({
             <Trash2 size={12} />
           )}
         </button>
+        </div>
       </div>
+
+      {showInsight && item.insight && (
+        <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 mt-1.5" dir="rtl">
+          💡 {item.insight}
+        </p>
+      )}
     </div>
   )
 }
@@ -328,7 +350,7 @@ export default function NutritionPage() {
   const [selectedMeal, setSelectedMeal] = useState<MealType>("snack")
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
-  const [lastAdded, setLastAdded] = useState<{ items: FoodItem[]; totals: MacroTotals } | null>(
+  const [lastAdded, setLastAdded] = useState<{ items: FoodItem[]; totals: MacroTotals; insight?: string } | null>(
     null
   )
 
@@ -358,6 +380,7 @@ export default function NutritionPage() {
   const [voiceMeals,   setVoiceMeals]   = useState<VoiceMeal[] | null>(null)
   const [voiceError,   setVoiceError]   = useState<string | null>(null)
   const [loggingVoice, setLoggingVoice] = useState(false)
+  const [expandedVoiceInsight, setExpandedVoiceInsight] = useState<number | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef   = useRef<Blob[]>([])
   const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -490,7 +513,7 @@ export default function NutritionPage() {
         return
       }
 
-      setLastAdded({ items: data.items, totals: data.totals })
+      setLastAdded({ items: data.items, totals: data.totals, insight: data.insight })
       setNlpText("")
       await fetchToday()
     } catch {
@@ -888,6 +911,7 @@ export default function NutritionPage() {
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({
             mealType:    mapMealNameToType(meal.mealName),
+            insight:     meal.insight,
             directItems: [{
               name:     meal.mealName,
               calories: meal.calories,
@@ -1505,13 +1529,33 @@ export default function NutritionPage() {
               </div>
               {voiceMeals.map((meal, i) => (
                 <div key={i} className="bg-slate-900/70 rounded-lg p-2.5 space-y-1.5">
-                  <input
-                    type="text"
-                    value={meal.mealName}
-                    onChange={e => updateVoiceMeal(i, { mealName: e.target.value })}
-                    className="w-full bg-transparent text-xs font-semibold text-violet-300 focus:outline-none border-b border-violet-500/20 focus:border-violet-400/60 pb-0.5 transition-colors"
-                    dir="rtl"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={meal.mealName}
+                      onChange={e => updateVoiceMeal(i, { mealName: e.target.value })}
+                      className="flex-1 bg-transparent text-xs font-semibold text-violet-300 focus:outline-none border-b border-violet-500/20 focus:border-violet-400/60 pb-0.5 transition-colors"
+                      dir="rtl"
+                    />
+                    {meal.insight && (
+                      <button
+                        onClick={() => setExpandedVoiceInsight(v => (v === i ? null : i))}
+                        className={cn(
+                          "shrink-0 transition-colors",
+                          expandedVoiceInsight === i ? "text-amber-300" : "text-amber-500/70 hover:text-amber-400",
+                        )}
+                        aria-label="טיפ תזונתי מה-AI"
+                        title={meal.insight}
+                      >
+                        <Lightbulb size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {expandedVoiceInsight === i && meal.insight && (
+                    <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5" dir="rtl">
+                      💡 {meal.insight}
+                    </p>
+                  )}
                   <textarea
                     value={meal.ingredients}
                     onChange={e => updateVoiceMeal(i, { ingredients: e.target.value })}
@@ -1621,6 +1665,12 @@ export default function NutritionPage() {
                 </li>
               ))}
             </ul>
+            {lastAdded.insight && (
+              <p className="flex items-start gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5" dir="rtl">
+                <Lightbulb size={12} className="shrink-0 mt-0.5 text-amber-400" />
+                {lastAdded.insight}
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -47,6 +47,9 @@ export interface TodayNutritionEntry {
   fiber:        number
   sugar:        number
   saturatedFat: number
+  // AI nudge for the whole meal (shared across every item in the same log) —
+  // undefined when the meal was quick-logged without an AI call.
+  insight?:     string
 }
 
 export interface TodayNutritionResult {
@@ -79,7 +82,12 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
   })
 
   const allItems = logs.flatMap((l) =>
-    l.foodItems.map((item) => ({ ...item, mealType: l.mealType, logId: l.id })),
+    l.foodItems.map((item) => ({
+      ...item,
+      mealType: l.mealType,
+      logId: l.id,
+      logInsight: l.insight ?? undefined,
+    })),
   )
 
   const raw = allItems.reduce(
@@ -110,6 +118,7 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
       fiber:        item.fiber,
       sugar:        item.sugar,
       saturatedFat: item.saturatedFat,
+      insight:      item.logInsight,
     })
   }
 
