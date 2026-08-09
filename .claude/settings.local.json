@@ -5,7 +5,23 @@
       "Bash(npx prisma *)",
       "Bash(npx tsc *)",
       "Bash(npm run *)",
-      "PowerShell(npx tsc --noEmit)"
+      "PowerShell(npx tsc --noEmit)",
+      "Bash(npx tsx *)",
+      "Bash(cat /tmp/nextdev.log 2>/dev/null | tail -50)",
+      "Read(//tmp/**)",
+      "Bash(curl -sf http://localhost:3000 -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(node -e \"require.resolve\\('playwright'\\)\")",
+      "Bash(npx --yes playwright --version)",
+      "Bash(npx --yes playwright screenshot --wait-for-timeout=3000 --viewport-size=430,900 http://localhost:3000/workouts /tmp/workouts.png)",
+      "Read(//c/Users/ido/AppData/Local/Temp/**)",
+      "Bash(npx --yes playwright screenshot --help)",
+      "Bash(npx --yes playwright screenshot --load-storage=C:/Users/ido/AppData/Local/Temp/claude/c--Users-ido-fitness-recomp/6dbd2cde-575c-4844-978b-d893f99a9e41/scratchpad/storage-state.json --wait-for-timeout=2000 --viewport-size=430,1300 --full-page http://localhost:3000/workouts /tmp/workouts.png)",
+      "Bash(npx --yes playwright screenshot --load-storage=C:/Users/ido/AppData/Local/Temp/claude/c--Users-ido-fitness-recomp/6dbd2cde-575c-4844-978b-d893f99a9e41/scratchpad/storage-state.json --wait-for-timeout=6000 --viewport-size=430,1600 --full-page http://localhost:3000/workouts /tmp/workouts2.png)",
+      "Bash(npx --yes playwright screenshot --load-storage=C:/Users/ido/AppData/Local/Temp/claude/c--Users-ido-fitness-recomp/6dbd2cde-575c-4844-978b-d893f99a9e41/scratchpad/storage-state.json --wait-for-timeout=4000 --viewport-size=430,1700 --full-page http://localhost:3000/workouts /tmp/workouts3.png)",
+      "Bash(lsof -ti:3000 -sTCP:LISTEN)",
+      "Bash(xargs -r kill)",
+      "Bash(rm -f /tmp/workouts*.png /tmp/pw-check.js /tmp/nextdev.log)",
+      "PowerShell($conn = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { $conn.OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; \"killed\" } else { \"no listener found\" })"
     ],
     "additionalDirectories": [
       "c:\\Users\\ido\\fitness-recomp\\src\\app\\api\\nutrition\\items"

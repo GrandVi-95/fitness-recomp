@@ -21,7 +21,27 @@ interface WorkoutDay {
     name: string
     targetSets: number
     targetReps: string
+    superSetId?: string | null
   }>
+}
+
+// Clusters consecutive exercises that share a superSetId into groups of 2
+// (a super-set pair, performed back-to-back) or 1 (a standalone exercise).
+function groupSuperSets<T extends { superSetId?: string | null }>(exercises: T[]): T[][] {
+  const groups: T[][] = []
+  let i = 0
+  while (i < exercises.length) {
+    const ex = exercises[i]
+    const next = exercises[i + 1]
+    if (ex.superSetId && next?.superSetId === ex.superSetId) {
+      groups.push([ex, next])
+      i += 2
+    } else {
+      groups.push([ex])
+      i += 1
+    }
+  }
+  return groups
 }
 
 interface Plan {
@@ -214,23 +234,70 @@ export default function WorkoutsPage() {
                 )}
 
                 {/* תצוגת תרגילים */}
-                {workout.exercises.length > 0 && (
-                  <div className="space-y-1">
-                    {workout.exercises.slice(0, 4).map((ex, i) => (
-                      <p key={ex.id} className="text-xs text-slate-500">
-                        <span className="text-slate-600 me-1">{i + 1}.</span>
-                        {ex.name}
-                        <span className="text-slate-700 mx-1">·</span>
-                        <span className="text-slate-600">{ex.targetSets} × {ex.targetReps}</span>
-                      </p>
-                    ))}
-                    {workout.exercises.length > 4 && (
-                      <p className="text-xs text-slate-600">
-                        +{workout.exercises.length - 4} תרגילים נוספים
-                      </p>
-                    )}
-                  </div>
-                )}
+                {workout.exercises.length > 0 && (() => {
+                  const groups = groupSuperSets(workout.exercises)
+                  let shown = 0
+                  const visibleGroups: typeof groups = []
+                  for (const g of groups) {
+                    if (shown >= 4) {
+                      // Let a super-set pair that starts exactly at the cutoff
+                      // complete, rather than hiding it behind "+N more".
+                      if (g.length === 2 && shown === 4) {
+                        visibleGroups.push(g)
+                        shown += g.length
+                      }
+                      break
+                    }
+                    visibleGroups.push(g)
+                    shown += g.length
+                  }
+                  const remaining = workout.exercises.length - shown
+                  let counter = 0
+
+                  return (
+                    <div className="space-y-1.5">
+                      {visibleGroups.map((group, gi) => {
+                        if (group.length === 1) {
+                          const ex = group[0]
+                          counter += 1
+                          return (
+                            <p key={ex.id} className="text-xs text-slate-500">
+                              <span className="text-slate-600 me-1">{counter}.</span>
+                              {ex.name}
+                              <span className="text-slate-700 mx-1">·</span>
+                              <span className="text-slate-600">{ex.targetSets} × {ex.targetReps}</span>
+                            </p>
+                          )
+                        }
+                        const startNum = counter + 1
+                        counter += group.length
+                        return (
+                          <div
+                            key={`ss-${gi}`}
+                            className="bg-indigo-500/10 border border-indigo-500/25 rounded-lg px-2 py-1.5 space-y-1"
+                          >
+                            {group.map((ex, idx) => (
+                              <p key={ex.id} className="text-xs text-slate-400">
+                                <span className="text-slate-600 me-1">{startNum + idx}.</span>
+                                {ex.name}
+                                <span className="text-slate-700 mx-1">·</span>
+                                <span className="text-slate-500">{ex.targetSets} × {ex.targetReps}</span>
+                              </p>
+                            ))}
+                            <p className="text-[10px] text-indigo-400 font-semibold flex items-center gap-1">
+                              🔗 סופר-סט — ללא מנוחה בין התרגילים
+                            </p>
+                          </div>
+                        )
+                      })}
+                      {remaining > 0 && (
+                        <p className="text-xs text-slate-600">
+                          +{remaining} תרגילים נוספים
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* שורת תחתית */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-800">

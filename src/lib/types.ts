@@ -93,6 +93,9 @@ export interface WorkoutExercise {
   targetReps: string         // "8-12" | "5" | "AMRAP"
   restSeconds: number
   notes?: string
+  // Exercises sharing the same superSetId within a workout are performed
+  // back-to-back with no rest between them; sets/reps/weight stay independent.
+  superSetId?: string
   exercise: Exercise
   // Injected at runtime from previous session
   previousBest?: PreviousPerformance

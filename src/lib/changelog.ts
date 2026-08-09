@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.11.0",
+    description:
+      "Feature: Updated Gym and Home A/B/C programs to the new Hypertrophy split and introduced visual Super-Set grouping logic for linked exercises.",
+  },
+  {
     version: "v1.10.0",
     description:
       "Feature: Introduced AI Nudging with dynamic, vegetarian-friendly protein insights for logged meals.",
@@ -196,4 +201,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.10.0"
+export const APP_VERSION = "v1.11.0"

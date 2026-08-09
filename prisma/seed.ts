@@ -51,32 +51,27 @@ async function main() {
   }
   console.log(`  ✓ ${foods.length} vegetarian foods seeded`)
 
-  // ── Demo exercises ────────────────────────────────────────────
+  // ── Demo exercises — Ultimate Hypertrophy A/B/C split ──────────
   const exercises = [
-    // Push
-    { name: "Barbell Bench Press",  primaryMuscle: "chest",     equipment: "barbell",   isCompound: true,  secondaryMuscles: '["shoulders","triceps"]' },
-    { name: "Incline DB Press",     primaryMuscle: "chest",     equipment: "dumbbell",  isCompound: true,  secondaryMuscles: '["shoulders","triceps"]' },
-    { name: "Overhead Press",       primaryMuscle: "shoulders", equipment: "barbell",   isCompound: true,  secondaryMuscles: '["triceps","upper traps"]' },
-    { name: "DB Lateral Raise",     primaryMuscle: "shoulders", equipment: "dumbbell",  isCompound: false, secondaryMuscles: '[]' },
-    { name: "Cable Tricep Pushdown",primaryMuscle: "triceps",   equipment: "cable",     isCompound: false, secondaryMuscles: '[]' },
-    { name: "Dips",                 primaryMuscle: "triceps",   equipment: "bodyweight",isCompound: true,  secondaryMuscles: '["chest","shoulders"]' },
-    // Pull
-    { name: "Deadlift",             primaryMuscle: "back",      equipment: "barbell",   isCompound: true,  secondaryMuscles: '["glutes","hamstrings","traps"]' },
-    { name: "Pull-Ups",             primaryMuscle: "back",      equipment: "bodyweight",isCompound: true,  secondaryMuscles: '["biceps","core"]' },
-    { name: "Barbell Row",          primaryMuscle: "back",      equipment: "barbell",   isCompound: true,  secondaryMuscles: '["biceps","rear delts"]' },
-    { name: "Cable Row",            primaryMuscle: "back",      equipment: "cable",     isCompound: true,  secondaryMuscles: '["biceps","rear delts"]' },
-    { name: "Barbell Curl",         primaryMuscle: "biceps",    equipment: "barbell",   isCompound: false, secondaryMuscles: '[]' },
-    { name: "Hammer Curl",          primaryMuscle: "biceps",    equipment: "dumbbell",  isCompound: false, secondaryMuscles: '["brachialis"]' },
-    // Legs
-    { name: "Barbell Squat",        primaryMuscle: "legs",      equipment: "barbell",   isCompound: true,  secondaryMuscles: '["glutes","core"]' },
-    { name: "Romanian Deadlift",    primaryMuscle: "hamstrings",equipment: "barbell",   isCompound: true,  secondaryMuscles: '["glutes","lower back"]' },
-    { name: "Leg Press",            primaryMuscle: "quads",     equipment: "machine",   isCompound: true,  secondaryMuscles: '["glutes"]' },
-    { name: "Walking Lunges",       primaryMuscle: "quads",     equipment: "dumbbell",  isCompound: true,  secondaryMuscles: '["glutes","hamstrings"]' },
-    { name: "Calf Raise",           primaryMuscle: "calves",    equipment: "machine",   isCompound: false, secondaryMuscles: '[]' },
-    { name: "Leg Curl",             primaryMuscle: "hamstrings",equipment: "machine",   isCompound: false, secondaryMuscles: '[]' },
-    // Core
-    { name: "Cable Crunch",         primaryMuscle: "core",      equipment: "cable",     isCompound: false, secondaryMuscles: '[]' },
-    { name: "Plank",                primaryMuscle: "core",      equipment: "bodyweight",isCompound: false, secondaryMuscles: '["shoulders"]' },
+    // Workout A — Chest, Quads, Biceps
+    { name: "Barbell Bench Press",         primaryMuscle: "chest",      equipment: "barbell",  isCompound: true,  secondaryMuscles: '["shoulders","triceps"]' },
+    { name: "Leg Press",                   primaryMuscle: "quads",      equipment: "machine",  isCompound: true,  secondaryMuscles: '["glutes"]' },
+    { name: "Incline Barbell Bench Press", primaryMuscle: "chest",      equipment: "barbell",  isCompound: true,  secondaryMuscles: '["shoulders","triceps"]' },
+    { name: "Leg Extensions",              primaryMuscle: "quads",      equipment: "machine",  isCompound: false, secondaryMuscles: '[]' },
+    { name: "Seated Dumbbell Curls",       primaryMuscle: "biceps",     equipment: "dumbbell", isCompound: false, secondaryMuscles: '[]' },
+    { name: "Seated Ab Machine",           primaryMuscle: "core",       equipment: "machine",  isCompound: false, secondaryMuscles: '[]' },
+    // Workout B — Back, Shoulders, Triceps
+    { name: "Lat Pulldown",                primaryMuscle: "back",       equipment: "cable",    isCompound: true,  secondaryMuscles: '["biceps"]' },
+    { name: "Chest-Supported Row",         primaryMuscle: "back",       equipment: "machine",  isCompound: true,  secondaryMuscles: '["biceps"]' },
+    { name: "Seated Lateral Raises",       primaryMuscle: "shoulders",  equipment: "dumbbell", isCompound: false, secondaryMuscles: '[]' },
+    { name: "Cable Tricep Pushdown",       primaryMuscle: "triceps",    equipment: "cable",    isCompound: false, secondaryMuscles: '[]' },
+    { name: "Pallof Press",                primaryMuscle: "core",       equipment: "cable",    isCompound: false, secondaryMuscles: '[]' },
+    // Workout C — Full Body
+    { name: "Seated Leg Curls",            primaryMuscle: "hamstrings", equipment: "machine",  isCompound: false, secondaryMuscles: '[]' },
+    { name: "Dumbbell Pullover",           primaryMuscle: "back",       equipment: "dumbbell", isCompound: false, secondaryMuscles: '["chest","triceps"]' },
+    { name: "Pec Deck Fly",                primaryMuscle: "chest",      equipment: "machine",  isCompound: false, secondaryMuscles: '[]' },
+    { name: "Pull-Ups / Reverse Grip Pulldown", primaryMuscle: "back",  equipment: "bodyweight",isCompound: true, secondaryMuscles: '["biceps"]' },
+    { name: "Hanging Leg Raises",          primaryMuscle: "core",       equipment: "bodyweight",isCompound: false, secondaryMuscles: '[]' },
   ]
 
   for (const ex of exercises) {
@@ -125,53 +120,53 @@ async function main() {
     const plan = await prisma.workoutPlan.create({
       data: {
         userId: user.id,
-        name: "PPL Hypertrophy",
-        splitType: "PPL",
+        name: "Ultimate Hypertrophy",
+        splitType: "CUSTOM",
         workouts: {
           create: [
             {
-              name: "Push A",
-              dayLabel: "Push",
+              name: "Workout A",
+              dayLabel: "A",
               order: 0,
-              muscleGroups: '["chest","shoulders","triceps"]',
+              muscleGroups: '["chest","quads","biceps"]',
               exercises: {
                 create: [
-                  { exerciseId: byName["Barbell Bench Press"], order: 0, targetSets: 4, targetReps: "6-8",  restSeconds: 120 },
-                  { exerciseId: byName["Incline DB Press"],     order: 1, targetSets: 3, targetReps: "10-12",restSeconds: 90  },
-                  { exerciseId: byName["Overhead Press"],       order: 2, targetSets: 3, targetReps: "8-10", restSeconds: 90  },
-                  { exerciseId: byName["DB Lateral Raise"],     order: 3, targetSets: 4, targetReps: "12-15",restSeconds: 60  },
-                  { exerciseId: byName["Cable Tricep Pushdown"],order: 4, targetSets: 3, targetReps: "12-15",restSeconds: 60  },
+                  { exerciseId: byName["Barbell Bench Press"],         order: 0, targetSets: 4, targetReps: "6-8",   restSeconds: 120 },
+                  { exerciseId: byName["Leg Press"],                   order: 1, targetSets: 4, targetReps: "8-10",  restSeconds: 90  },
+                  { exerciseId: byName["Incline Barbell Bench Press"], order: 2, targetSets: 3, targetReps: "8-12",  restSeconds: 90  },
+                  { exerciseId: byName["Leg Extensions"],              order: 3, targetSets: 3, targetReps: "10-12", restSeconds: 90  },
+                  { exerciseId: byName["Seated Dumbbell Curls"],       order: 4, targetSets: 3, targetReps: "10-12", restSeconds: 60, superSetId: "gym-a-ss1" },
+                  { exerciseId: byName["Seated Ab Machine"],           order: 5, targetSets: 3, targetReps: "15-20", restSeconds: 60, superSetId: "gym-a-ss1" },
                 ],
               },
             },
             {
-              name: "Pull A",
-              dayLabel: "Pull",
+              name: "Workout B",
+              dayLabel: "B",
               order: 1,
-              muscleGroups: '["back","biceps"]',
+              muscleGroups: '["back","shoulders","triceps"]',
               exercises: {
                 create: [
-                  { exerciseId: byName["Deadlift"],    order: 0, targetSets: 3, targetReps: "5",    restSeconds: 180 },
-                  { exerciseId: byName["Pull-Ups"],    order: 1, targetSets: 4, targetReps: "6-10", restSeconds: 120 },
-                  { exerciseId: byName["Barbell Row"], order: 2, targetSets: 3, targetReps: "8-10", restSeconds: 90  },
-                  { exerciseId: byName["Cable Row"],   order: 3, targetSets: 3, targetReps: "10-12",restSeconds: 90  },
-                  { exerciseId: byName["Barbell Curl"],order: 4, targetSets: 3, targetReps: "10-12",restSeconds: 60  },
-                  { exerciseId: byName["Hammer Curl"], order: 5, targetSets: 3, targetReps: "10-12",restSeconds: 60  },
+                  { exerciseId: byName["Lat Pulldown"],          order: 0, targetSets: 4, targetReps: "8-10",  restSeconds: 90 },
+                  { exerciseId: byName["Chest-Supported Row"],   order: 1, targetSets: 4, targetReps: "8-10",  restSeconds: 90 },
+                  { exerciseId: byName["Seated Lateral Raises"], order: 2, targetSets: 3, targetReps: "12-15", restSeconds: 60 },
+                  { exerciseId: byName["Cable Tricep Pushdown"], order: 3, targetSets: 3, targetReps: "10-12", restSeconds: 60, superSetId: "gym-b-ss1" },
+                  { exerciseId: byName["Pallof Press"],          order: 4, targetSets: 3, targetReps: "10-12", restSeconds: 60, superSetId: "gym-b-ss1" },
                 ],
               },
             },
             {
-              name: "Legs A",
-              dayLabel: "Legs",
+              name: "Workout C",
+              dayLabel: "C",
               order: 2,
-              muscleGroups: '["quads","hamstrings","glutes","calves"]',
+              muscleGroups: '["hamstrings","back","chest","core"]',
               exercises: {
                 create: [
-                  { exerciseId: byName["Barbell Squat"],      order: 0, targetSets: 4, targetReps: "6-8",  restSeconds: 180 },
-                  { exerciseId: byName["Romanian Deadlift"],  order: 1, targetSets: 3, targetReps: "8-10", restSeconds: 120 },
-                  { exerciseId: byName["Leg Press"],          order: 2, targetSets: 3, targetReps: "10-12",restSeconds: 90  },
-                  { exerciseId: byName["Leg Curl"],           order: 3, targetSets: 3, targetReps: "12-15",restSeconds: 60  },
-                  { exerciseId: byName["Calf Raise"],         order: 4, targetSets: 4, targetReps: "15-20",restSeconds: 60  },
+                  { exerciseId: byName["Seated Leg Curls"],                 order: 0, targetSets: 3, targetReps: "10-12", restSeconds: 90 },
+                  { exerciseId: byName["Dumbbell Pullover"],                order: 1, targetSets: 3, targetReps: "10-12", restSeconds: 90 },
+                  { exerciseId: byName["Pec Deck Fly"],                     order: 2, targetSets: 3, targetReps: "10-12", restSeconds: 90 },
+                  { exerciseId: byName["Pull-Ups / Reverse Grip Pulldown"], order: 3, targetSets: 3, targetReps: "AMRAP",  restSeconds: 120 },
+                  { exerciseId: byName["Hanging Leg Raises"],               order: 4, targetSets: 3, targetReps: "10-15", restSeconds: 60 },
                 ],
               },
             },
@@ -179,7 +174,7 @@ async function main() {
         },
       },
     })
-    console.log(`  ✓ PPL plan created: ${plan.name}`)
+    console.log(`  ✓ Hypertrophy plan created: ${plan.name}`)
   }
 
   console.log("✅ Seed complete.")

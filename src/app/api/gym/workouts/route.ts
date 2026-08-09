@@ -55,6 +55,7 @@ async function ensureHomeWorkouts(planId: string, existingDayLabels: Set<string>
             targetSets:  ex.targetSets,
             targetReps:  ex.targetReps,
             restSeconds: ex.restSeconds,
+            superSetId:  ex.superSetId,
           })),
         },
       },

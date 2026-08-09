@@ -133,6 +133,9 @@ model WorkoutExercise {
   targetReps  String  @default("8-12")  // "8-12" | "5" | "AMRAP"
   restSeconds Int     @default(90)
   notes       String?
+  // Exercises sharing the same superSetId within a workout are performed
+  // back-to-back with no rest between them; sets/reps/weight stay independent.
+  superSetId  String?
 
   workout  Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
   exercise Exercise @relation(fields: [exerciseId], references: [id])

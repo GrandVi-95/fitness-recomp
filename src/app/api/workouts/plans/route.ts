@@ -61,6 +61,7 @@ export async function GET() {
             targetReps: we.targetReps,
             restSeconds: we.restSeconds,
             notes: we.notes,
+            superSetId: we.superSetId,
           })),
         }
       }),
