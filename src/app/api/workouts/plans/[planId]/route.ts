@@ -12,6 +12,7 @@ interface ExerciseInput {
   targetSets?: number
   targetReps?: string
   restSeconds?: number
+  superSetId?: string | null
 }
 
 interface WorkoutInput {
@@ -162,6 +163,7 @@ export async function PUT(
                 targetSets: exInput.targetSets,
                 targetReps: exInput.targetReps,
                 restSeconds: exInput.restSeconds,
+                superSetId: exInput.superSetId ?? null,
               },
             })
           } else {
@@ -174,6 +176,7 @@ export async function PUT(
                 targetSets: exInput.targetSets ?? 3,
                 targetReps: exInput.targetReps ?? "8-12",
                 restSeconds: exInput.restSeconds ?? 90,
+                superSetId: exInput.superSetId ?? null,
               },
             })
           }

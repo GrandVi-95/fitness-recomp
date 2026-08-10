@@ -5,6 +5,7 @@ import { CheckCircle2, SkipForward, Plus, Minus, Zap } from "lucide-react"
 import { useRestTimer } from "@/hooks/useRestTimer"
 import { useGymStore } from "@/store/gymStore"
 import { cn } from "@/lib/utils"
+import { groupIntoItems, itemStartIndices } from "@/lib/superset"
 
 // גיאומטריית טבעת SVG
 const R = 54
@@ -39,8 +40,17 @@ export default function RestTimerOverlay() {
     if (!isFinished) hasVibratedRef.current = false
   }, [isFinished])
 
-  const currentEx = exercises[currentExIdx]
-  const nextEx = exercises[currentExIdx + 1] ?? null
+  // "Next up" must skip over the current item's second exercise (if it's a
+  // super-set pair) and describe the next ITEM, not just the next raw index.
+  const items = groupIntoItems(exercises)
+  const starts = itemStartIndices(exercises)
+  const currentItemPos = starts.indexOf(currentExIdx)
+  const nextItem = currentItemPos >= 0 ? items[currentItemPos + 1] : undefined
+  const nextExercises = nextItem
+    ? nextItem.type === "superset" ? nextItem.exercises : [nextItem.exercise]
+    : []
+  const nextName = nextExercises.map((e) => e.name).join(" 🔗 ")
+  const nextMeta = nextExercises.map((e) => `${e.targetSets} × ${e.targetReps}`).join(" · ")
 
   // צבע משתנה לפי זמן שנותר
   const ringColor = isFinished
@@ -53,12 +63,19 @@ export default function RestTimerOverlay() {
 
   const strokeDashoffset = CIRCUMFERENCE * (1 - percentRemaining)
 
-  // כמה סטים עבודה בוצעו לתרגיל הנוכחי
-  const workingSets = (loggedSets[currentEx?.exerciseId ?? ""] ?? []).filter(
-    (s) => !s.isWarmup
+  // כמה סטים עבודה נותרו לפריט הנוכחי (תרגיל בודד, או שני חלקי סופר-סט)
+  const currentItem = currentItemPos >= 0 ? items[currentItemPos] : undefined
+  const currentItemExercises = currentItem
+    ? currentItem.type === "superset" ? currentItem.exercises : [currentItem.exercise]
+    : []
+  const currentItemName = currentItemExercises.map((e) => e.name).join(" 🔗 ")
+  const setsRemaining = Math.max(
+    0,
+    ...currentItemExercises.map((ex) => {
+      const workingSets = (loggedSets[ex.exerciseId] ?? []).filter((s) => !s.isWarmup)
+      return ex.targetSets - workingSets.length
+    }),
   )
-  const setsRemaining =
-    currentEx ? currentEx.targetSets - workingSets.length : 0
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/98 backdrop-blur-sm px-6">
@@ -197,14 +214,14 @@ export default function RestTimerOverlay() {
         {setsRemaining > 0 ? (
           <p className="text-xs text-slate-500">
             נותרו {setsRemaining} {setsRemaining === 1 ? "סט" : "סטים"} עבור{" "}
-            <span className="text-slate-300">{currentEx?.name}</span>
+            <span className="text-slate-300">{currentItemName}</span>
           </p>
-        ) : nextEx ? (
+        ) : nextItem ? (
           <p className="text-xs text-slate-500">
             הבא:{" "}
-            <span className="text-slate-300 font-medium">{nextEx.name}</span>
+            <span className="text-slate-300 font-medium">{nextName}</span>
             {" · "}
-            {nextEx.targetSets} × {nextEx.targetReps}
+            {nextMeta}
           </p>
         ) : (
           <p className="text-xs text-slate-500">

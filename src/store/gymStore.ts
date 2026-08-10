@@ -2,6 +2,7 @@
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
+import { groupIntoItems, itemStartIndices } from "@/lib/superset"
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -51,6 +52,9 @@ export interface SessionExercise {
   targetReps: string   // "8-12" | "5" | "AMRAP" | seconds range for duration
   restSeconds: number
   notes?: string
+  // Exercises sharing the same superSetId are performed back-to-back as one
+  // unified round (see src/lib/superset.ts) — sets stay logged independently.
+  superSetId?: string
   previousPerformance: PreviousPerformance | null
   baseline: ExerciseBaseline | null
 }
@@ -132,7 +136,9 @@ interface GymState {
   setRpe: (exerciseId: string, value: number) => void
   adjustDuration: (exerciseId: string, delta: number) => void
   setDuration: (exerciseId: string, value: number) => void
-  swapExercises: (idxA: number, idxB: number) => void
+  // Moves the whole item (single exercise, or super-set pair) starting at
+  // `startIndex` one slot earlier/later, keeping super-set pairs adjacent.
+  moveItemAt: (startIndex: number, direction: -1 | 1) => void
   nextExercise: () => void
   prevExercise: () => void
   startRest: (durationSecs: number, info: LastLoggedSetInfo) => void
@@ -323,31 +329,56 @@ export const useGymStore = create<GymState>()(
           },
         })),
 
-      swapExercises: (idxA, idxB) =>
+      moveItemAt: (startIndex, direction) =>
         set((state) => {
-          const exercises = [...state.exercises]
-          if (
-            idxA < 0 || idxB < 0 ||
-            idxA >= exercises.length || idxB >= exercises.length
-          ) return {}
-          ;[exercises[idxA], exercises[idxB]] = [exercises[idxB], exercises[idxA]]
-          return { exercises }
+          const items = groupIntoItems(state.exercises)
+          const starts = itemStartIndices(state.exercises)
+          const pos = starts.indexOf(startIndex)
+          if (pos === -1) return {}
+          const swapPos = pos + direction
+          if (swapPos < 0 || swapPos >= items.length) return {}
+
+          // Track the active item by its first exercise's id, so it stays
+          // "current" even when a different item is the one being moved.
+          const activeExerciseId = state.exercises[state.currentExIdx]?.exerciseId
+
+          const newItems = [...items]
+          ;[newItems[pos], newItems[swapPos]] = [newItems[swapPos], newItems[pos]]
+          const newExercises = newItems.flatMap((it) =>
+            it.type === "superset" ? it.exercises : [it.exercise]
+          )
+
+          const newCurrentIdx = activeExerciseId
+            ? newExercises.findIndex((e) => e.exerciseId === activeExerciseId)
+            : state.currentExIdx
+
+          return {
+            exercises: newExercises,
+            currentExIdx: newCurrentIdx >= 0 ? newCurrentIdx : state.currentExIdx,
+          }
         }),
 
       nextExercise: () =>
-        set((state) => ({
-          currentExIdx: Math.min(
-            state.currentExIdx + 1,
-            state.exercises.length - 1
-          ),
-          restActive: false,
-        })),
+        set((state) => {
+          const starts = itemStartIndices(state.exercises)
+          const pos = starts.indexOf(state.currentExIdx)
+          const nextStart = pos >= 0 ? starts[pos + 1] : undefined
+          return {
+            currentExIdx: nextStart ?? state.currentExIdx,
+            restActive: false,
+          }
+        }),
 
       prevExercise: () =>
-        set((state) => ({
-          currentExIdx: Math.max(state.currentExIdx - 1, 0),
-          restActive: false,
-        })),
+        set((state) => {
+          const starts = itemStartIndices(state.exercises)
+          const pos = starts.indexOf(state.currentExIdx)
+          const prevStart = pos > 0 ? starts[pos - 1] : starts[0] ?? 0
+          return {
+            currentExIdx: prevStart,
+            restActive: false,
+          }
+        }),
 
       startRest: (durationSecs, info) =>
         set({

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.12.0",
+    description:
+      "Refactor: Redesigned Super-Set UI into a unified dual-input card for better workout flow, and added a visual link toggle in the workout editor.",
+  },
+  {
     version: "v1.11.0",
     description:
       "Feature: Updated Gym and Home A/B/C programs to the new Hypertrophy split and introduced visual Super-Set grouping logic for linked exercises.",
@@ -201,4 +206,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.11.0"
+export const APP_VERSION = "v1.12.0"

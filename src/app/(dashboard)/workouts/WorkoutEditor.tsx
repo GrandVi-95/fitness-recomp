@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
   X, Plus, ChevronUp, ChevronDown, Trash2, Save,
-  Loader2, Search, CheckCircle2, Dumbbell,
+  Loader2, Search, CheckCircle2, Dumbbell, Link2, Unlink,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { groupIntoItems } from "@/lib/superset"
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -30,6 +31,9 @@ interface ExDraft {
   targetSets: number
   targetReps: string
   restSeconds: number
+  // Two adjacent exercises sharing the same superSetId form a Super-Set —
+  // performed back-to-back, tracked independently. See src/lib/superset.ts.
+  superSetId?: string
 }
 
 interface DayDraft {
@@ -196,12 +200,13 @@ function ExerciseSearch({ onSelect }: { onSelect: (ex: ExerciseResult) => void }
 // ─────────────────────────────────────────────────────────
 
 function ExerciseRow({
-  ex, idx, total,
+  ex, idx, disableUp, disableDown,
   onUpdate, onRemove, onMoveUp, onMoveDown,
 }: {
   ex: ExDraft
   idx: number
-  total: number
+  disableUp: boolean
+  disableDown: boolean
   onUpdate: (changes: Partial<ExDraft>) => void
   onRemove: () => void
   onMoveUp: () => void
@@ -226,14 +231,14 @@ function ExerciseRow({
         {/* Move buttons */}
         <button
           onClick={(e) => { e.stopPropagation(); onMoveUp() }}
-          disabled={idx === 0}
+          disabled={disableUp}
           className="p-1 text-slate-600 hover:text-slate-300 disabled:opacity-20 transition-colors"
         >
           <ChevronUp size={14} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onMoveDown() }}
-          disabled={idx === total - 1}
+          disabled={disableDown}
           className="p-1 text-slate-600 hover:text-slate-300 disabled:opacity-20 transition-colors"
         >
           <ChevronDown size={14} />
@@ -330,7 +335,7 @@ export default function WorkoutEditor({ planId, onClose, onSaved }: WorkoutEdito
         setSplitType(plan.splitType)
         const drafts: DayDraft[] = plan.workouts.map((w: {
           id: string; name: string; dayLabel: string; order: number;
-          exercises: Array<{ id: string; exerciseId: string; name: string; primaryMuscle: string; equipment: string; order: number; targetSets: number; targetReps: string; restSeconds: number }>
+          exercises: Array<{ id: string; exerciseId: string; name: string; primaryMuscle: string; equipment: string; order: number; targetSets: number; targetReps: string; restSeconds: number; superSetId?: string | null }>
         }) => ({
           _key: newKey(),
           id: w.id,
@@ -348,6 +353,7 @@ export default function WorkoutEditor({ planId, onClose, onSaved }: WorkoutEdito
             targetSets: e.targetSets,
             targetReps: e.targetReps,
             restSeconds: e.restSeconds,
+            superSetId: e.superSetId ?? undefined,
           })),
         }))
         setDays(drafts)
@@ -415,21 +421,57 @@ export default function WorkoutEditor({ planId, onClose, onSaved }: WorkoutEdito
   }
 
   const removeExercise = (dayKey: string, exKey: string) => {
-    setDays((prev) => prev.map((d) =>
-      d._key !== dayKey ? d : { ...d, exercises: d.exercises.filter((e) => e._key !== exKey) }
-    ))
-  }
-
-  const moveExercise = (dayKey: string, exKey: string, dir: -1 | 1) => {
     setDays((prev) => prev.map((d) => {
       if (d._key !== dayKey) return d
-      const exs = [...d.exercises]
-      const idx = exs.findIndex((e) => e._key === exKey)
-      if (idx < 0) return d
-      const swap = idx + dir
-      if (swap < 0 || swap >= exs.length) return d
-      ;[exs[idx], exs[swap]] = [exs[swap], exs[idx]]
-      return { ...d, exercises: exs.map((e, i) => ({ ...e, order: i })) }
+      const removed = d.exercises.find((e) => e._key === exKey)
+      const exercises = d.exercises
+        .filter((e) => e._key !== exKey)
+        // Unlink the partner left behind — a Super-Set is always exactly two.
+        .map((e) =>
+          removed?.superSetId && e.superSetId === removed.superSetId
+            ? { ...e, superSetId: undefined }
+            : e
+        )
+      return { ...d, exercises }
+    }))
+  }
+
+  // Moves the whole item (single exercise, or linked super-set pair)
+  // containing `exKey` one slot earlier/later, keeping pairs adjacent.
+  const moveItemInDay = (dayKey: string, exKey: string, dir: -1 | 1) => {
+    setDays((prev) => prev.map((d) => {
+      if (d._key !== dayKey) return d
+      const items = groupIntoItems(d.exercises)
+      const pos = items.findIndex((it) =>
+        it.type === "single" ? it.exercise._key === exKey : it.exercises.some((e) => e._key === exKey)
+      )
+      if (pos === -1) return d
+      const swapPos = pos + dir
+      if (swapPos < 0 || swapPos >= items.length) return d
+      const newItems = [...items]
+      ;[newItems[pos], newItems[swapPos]] = [newItems[swapPos], newItems[pos]]
+      const exercises = newItems
+        .flatMap((it) => (it.type === "superset" ? it.exercises : [it.exercise]))
+        .map((e, i) => ({ ...e, order: i }))
+      return { ...d, exercises }
+    }))
+  }
+
+  // Links two adjacent single exercises into a Super-Set, or unlinks an
+  // existing pair back into two standalone exercises.
+  const toggleSuperset = (dayKey: string, exKeyA: string, exKeyB: string) => {
+    setDays((prev) => prev.map((d) => {
+      if (d._key !== dayKey) return d
+      const a = d.exercises.find((e) => e._key === exKeyA)
+      const b = d.exercises.find((e) => e._key === exKeyB)
+      const isLinked = !!a?.superSetId && a.superSetId === b?.superSetId
+      const nextId = isLinked ? undefined : `ss-${newKey()}`
+      return {
+        ...d,
+        exercises: d.exercises.map((e) =>
+          e._key === exKeyA || e._key === exKeyB ? { ...e, superSetId: nextId } : e
+        ),
+      }
     }))
   }
 
@@ -454,6 +496,7 @@ export default function WorkoutEditor({ planId, onClose, onSaved }: WorkoutEdito
           targetSets: e.targetSets,
           targetReps: e.targetReps,
           restSeconds: e.restSeconds,
+          superSetId: e.superSetId ?? null,
         })),
       })),
     }
@@ -613,18 +656,79 @@ export default function WorkoutEditor({ planId, onClose, onSaved }: WorkoutEdito
                 <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide">
                   {activeDay.exercises.length} תרגילים — לחץ לעריכה
                 </p>
-                {activeDay.exercises.map((ex, idx) => (
-                  <ExerciseRow
-                    key={ex._key}
-                    ex={ex}
-                    idx={idx}
-                    total={activeDay.exercises.length}
-                    onUpdate={(changes) => updateExercise(activeDay._key, ex._key, changes)}
-                    onRemove={() => removeExercise(activeDay._key, ex._key)}
-                    onMoveUp={() => moveExercise(activeDay._key, ex._key, -1)}
-                    onMoveDown={() => moveExercise(activeDay._key, ex._key, 1)}
-                  />
-                ))}
+                {(() => {
+                  const items = groupIntoItems(activeDay.exercises)
+                  return items.map((item, itemPos) => {
+                    const disableUp = itemPos === 0
+                    const disableDown = itemPos === items.length - 1
+
+                    if (item.type === "single") {
+                      const ex = item.exercise
+                      const flatIdx = activeDay.exercises.findIndex((e) => e._key === ex._key)
+                      const nextItem = items[itemPos + 1]
+                      const canLink = nextItem?.type === "single"
+                      return (
+                        <div key={ex._key}>
+                          <ExerciseRow
+                            ex={ex}
+                            idx={flatIdx}
+                            disableUp={disableUp}
+                            disableDown={disableDown}
+                            onUpdate={(changes) => updateExercise(activeDay._key, ex._key, changes)}
+                            onRemove={() => removeExercise(activeDay._key, ex._key)}
+                            onMoveUp={() => moveItemInDay(activeDay._key, ex._key, -1)}
+                            onMoveDown={() => moveItemInDay(activeDay._key, ex._key, 1)}
+                          />
+                          {canLink && (
+                            <button
+                              onClick={() => toggleSuperset(activeDay._key, ex._key, nextItem.exercise._key)}
+                              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-slate-600 hover:text-indigo-400 transition-colors"
+                            >
+                              <Link2 size={11} /> חבר לסופר-סט עם התרגיל הבא
+                            </button>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    const [exA, exB] = item.exercises
+                    const flatIdxA = activeDay.exercises.findIndex((e) => e._key === exA._key)
+                    const flatIdxB = activeDay.exercises.findIndex((e) => e._key === exB._key)
+                    return (
+                      <div
+                        key={item.superSetId}
+                        className="border-2 border-indigo-500/40 rounded-xl p-1.5 space-y-1.5 bg-indigo-500/5"
+                      >
+                        <ExerciseRow
+                          ex={exA}
+                          idx={flatIdxA}
+                          disableUp={disableUp}
+                          disableDown={disableDown}
+                          onUpdate={(changes) => updateExercise(activeDay._key, exA._key, changes)}
+                          onRemove={() => removeExercise(activeDay._key, exA._key)}
+                          onMoveUp={() => moveItemInDay(activeDay._key, exA._key, -1)}
+                          onMoveDown={() => moveItemInDay(activeDay._key, exA._key, 1)}
+                        />
+                        <button
+                          onClick={() => toggleSuperset(activeDay._key, exA._key, exB._key)}
+                          className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+                        >
+                          <Unlink size={11} /> 🔗 סופר-סט — לחץ לביטול
+                        </button>
+                        <ExerciseRow
+                          ex={exB}
+                          idx={flatIdxB}
+                          disableUp={disableUp}
+                          disableDown={disableDown}
+                          onUpdate={(changes) => updateExercise(activeDay._key, exB._key, changes)}
+                          onRemove={() => removeExercise(activeDay._key, exB._key)}
+                          onMoveUp={() => moveItemInDay(activeDay._key, exB._key, -1)}
+                          onMoveDown={() => moveItemInDay(activeDay._key, exB._key, 1)}
+                        />
+                      </div>
+                    )
+                  })
+                })()}
               </div>
             )}
 

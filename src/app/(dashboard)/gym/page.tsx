@@ -3,6 +3,7 @@
 import {
   useState,
   useEffect,
+  useMemo,
   useCallback,
   useRef,
 } from "react"
@@ -25,10 +26,11 @@ import {
   Timer,
   RotateCcw,
 } from "lucide-react"
-import { useGymStore } from "@/store/gymStore"
+import { useGymStore, type SessionExercise, type LoggedSet } from "@/store/gymStore"
 import RestTimerOverlay from "@/components/gym/RestTimerOverlay"
 import FinishModal from "@/components/gym/FinishModal"
 import { cn } from "@/lib/utils"
+import { groupIntoItems, itemStartIndices } from "@/lib/superset"
 
 // ─────────────────────────────────────────────────────────────
 // Hooks / עזרים
@@ -56,6 +58,69 @@ function formatElapsed(secs: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
 
+type SetPayload = {
+  exerciseId: string
+  setNumber: number
+  reps: number
+  weightKg: number
+  rpe: number
+  isWarmup: boolean
+  durationSecs?: number
+}
+
+/** POSTs one logged set and reconciles the optimistic tempId with the server id
+ *  (or queues it for retry) — shared by single-exercise and super-set logging. */
+async function postLoggedSet(
+  sessionId: string,
+  tempId: string,
+  setData: SetPayload,
+  updateSetServerId: (tempId: string, serverId: string) => void,
+  addPendingSync: (item: { sessionId: string; tempId: string; payload: SetPayload }) => void,
+) {
+  try {
+    const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(setData),
+    })
+    if (res.ok) {
+      const { id } = await res.json()
+      updateSetServerId(tempId, id)
+    } else {
+      addPendingSync({ sessionId, tempId, payload: setData })
+    }
+  } catch {
+    addPendingSync({ sessionId, tempId, payload: setData })
+  }
+}
+
+/** Derived per-exercise runtime numbers (logged sets, current input values) —
+ *  used for both the single-exercise view and each half of a super-set pair. */
+function exerciseRuntime(
+  ex: SessionExercise,
+  loggedSets: Record<string, LoggedSet[]>,
+  inputWeightKg: Record<string, number>,
+  inputReps: Record<string, number>,
+  inputRpe: Record<string, number>,
+  inputDurationSecs: Record<string, number>,
+) {
+  const allSets = loggedSets[ex.exerciseId] ?? []
+  const workingSets = allSets.filter((s) => !s.isWarmup)
+  const warmupSets = allSets.filter((s) => s.isWarmup)
+  const setsCompleted = workingSets.length
+  return {
+    workingSets,
+    warmupSets,
+    setsCompleted,
+    allSetsComplete: setsCompleted >= ex.targetSets,
+    weight: inputWeightKg[ex.exerciseId] ?? 0,
+    reps: inputReps[ex.exerciseId] ?? 8,
+    rpe: inputRpe[ex.exerciseId] ?? 7,
+    duration: inputDurationSecs[ex.exerciseId] ?? 30,
+    isDuration: ex.trackingType === "duration",
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // StepperInput — קלט ידידותי למגע
 // ─────────────────────────────────────────────────────────────
@@ -68,6 +133,7 @@ function StepperInput({
   step,
   min,
   isDecimal,
+  compact,
 }: {
   label: string
   value: number
@@ -76,6 +142,8 @@ function StepperInput({
   step: number
   min: number
   isDecimal?: boolean
+  // Smaller footprint for side-by-side super-set columns on mobile widths.
+  compact?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [inputVal, setInputVal] = useState("")
@@ -110,21 +178,30 @@ function StepperInput({
   }
 
   return (
-    <div className="flex-1 bg-slate-900 rounded-2xl p-3 flex flex-col gap-2.5">
-      <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider px-1">
+    <div className={cn("flex-1 bg-slate-900 rounded-2xl flex flex-col gap-2.5", compact ? "p-2" : "p-3")}>
+      <p className={cn(
+        "text-slate-500 font-semibold uppercase tracking-wider px-1 truncate",
+        compact ? "text-[9px]" : "text-[11px]"
+      )}>
         {label}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button
           onPointerDown={(e) => handleAdjust(e, -step)}
-          className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none"
+          className={cn(
+            "rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none",
+            compact ? "w-9 h-9" : "w-12 h-12"
+          )}
         >
-          <Minus size={20} className="text-slate-300" strokeWidth={2.5} />
+          <Minus size={compact ? 15 : 20} className="text-slate-300" strokeWidth={2.5} />
         </button>
 
         <button
           onClick={openEdit}
-          className="flex-1 h-12 flex items-center justify-center rounded-xl bg-slate-800/60 border border-slate-700/60 hover:border-indigo-500/60 focus-within:border-indigo-500 transition-colors overflow-hidden"
+          className={cn(
+            "flex-1 flex items-center justify-center rounded-xl bg-slate-800/60 border border-slate-700/60 hover:border-indigo-500/60 focus-within:border-indigo-500 transition-colors overflow-hidden",
+            compact ? "h-9" : "h-12"
+          )}
         >
           {editing ? (
             <input
@@ -138,10 +215,13 @@ function StepperInput({
                 if (e.key === "Enter") { e.stopPropagation(); commitEdit() }
                 if (e.key === "Escape") setEditing(false)
               }}
-              className="w-full text-center text-xl font-black bg-transparent focus:outline-none px-1"
+              className={cn(
+                "w-full text-center font-black bg-transparent focus:outline-none px-1",
+                compact ? "text-base" : "text-xl"
+              )}
             />
           ) : (
-            <span className="text-xl font-black tabular-nums select-none">
+            <span className={cn("font-black tabular-nums select-none", compact ? "text-base" : "text-xl")}>
               {isDecimal ? value.toFixed(1) : value}
             </span>
           )}
@@ -149,9 +229,12 @@ function StepperInput({
 
         <button
           onPointerDown={(e) => handleAdjust(e, step)}
-          className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none"
+          className={cn(
+            "rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none",
+            compact ? "w-9 h-9" : "w-12 h-12"
+          )}
         >
-          <Plus size={20} className="text-slate-300" strokeWidth={2.5} />
+          <Plus size={compact ? 15 : 20} className="text-slate-300" strokeWidth={2.5} />
         </button>
       </div>
     </div>
@@ -547,7 +630,7 @@ function ActiveSession() {
   const setRpe             = useGymStore((s) => s.setRpe)
   const adjustDuration     = useGymStore((s) => s.adjustDuration)
   const setDuration        = useGymStore((s) => s.setDuration)
-  const swapExercises      = useGymStore((s) => s.swapExercises)
+  const moveItemAt         = useGymStore((s) => s.moveItemAt)
   const nextExercise       = useGymStore((s) => s.nextExercise)
   const prevExercise       = useGymStore((s) => s.prevExercise)
   const startRest          = useGymStore((s) => s.startRest)
@@ -569,92 +652,112 @@ function ActiveSession() {
     markFinished()
   }, [flushPendingSync, markFinished])
 
-  const currentEx = exercises[currentExIdx]
-  const totalEx   = exercises.length
+  // Items group adjacent super-set pairs into one unit; currentExIdx always
+  // lands on an item's first exercise (see moveItemAt/nextExercise/prevExercise
+  // in the store), so `items[currentItemPos]` is always the active item.
+  const items = useMemo(() => groupIntoItems(exercises), [exercises])
+  const starts = useMemo(() => itemStartIndices(exercises), [exercises])
+  const currentItemPos = starts.indexOf(currentExIdx)
+  const currentItem = items[currentItemPos]
+  const totalItems = items.length
 
-  if (!currentEx) return null
+  // Computed unconditionally (before the early return below) so hook order
+  // stays stable across renders — mirrors items/starts above.
+  const activeExercises: SessionExercise[] = useMemo(
+    () => (!currentItem ? [] : currentItem.type === "superset" ? currentItem.exercises : [currentItem.exercise]),
+    [currentItem]
+  )
+  const runtimes = useMemo(
+    () => activeExercises.map((ex) =>
+      exerciseRuntime(ex, loggedSets, inputWeightKg, inputReps, inputRpe, inputDurationSecs)
+    ),
+    [activeExercises, loggedSets, inputWeightKg, inputReps, inputRpe, inputDurationSecs]
+  )
 
-  const allSetsForEx = loggedSets[currentEx.exerciseId] ?? []
-  const workingSets = allSetsForEx.filter((s) => !s.isWarmup)
-  const warmupSets = allSetsForEx.filter((s) => s.isWarmup)
-  const setsCompleted = workingSets.length
-  const allSetsComplete = setsCompleted >= currentEx.targetSets
+  if (!currentItem) return null
 
-  const weight   = inputWeightKg[currentEx.exerciseId] ?? 0
-  const reps     = inputReps[currentEx.exerciseId] ?? 8
-  const rpe      = inputRpe[currentEx.exerciseId] ?? 7
-  const duration = inputDurationSecs[currentEx.exerciseId] ?? 30
+  const isSuperSet = currentItem.type === "superset"
+
+  // The single-exercise view below reads `currentEx`/`weight`/`reps`/etc. as
+  // the "first (and possibly only) exercise of the current item" — for a
+  // single item this is exactly the old single-exercise behaviour unchanged.
+  const currentEx = activeExercises[0]
+  const warmupSets = runtimes[0].warmupSets
+  const setsCompleted = runtimes[0].setsCompleted
+  // Complete once every active exercise (both halves of a pair, or the one
+  // single exercise) has reached its own target set count.
+  const allSetsComplete = runtimes.every((r) => r.allSetsComplete)
+
+  const weight   = runtimes[0].weight
+  const reps     = runtimes[0].reps
+  const rpe      = runtimes[0].rpe
+  const duration = runtimes[0].duration
 
   // Tracking mode — duration exercises (wall sit, plank taps) log seconds,
   // not weight×reps. reps_only (push-ups, pull-ups) keeps an optional
   // added-weight field defaulting to bodyweight (0).
-  const isDuration = currentEx.trackingType === "duration"
+  const isDuration = runtimes[0].isDuration
 
-  // ── תיעוד סט ──────────────────────────────────────────────
-  const handleLogSet = useCallback(async () => {
+  // Average completion fraction across active exercises — drives the progress bar.
+  const roundFraction =
+    runtimes.reduce((sum, r, i) => sum + r.setsCompleted / activeExercises[i].targetSets, 0) /
+    activeExercises.length
+
+  // Whether every active exercise is at the same set count with the same
+  // target — lets the log button show one clean "Set N of M" for the round.
+  const roundInSync =
+    !isSuperSet ||
+    (runtimes.every((r) => r.setsCompleted === runtimes[0].setsCompleted) &&
+      activeExercises.every((ex) => ex.targetSets === activeExercises[0].targetSets))
+
+  // ── תיעוד סט (בודד או שני חלקי סופר-סט כאחד) ─────────────────────────────
+  const handleLogRound = useCallback(async () => {
     if (!sessionId) return
 
-    const setNumber = isWarmup ? warmupSets.length + 1 : workingSets.length + 1
+    let maxRest = 0
+    const loggedNames: string[] = []
+    let displayInfo: { weightKg: number; reps: number; durationSecs?: number; setNumber: number } | null = null
 
-    const setData = isDuration
-      ? {
-          exerciseId: currentEx.exerciseId,
+    for (let i = 0; i < activeExercises.length; i++) {
+      const ex = activeExercises[i]
+      const rt = runtimes[i]
+      // If one exercise of a pair already finished its target sets while its
+      // partner hasn't, keep logging only the partner — never write past target.
+      if (!isWarmup && rt.allSetsComplete) continue
+
+      const setNumber = isWarmup ? rt.warmupSets.length + 1 : rt.workingSets.length + 1
+      const setData: SetPayload = rt.isDuration
+        ? { exerciseId: ex.exerciseId, setNumber, reps: 0, weightKg: 0, rpe: rt.rpe, isWarmup, durationSecs: rt.duration }
+        : { exerciseId: ex.exerciseId, setNumber, reps: rt.reps, weightKg: rt.weight, rpe: rt.rpe, isWarmup }
+
+      const tempId = logSet(setData)
+      void postLoggedSet(sessionId, tempId, setData, updateSetServerId, addPendingSync)
+
+      maxRest = Math.max(maxRest, ex.restSeconds)
+      loggedNames.push(ex.name)
+      if (!displayInfo) {
+        displayInfo = {
+          weightKg: rt.isDuration ? 0 : rt.weight,
+          reps: rt.isDuration ? 0 : rt.reps,
           setNumber,
-          reps: 0,
-          weightKg: 0,
-          rpe,
-          isWarmup,
-          durationSecs: duration,
+          ...(rt.isDuration && { durationSecs: rt.duration }),
         }
-      : {
-          exerciseId: currentEx.exerciseId,
-          setNumber,
-          reps,
-          weightKg: weight,
-          rpe,
-          isWarmup,
-        }
+      }
+    }
 
-    const tempId = logSet(setData)
-
-    if (!isWarmup) {
-      startRest(currentEx.restSeconds, {
-        exerciseName: currentEx.name,
-        weightKg: isDuration ? 0 : weight,
-        reps: isDuration ? 0 : reps,
-        setNumber,
+    if (!isWarmup && displayInfo && loggedNames.length > 0) {
+      startRest(maxRest, {
+        exerciseName: loggedNames.join(" 🔗 "),
+        ...displayInfo,
         isWarmup: false,
-        ...(isDuration && { durationSecs: duration }),
       })
       setIsWarmup(false)
     }
-
-    try {
-      const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(setData),
-      })
-      if (res.ok) {
-        const { id } = await res.json()
-        updateSetServerId(tempId, id)
-      } else {
-        addPendingSync({ sessionId, tempId, payload: setData })
-      }
-    } catch {
-      addPendingSync({ sessionId, tempId, payload: setData })
-    }
   }, [
     sessionId,
-    currentEx,
-    weight,
-    reps,
-    rpe,
-    duration,
-    isDuration,
+    activeExercises,
+    runtimes,
     isWarmup,
-    workingSets.length,
-    warmupSets.length,
     logSet,
     startRest,
     updateSetServerId,
@@ -684,29 +787,17 @@ function ActiveSession() {
       isWarmup: false,
       durationSecs,
     })
-    try {
-      const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(setData),
-      })
-      if (res.ok) {
-        const { id } = await res.json()
-        updateSetServerId(tempId, id)
-      }
-    } catch {
-      addPendingSync({ sessionId, tempId, payload: setData })
-    }
+    void postLoggedSet(sessionId, tempId, setData, updateSetServerId, addPendingSync)
   }, [sessionId, currentEx, rpe, loggedSets, logSet, startRest, updateSetServerId, addPendingSync])
 
   // Enter = תעד סט
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !allSetsComplete) handleLogSet()
+      if (e.key === "Enter" && !allSetsComplete) handleLogRound()
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [handleLogSet, allSetsComplete])
+  }, [handleLogRound, allSetsComplete])
 
   return (
     <div className="px-4 py-4 max-w-lg mx-auto space-y-4">
@@ -715,7 +806,7 @@ function ActiveSession() {
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 truncate max-w-[55%]">
           <span className="text-slate-400 font-medium">{workoutName}</span>
-          {" · "}תרגיל {currentExIdx + 1}/{totalEx}
+          {" · "}תרגיל {currentItemPos + 1}/{totalItems}
         </p>
         <div className="flex items-center gap-2 shrink-0">
           <span className="font-mono text-xs text-slate-400 bg-slate-900 px-2.5 py-1 rounded-lg">
@@ -735,65 +826,120 @@ function ActiveSession() {
         <div
           className="h-full bg-indigo-500 rounded-full transition-all duration-500"
           style={{
-            width: `${
-              ((currentExIdx + setsCompleted / currentEx.targetSets) /
-                totalEx) *
-              100
-            }%`,
+            width: `${((currentItemPos + roundFraction) / totalItems) * 100}%`,
           }}
         />
       </div>
 
-      {/* ── שם תרגיל ───────────────────────────────────────────── */}
+      {/* ── שם תרגיל (או זוג סופר-סט) ───────────────────────────── */}
       <div className="flex items-start gap-2.5">
-        {/* סידור מחדש — מאפשר להזיז את התרגיל הנוכחי (כולל הראשון) אם המכונה תפוסה */}
+        {/* סידור מחדש — מאפשר להזיז את הפריט הנוכחי (כולל הראשון) אם המכונה תפוסה */}
         <div className="flex flex-col gap-1 pt-1 shrink-0">
           <button
-            onClick={() => swapExercises(currentExIdx, currentExIdx - 1)}
-            disabled={currentExIdx === 0}
+            onClick={() => moveItemAt(currentExIdx, -1)}
+            disabled={currentItemPos === 0}
             className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 flex items-center justify-center text-slate-500 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors"
-            aria-label="הזז תרגיל זה למעלה"
+            aria-label="הזז פריט זה למעלה"
             title="הזז למעלה"
           >
             <ArrowUp size={13} strokeWidth={2.5} />
           </button>
           <button
-            onClick={() => swapExercises(currentExIdx, currentExIdx + 1)}
-            disabled={currentExIdx === totalEx - 1}
+            onClick={() => moveItemAt(currentExIdx, 1)}
+            disabled={currentItemPos === totalItems - 1}
             className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 flex items-center justify-center text-slate-500 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors"
-            aria-label="הזז תרגיל זה למטה"
+            aria-label="הזז פריט זה למטה"
             title="הזז למטה — למשל אם המכונה תפוסה"
           >
             <ArrowDown size={13} strokeWidth={2.5} />
           </button>
         </div>
 
-        <div className="flex-1 min-w-0">
-          <h1 className="text-[2rem] font-black leading-none tracking-tight">
-            {currentEx.name}
-          </h1>
-          <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
-            <span className="font-medium text-slate-400">
-              {currentEx.targetSets} × {currentEx.targetReps}
-              {isDuration && " שנ'"}
-            </span>
-            <span className="text-slate-700">·</span>
-            <span className="flex items-center gap-1">
-              <Clock size={12} className="text-slate-600" />
-              {currentEx.restSeconds} שנ' מנוחה
-            </span>
-            <span className="text-slate-700">·</span>
-            <span className="capitalize text-slate-600">
-              {EQUIPMENT_HE[currentEx.equipment] ?? currentEx.equipment}
-            </span>
+        {isSuperSet ? (
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[1.6rem] font-black leading-tight tracking-tight">
+              {activeExercises[0].name}
+              <span className="text-indigo-400 mx-1.5">🔗</span>
+              {activeExercises[1].name}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-slate-500">
+              <span className="inline-flex items-center gap-1.5 bg-indigo-500/10 text-indigo-300 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                🔗 סופר-סט
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock size={12} className="text-slate-600" />
+                {Math.max(activeExercises[0].restSeconds, activeExercises[1].restSeconds)} שנ' מנוחה משותפת
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[2rem] font-black leading-none tracking-tight">
+              {currentEx.name}
+            </h1>
+            <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
+              <span className="font-medium text-slate-400">
+                {currentEx.targetSets} × {currentEx.targetReps}
+                {isDuration && " שנ'"}
+              </span>
+              <span className="text-slate-700">·</span>
+              <span className="flex items-center gap-1">
+                <Clock size={12} className="text-slate-600" />
+                {currentEx.restSeconds} שנ' מנוחה
+              </span>
+              <span className="text-slate-700">·</span>
+              <span className="capitalize text-slate-600">
+                {EQUIPMENT_HE[currentEx.equipment] ?? currentEx.equipment}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ╔══════════════════════════════════════════════════════╗
           ║  כרטיס ביצועים קודמים — הכי חשוב                    ║
           ╚══════════════════════════════════════════════════════╝ */}
-      {currentEx.previousPerformance ? (
+      {isSuperSet ? (
+        <div className="grid grid-cols-2 gap-2">
+          {activeExercises.map((ex, i) => (
+            <div
+              key={ex.exerciseId}
+              className={cn(
+                "rounded-xl p-3",
+                ex.previousPerformance
+                  ? "bg-amber-950/40 border border-amber-500/40"
+                  : "bg-slate-900 border border-slate-800"
+              )}
+            >
+              <p className="text-[11px] font-bold text-slate-400 truncate mb-1.5">
+                {ex.name}
+              </p>
+              {ex.previousPerformance ? (
+                <div className="flex items-center gap-1.5">
+                  <Trophy size={12} className="text-amber-400 shrink-0" strokeWidth={2.5} />
+                  <span className="text-sm font-black text-amber-100">
+                    {(ex.previousPerformance.topDurationSecs ?? 0) > 0
+                      ? `${ex.previousPerformance.topDurationSecs} שנ'`
+                      : ex.previousPerformance.topSetWeightKg > 0
+                      ? `${ex.previousPerformance.topSetWeightKg}ק"ג`
+                      : "BW"}
+                  </span>
+                  {ex.previousPerformance.sets[0] != null && (ex.previousPerformance.topDurationSecs ?? 0) === 0 && (
+                    <span className="text-xs text-amber-400/80">
+                      × {ex.previousPerformance.sets[0].reps}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <Flame size={12} className="text-indigo-400 shrink-0" /> שיא ראשון
+                </p>
+              )}
+              <p className="text-[11px] text-slate-600 mt-1">{runtimes[i].setsCompleted}/{ex.targetSets} סטים</p>
+            </div>
+          ))}
+        </div>
+      ) : currentEx.previousPerformance ? (
         <div className="bg-amber-950/40 border-2 border-amber-500/50 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -860,37 +1006,70 @@ function ActiveSession() {
       )}
 
       {/* ── נקודות התקדמות סטים ─────────────────────────────── */}
-      <div className="flex items-center gap-2 px-1">
-        <span className="text-[11px] text-slate-500 me-1">סטים</span>
-        {warmupSets.map((_, i) => (
-          <div
-            key={`w${i}`}
-            className="w-3 h-3 rounded-full bg-slate-700 border border-slate-500 shrink-0"
-            title={`חימום ${i + 1}`}
-          />
-        ))}
-        {Array.from({ length: currentEx.targetSets }).map((_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-3 rounded-full transition-all duration-300 shrink-0",
-              i < setsCompleted
-                ? "w-5 bg-indigo-500"
-                : i === setsCompleted && !allSetsComplete
-                ? "w-3 bg-slate-700 border-2 border-indigo-500 animate-pulse"
-                : "w-3 bg-slate-800"
+      {isSuperSet ? (
+        <div className="space-y-1.5">
+          {activeExercises.map((ex, i) => (
+            <div key={ex.exerciseId} className="flex items-center gap-2 px-1">
+              <span className="text-[11px] text-slate-500 w-24 truncate shrink-0">{ex.name}</span>
+              {runtimes[i].warmupSets.map((_, wi) => (
+                <div
+                  key={`w${wi}`}
+                  className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-500 shrink-0"
+                  title={`חימום ${wi + 1}`}
+                />
+              ))}
+              {Array.from({ length: ex.targetSets }).map((_, si) => (
+                <div
+                  key={si}
+                  className={cn(
+                    "h-2.5 rounded-full transition-all duration-300 shrink-0",
+                    si < runtimes[i].setsCompleted
+                      ? "w-4 bg-indigo-500"
+                      : si === runtimes[i].setsCompleted && !runtimes[i].allSetsComplete
+                      ? "w-2.5 bg-slate-700 border-2 border-indigo-500 animate-pulse"
+                      : "w-2.5 bg-slate-800"
+                  )}
+                />
+              ))}
+              <span className="text-xs text-slate-400 ms-1">
+                {runtimes[i].setsCompleted}/{ex.targetSets}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-[11px] text-slate-500 me-1">סטים</span>
+          {warmupSets.map((_, i) => (
+            <div
+              key={`w${i}`}
+              className="w-3 h-3 rounded-full bg-slate-700 border border-slate-500 shrink-0"
+              title={`חימום ${i + 1}`}
+            />
+          ))}
+          {Array.from({ length: currentEx.targetSets }).map((_, i) => (
+            <div
+              key={i}
+              className={cn(
+                "h-3 rounded-full transition-all duration-300 shrink-0",
+                i < setsCompleted
+                  ? "w-5 bg-indigo-500"
+                  : i === setsCompleted && !allSetsComplete
+                  ? "w-3 bg-slate-700 border-2 border-indigo-500 animate-pulse"
+                  : "w-3 bg-slate-800"
+              )}
+            />
+          ))}
+          <span className="text-xs text-slate-400 ms-1">
+            {setsCompleted}/{currentEx.targetSets}
+            {warmupSets.length > 0 && (
+              <span className="text-slate-600 ms-1">
+                +{warmupSets.length}ח
+              </span>
             )}
-          />
-        ))}
-        <span className="text-xs text-slate-400 ms-1">
-          {setsCompleted}/{currentEx.targetSets}
-          {warmupSets.length > 0 && (
-            <span className="text-slate-600 ms-1">
-              +{warmupSets.length}ח
-            </span>
-          )}
-        </span>
-      </div>
+          </span>
+        </div>
+      )}
 
       {/* ── תיעוד סט ─────────────────────────────────────────── */}
       {allSetsComplete ? (
@@ -898,7 +1077,7 @@ function ActiveSession() {
           <CheckCircle2 size={30} className="text-green-400" />
           <p className="font-bold text-green-400 text-lg">כל הסטים הושלמו!</p>
           <p className="text-xs text-slate-500">
-            {currentExIdx < totalEx - 1
+            {currentItemPos < totalItems - 1
               ? `לחץ "תרגיל הבא" להמשך`
               : `לחץ "סיים אימון" כשמוכן`}
           </p>
@@ -947,7 +1126,58 @@ function ActiveSession() {
           </div>
 
           {/* ── קלט לפי סוג מעקב ─────────────────────────────── */}
-          {isDuration ? (
+          {isSuperSet ? (
+            /* שני התרגילים זה לצד זה — עמודה לכל תרגיל, קלט אחד משותף לתיעוד */
+            <div className="grid grid-cols-2 gap-3">
+              {activeExercises.map((ex, i) => {
+                const rt = runtimes[i]
+                return (
+                  <div key={ex.exerciseId} className="space-y-2">
+                    <p className="text-[11px] font-bold text-slate-400 truncate px-1">
+                      {ex.name}
+                    </p>
+                    {rt.isDuration ? (
+                      <StepperInput
+                        compact
+                        label="שניות"
+                        value={rt.duration}
+                        onAdjust={(delta) => adjustDuration(ex.exerciseId, delta)}
+                        onSet={(v) => setDuration(ex.exerciseId, v)}
+                        step={5}
+                        min={5}
+                      />
+                    ) : (
+                      <div className="space-y-2">
+                        <StepperInput
+                          compact
+                          label={
+                            ex.trackingType === "reps_only" || ex.equipment === "bodyweight"
+                              ? "משקל נוסף"
+                              : "משקל (ק\"ג)"
+                          }
+                          value={rt.weight}
+                          onAdjust={(delta) => adjustWeight(ex.exerciseId, delta)}
+                          onSet={(v) => setWeight(ex.exerciseId, v)}
+                          step={WEIGHT_STEP}
+                          min={0}
+                          isDecimal
+                        />
+                        <StepperInput
+                          compact
+                          label="חזרות"
+                          value={rt.reps}
+                          onAdjust={(delta) => adjustReps(ex.exerciseId, delta)}
+                          onSet={(v) => setReps(ex.exerciseId, v)}
+                          step={1}
+                          min={1}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : isDuration ? (
             /* תרגיל איזומטרי — שניות × סטים במקום משקל × חזרות */
             <div className="flex gap-3">
               <StepperInput
@@ -992,8 +1222,9 @@ function ActiveSession() {
             </div>
           )}
 
-          {/* Previous performance hint near inputs */}
-          {currentEx.previousPerformance && (
+          {/* Previous performance hint near inputs (single-exercise view only —
+              the super-set view already shows this in its mini cards above) */}
+          {!isSuperSet && currentEx.previousPerformance && (
             <p className="text-[11px] text-amber-600/80 text-center -mt-1">
               פעם קודמת:{" "}
               {isDuration && (currentEx.previousPerformance.topDurationSecs ?? 0) > 0 ? (
@@ -1010,7 +1241,7 @@ function ActiveSession() {
             </p>
           )}
 
-          {/* RPE (מתקפל) */}
+          {/* RPE (מתקפל) — סט משותף, אז דירוג אחד חל על שני התרגילים בסופר-סט */}
           {showRpe && (
             <div className="flex items-center gap-2 px-1">
               <span className="text-[11px] text-slate-500 w-10 shrink-0">
@@ -1020,7 +1251,7 @@ function ActiveSession() {
                 {[5, 6, 7, 8, 9, 10].map((r) => (
                   <button
                     key={r}
-                    onClick={() => setRpe(currentEx.exerciseId, r)}
+                    onClick={() => activeExercises.forEach((ex) => setRpe(ex.exerciseId, r))}
                     className={cn(
                       "flex-1 h-9 rounded-lg text-xs font-bold transition-colors",
                       rpe === r
@@ -1040,10 +1271,10 @@ function ActiveSession() {
           )}
 
           {/* ╔══════════════════════════════════════╗
-              ║         כפתור תיעוד סט               ║
+              ║  כפתור תיעוד סט — אחד לכל הפריט      ║
               ╚══════════════════════════════════════╝ */}
           <button
-            onClick={handleLogSet}
+            onClick={handleLogRound}
             className={cn(
               "w-full h-16 rounded-2xl font-black text-[1.05rem] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg",
               isWarmup
@@ -1054,6 +1285,10 @@ function ActiveSession() {
             <CheckCircle2 size={22} strokeWidth={2.5} />
             {isWarmup
               ? `תעד חימום ${warmupSets.length + 1}`
+              : isSuperSet
+              ? roundInSync
+                ? `תעד סט ${setsCompleted + 1} מתוך ${currentEx.targetSets} — שני התרגילים`
+                : `תעד סט — שני התרגילים`
               : `תעד סט ${setsCompleted + 1} מתוך ${currentEx.targetSets}`}
           </button>
         </div>
@@ -1063,32 +1298,42 @@ function ActiveSession() {
       <ExerciseTimer key={currentExIdx} onLogTime={handleLogHold} />
 
       {/* ── תרגילים קרובים + סידור מחדש ────────────────────────── */}
-      {exercises.slice(currentExIdx + 1).length > 0 && (
+      {items.slice(currentItemPos + 1).length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[11px] text-slate-600 font-semibold uppercase tracking-wider px-1">
             קרובים
           </p>
-          {exercises.slice(currentExIdx + 1).map((ex, relIdx) => {
-            const absIdx = currentExIdx + 1 + relIdx
-            const isLast  = absIdx === exercises.length - 1
+          {items.slice(currentItemPos + 1).map((item, relIdx) => {
+            const pos = currentItemPos + 1 + relIdx
+            const startIdx = starts[pos]
+            const isLast = pos === items.length - 1
+            const itemExercises = item.type === "superset" ? item.exercises : [item.exercise]
+            const name = itemExercises.map((e) => e.name).join(" 🔗 ")
+            const meta = itemExercises.map((e) => `${e.targetSets} × ${e.targetReps}`).join(" · ")
+            const firstPrev = itemExercises.find((e) => e.previousPerformance)?.previousPerformance
             return (
               <div
-                key={ex.exerciseId}
-                className="bg-slate-900/70 border border-slate-800 rounded-2xl px-3 py-2.5 flex items-center gap-2"
+                key={startIdx}
+                className={cn(
+                  "border rounded-2xl px-3 py-2.5 flex items-center gap-2",
+                  item.type === "superset"
+                    ? "bg-indigo-500/5 border-indigo-500/20"
+                    : "bg-slate-900/70 border-slate-800"
+                )}
               >
-                {/* ↑ / ↓ reorder buttons — the first upcoming exercise can always move
-                    up into the active slot (absIdx - 1 is always a valid target: it's
-                    either the previous upcoming exercise or the current exercise) */}
+                {/* ↑ / ↓ reorder buttons — the first upcoming item can always move
+                    up into the active slot (pos - 1 is always a valid target: it's
+                    either the previous upcoming item or the current item) */}
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <button
-                    onClick={() => swapExercises(absIdx, absIdx - 1)}
+                    onClick={() => moveItemAt(startIdx, -1)}
                     className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
                     aria-label="הזז למעלה"
                   >
                     <ArrowUp size={11} strokeWidth={2.5} />
                   </button>
                   <button
-                    onClick={() => swapExercises(absIdx, absIdx + 1)}
+                    onClick={() => moveItemAt(startIdx, 1)}
                     disabled={isLast}
                     className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
                     aria-label="הזז למטה"
@@ -1098,18 +1343,16 @@ function ActiveSession() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{ex.name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {ex.targetSets} × {ex.targetReps}
-                  </p>
+                  <p className="text-sm font-semibold truncate">{name}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{meta}</p>
                 </div>
 
-                {ex.previousPerformance ? (
+                {firstPrev ? (
                   <p className="text-xs text-indigo-400 font-medium shrink-0">
-                    {(ex.previousPerformance.topDurationSecs ?? 0) > 0
-                      ? `${ex.previousPerformance.topDurationSecs} שנ'`
-                      : ex.previousPerformance.topSetWeightKg > 0
-                      ? `${ex.previousPerformance.topSetWeightKg} ק"ג`
+                    {(firstPrev.topDurationSecs ?? 0) > 0
+                      ? `${firstPrev.topDurationSecs} שנ'`
+                      : firstPrev.topSetWeightKg > 0
+                      ? `${firstPrev.topSetWeightKg} ק"ג`
                       : "BW"}
                   </p>
                 ) : (
@@ -1125,7 +1368,7 @@ function ActiveSession() {
       <div className="flex items-center gap-3">
         <button
           onClick={prevExercise}
-          disabled={currentExIdx === 0}
+          disabled={currentItemPos === 0}
           className="flex items-center gap-1 border border-slate-800 hover:border-slate-600 rounded-2xl px-4 py-3 text-sm font-medium text-slate-400 disabled:opacity-25 disabled:pointer-events-none transition-colors"
         >
           <ChevronRight size={16} /> הקודם
@@ -1134,7 +1377,7 @@ function ActiveSession() {
         <div className="flex-1" />
 
         {allSetsComplete &&
-          (currentExIdx < totalEx - 1 ? (
+          (currentItemPos < totalItems - 1 ? (
             <button
               onClick={nextExercise}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-2xl px-5 py-3 text-sm font-bold transition-colors"

@@ -5,6 +5,7 @@ import { Dumbbell, Plus, ChevronLeft, Calendar, Pencil, Loader2, Trash2 } from "
 import Link from "next/link"
 import WorkoutEditor from "./WorkoutEditor"
 import { cn } from "@/lib/utils"
+import { groupIntoItems } from "@/lib/superset"
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -27,21 +28,12 @@ interface WorkoutDay {
 
 // Clusters consecutive exercises that share a superSetId into groups of 2
 // (a super-set pair, performed back-to-back) or 1 (a standalone exercise).
+// Delegates to the shared grouping algorithm (src/lib/superset.ts) also used
+// by the live gym session and the workout editor.
 function groupSuperSets<T extends { superSetId?: string | null }>(exercises: T[]): T[][] {
-  const groups: T[][] = []
-  let i = 0
-  while (i < exercises.length) {
-    const ex = exercises[i]
-    const next = exercises[i + 1]
-    if (ex.superSetId && next?.superSetId === ex.superSetId) {
-      groups.push([ex, next])
-      i += 2
-    } else {
-      groups.push([ex])
-      i += 1
-    }
-  }
-  return groups
+  return groupIntoItems(exercises).map((item) =>
+    item.type === "superset" ? item.exercises : [item.exercise]
+  )
 }
 
 interface Plan {

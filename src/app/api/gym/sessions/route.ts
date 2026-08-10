@@ -111,6 +111,7 @@ export async function POST(request: Request) {
           targetReps: we.targetReps,
           restSeconds: we.restSeconds,
           notes: we.notes ?? undefined,
+          superSetId: we.superSetId ?? undefined,
           previousPerformance:
             latest && latestSets.length > 0
               ? {
