@@ -8,26 +8,38 @@ const DEMO_USER_ID = "demo-user"
 
 const VOICE_PROMPT =
   'Listen to this audio log of a user describing what they ate. Identify all distinct meals mentioned. ' +
-  'For each meal, estimate the components and calculate metrics. ' +
-  'Also evaluate each meal\'s protein-to-calorie ratio ((protein grams × 4) / calories) for a vegetarian ' +
+  'For each meal, identify EVERY individual food item/ingredient as its own separate entry — never bundle ' +
+  'multiple distinct foods into one aggregated line, even if the user describes them as a single dish or ' +
+  'meal. For example, "shawarma with pasta and peas" must become 3 separate items — shawarma, pasta, and ' +
+  'peas — each with its own estimated quantity and macros, never one combined item. ' +
+  'For each item, estimate its quantity in grams (field "quantity", unit "g") and its own calories, protein, ' +
+  'carbs, fat, and sugar. Name each item in Hebrew. ' +
+  'Also evaluate each meal\'s OVERALL protein-to-calorie ratio, summed across all of that meal\'s items ' +
+  '((total protein grams × 4) / total calories) for a vegetarian ' +
   'athlete pursuing hypertrophy. If the ratio is under 0.10 (the meal is calorie/carb/fat "expensive" but ' +
   'low in protein), write one short, gentle Hebrew sentence suggesting a concrete swap or addition for next ' +
   'time — e.g. swapping oat milk for soy milk, adding a fraction of a tofu block, or using seitan. Never be ' +
   'judgmental or guilt-inducing. If the ratio is high (protein-dense relative to calories), write one short, ' +
   'warm Hebrew encouragement instead, e.g. "פצצת התאוששות! יחס חלבון-קלוריות מעולה." Put this sentence in an ' +
-  '"insight" field on that meal. ' +
+  '"insight" field on that meal (not per item — one insight per meal, based on its items combined). ' +
   'Return a JSON object with a single top-level \'meals\' array formatted EXACTLY like this: ' +
-  '{ "meals": [ { "mealName": "בוקר/צהריים/ערב/נשנוש", "ingredients": "comma separated list of ingredients with estimated grams in Hebrew", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number, "insight": "one Hebrew sentence per the rule above" } ] }.'
+  '{ "meals": [ { "mealName": "בוקר/צהריים/ערב/נשנוש", "items": [ { "name": "Hebrew food item name", "quantity": number, "unit": "g", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number } ], "insight": "one Hebrew sentence per the rule above" } ] }.'
+
+interface VoiceFoodItem {
+  name:     string
+  quantity: number
+  unit:     string
+  calories: number
+  protein:  number
+  carbs:    number
+  fat:      number
+  sugar:    number
+}
 
 interface VoiceMeal {
-  mealName:    string
-  ingredients: string
-  calories:    number
-  protein:     number
-  carbs:       number
-  fat:         number
-  sugar:       number
-  insight?:    string
+  mealName: string
+  items:    VoiceFoodItem[]
+  insight?: string
 }
 
 function resolveGeminiKey(aiProvider: string | null, userApiKey: string | null): string | null {
@@ -93,7 +105,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(result)
+    // Defensive normalization — an LLM omitting `items` on a meal shouldn't crash the client.
+    const meals = result.meals.map((m) => ({
+      ...m,
+      items: Array.isArray(m.items) ? m.items : [],
+    }))
+
+    return NextResponse.json({ meals })
   } catch (err) {
     console.error("[POST /api/ai/analyze-voice]", err)
     return NextResponse.json({ error: "שגיאה בניתוח ההקלטה — נסה שוב" }, { status: 500 })

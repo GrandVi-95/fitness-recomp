@@ -7,9 +7,31 @@ const DEMO_USER_ID = "demo-user"
 // PRIVACY: Image buffer is transient and not stored on disk or DB
 
 const ANALYZE_PROMPT =
-  'Analyze this image of food. Identify the ingredients and estimate their quantities in grams. ' +
-  'Return a flat JSON object EXACTLY like this: { "ingredients": "comma separated list of ingredients with estimated grams in Hebrew", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number }. ' +
-  'Estimate sugar from visible sweet ingredients, sauces, fruit, or processed carbs. If not determinable, use 0.'
+  'Analyze this image of food. Identify EVERY distinct food item visible as its own separate entry — never ' +
+  'bundle multiple distinct foods into one aggregated line, even if they form a single plate or dish. For ' +
+  'example, a plate containing shawarma, pasta, and peas must become 3 separate items — shawarma, pasta, and ' +
+  'peas — each with its own estimated quantity and macros, never one combined item. ' +
+  'For each item, estimate its quantity in grams (field "quantity", unit "g") and its own calories, protein, ' +
+  'carbs, fat, and sugar. Name each item in Hebrew. Estimate sugar from visible sweet ingredients, sauces, ' +
+  'fruit, or processed carbs; if not determinable, use 0. ' +
+  'IMPORTANT — scale ambiguity: when analyzing an image with no explicit weight given in accompanying text ' +
+  'or voice, be aware that portion size estimated from a photo alone is inherently uncertain — there is no ' +
+  'guaranteed reference for scale. Estimate portion sizes conservatively rather than generously. In the ' +
+  '"insight" field, write one short, friendly Hebrew sentence gently reminding the user to double-check the ' +
+  'estimated weight, especially if the photo had no visual reference object (e.g. a hand, a coin, or a ' +
+  'standard-size plate) to judge scale by. ' +
+  'Return a JSON object EXACTLY like this: { "items": [ { "name": "Hebrew food item name", "quantity": number, "unit": "g", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number } ], "insight": "one short Hebrew sentence per the rule above" }.'
+
+interface ImageFoodItem {
+  name:     string
+  quantity: number
+  unit:     string
+  calories: number
+  protein:  number
+  carbs:    number
+  fat:      number
+  sugar:    number
+}
 
 function resolveGeminiKey(aiProvider: string | null, userApiKey: string | null): string | null {
   if (aiProvider === "gemini" && userApiKey) return userApiKey
@@ -63,13 +85,13 @@ export async function POST(request: NextRequest) {
       ],
     }])
 
-    const result = JSON.parse(rawText) as {
-      ingredients: string
-      calories:    number
-      protein:     number
-      carbs:       number
-      fat:         number
-      sugar:       number
+    const result = JSON.parse(rawText) as { items: ImageFoodItem[]; insight?: string }
+
+    if (!Array.isArray(result.items) || result.items.length === 0) {
+      return NextResponse.json(
+        { error: "לא זוהו פריטי מזון בתמונה — נסה תמונה ברורה יותר" },
+        { status: 422 },
+      )
     }
 
     return NextResponse.json(result)

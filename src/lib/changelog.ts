@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.13.0",
+    description:
+      "Fix: Forced granular item separation in AI parsing and improved image scale calibration, leveraging the Label Scanner for branded items.",
+  },
+  {
     version: "v1.12.0",
     description:
       "Refactor: Redesigned Super-Set UI into a unified dual-input card for better workout flow, and added a visual link toggle in the workout editor.",
@@ -206,4 +211,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.12.0"
+export const APP_VERSION = "v1.13.0"

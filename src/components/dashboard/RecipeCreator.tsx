@@ -84,8 +84,12 @@ export default function RecipeCreator({ onSaved }: Props) {
       })
       const data = await res.json()
       if (!res.ok) { setScanError(data.error ?? "שגיאה בניתוח התמונה"); return }
-      if (data.ingredients) {
-        setIngredients((prev) => (prev ? `${prev}, ${data.ingredients}` : data.ingredients))
+      // /api/ai/analyze-image now returns one entry per distinct food item —
+      // rebuild a comma-separated ingredients string from them.
+      const items = (data.items ?? []) as Array<{ name: string; quantity: number; unit: string }>
+      const detected = items.map((it) => `${it.name} ${it.quantity}${it.unit}`).join(", ")
+      if (detected) {
+        setIngredients((prev) => (prev ? `${prev}, ${detected}` : detected))
       }
     } catch {
       setScanError("שגיאה בניתוח התמונה — נסה שוב")
@@ -122,10 +126,13 @@ export default function RecipeCreator({ onSaved }: Props) {
       })
       const data = await res.json()
       if (!res.ok) { setVoiceError(data.error ?? "שגיאה בניתוח ההקלטה"); return }
-      // Concatenate all meal ingredients from voice response into the ingredients field
-      const all = (data.meals ?? [])
-        .map((m: { ingredients: string }) => m.ingredients)
-        .filter(Boolean)
+      // /api/ai/analyze-voice now returns one item per distinct food item per
+      // meal — flatten every meal's items into one ingredients string.
+      type VoiceItem = { name: string; quantity: number; unit: string }
+      const meals = (data.meals ?? []) as Array<{ items?: VoiceItem[] }>
+      const all = meals
+        .flatMap((m) => m.items ?? [])
+        .map((it) => `${it.name} ${it.quantity}${it.unit}`)
         .join(", ")
       if (all) setIngredients((prev) => (prev ? `${prev}, ${all}` : all))
     } catch {

@@ -46,23 +46,29 @@ interface MacroTotals {
   sugar?:   number
 }
 
+// A single food item as parsed by AI, before it's been logged (no id yet) —
+// shared shape for the image-scan and voice-scan review cards, one row per
+// distinct food item rather than one aggregated line per meal/photo.
+interface DraftFoodItem {
+  name:     string
+  quantity: number
+  unit:     string
+  calories: number
+  protein:  number
+  carbs:    number
+  fat:      number
+  sugar:    number
+}
+
 interface ScanResult {
-  ingredients: string
-  calories:    number
-  protein:     number
-  carbs:       number
-  fat:         number
+  items:    DraftFoodItem[]
+  insight?: string   // AI nudge — reminder to verify scale-ambiguous weight estimates
 }
 
 interface VoiceMeal {
-  mealName:    string
-  ingredients: string
-  calories:    number
-  protein:     number
-  carbs:       number
-  fat:         number
-  sugar:       number
-  insight?:    string   // AI nudge — protein density tip or encouragement
+  mealName: string
+  items:    DraftFoodItem[]
+  insight?: string   // AI nudge — protein density tip or encouragement
 }
 
 interface LabelScan {
@@ -637,8 +643,11 @@ export default function NutritionPage() {
       }
       const result = data as ScanResult
       setScanResult(result)
-      // Auto-fill the NLP text field with detected ingredients
-      setNlpText(result.ingredients ?? "")
+      // Auto-fill the NLP text field with the detected items so the user can
+      // review/edit before the normal text pipeline re-parses & logs them.
+      setNlpText(
+        (result.items ?? []).map((it) => `${it.name} ${it.quantity}${it.unit}`).join(", "),
+      )
       requestAnimationFrame(() => {
         const el = textareaRef.current
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
@@ -897,6 +906,15 @@ export default function NutritionPage() {
     )
   }
 
+  const updateVoiceMealItem = (mealIndex: number, itemIndex: number, updates: Partial<DraftFoodItem>) => {
+    setVoiceMeals(prev =>
+      prev ? prev.map((m, i) => i !== mealIndex ? m : {
+        ...m,
+        items: m.items.map((it, ii) => ii === itemIndex ? { ...it, ...updates } : it),
+      }) : null,
+    )
+  }
+
   const handleLogAllMeals = async () => {
     if (!voiceMeals?.length) return
     setLoggingVoice(true)
@@ -912,14 +930,18 @@ export default function NutritionPage() {
           body:    JSON.stringify({
             mealType:    mapMealNameToType(meal.mealName),
             insight:     meal.insight,
-            directItems: [{
-              name:     meal.mealName,
-              calories: meal.calories,
-              protein:  meal.protein,
-              carbs:    meal.carbs,
-              fat:      meal.fat,
-              sugar:    meal.sugar,
-            }],
+            // One directItems entry per distinct food item, not one aggregated
+            // entry per meal — keeps each ingredient independently editable/deletable.
+            directItems: meal.items.map((it) => ({
+              name:     it.name,
+              quantity: it.quantity,
+              unit:     it.unit,
+              calories: it.calories,
+              protein:  it.protein,
+              carbs:    it.carbs,
+              fat:      it.fat,
+              sugar:    it.sugar,
+            })),
           }),
         })
         if (!res.ok) failed.push(meal)
@@ -1484,20 +1506,44 @@ export default function NutritionPage() {
             </div>
           )}
 
-          {scanResult && (
-            <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-1.5" dir="rtl">
-              <p className="text-[11px] text-teal-400 font-semibold flex items-center gap-1.5">
-                <ScanLine size={12} /> זוהו מרכיבים — הועברו לשדה הקלט
-              </p>
-              <p className="text-xs text-slate-400 leading-relaxed">{scanResult.ingredients}</p>
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
-                <span className="text-orange-400">{scanResult.calories} קק"ל</span>
-                <span className="text-indigo-400">{scanResult.protein}ג' חלב'</span>
-                <span className="text-emerald-400">{scanResult.carbs}ג' פחמ'</span>
-                <span className="text-amber-400">{scanResult.fat}ג' שומן</span>
+          {scanResult && (() => {
+            const t = scanResult.items.reduce(
+              (acc, it) => ({
+                calories: acc.calories + it.calories,
+                protein:  acc.protein  + it.protein,
+                carbs:    acc.carbs    + it.carbs,
+                fat:      acc.fat      + it.fat,
+              }),
+              { calories: 0, protein: 0, carbs: 0, fat: 0 },
+            )
+            return (
+              <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-1.5" dir="rtl">
+                <p className="text-[11px] text-teal-400 font-semibold flex items-center gap-1.5">
+                  <ScanLine size={12} /> זוהו {scanResult.items.length} פריטים — הועברו לשדה הקלט
+                </p>
+                <ul className="space-y-0.5">
+                  {scanResult.items.map((item, i) => (
+                    <li key={i} className="text-xs text-slate-400">
+                      · {item.name}{" "}
+                      <span className="text-slate-500">({item.quantity}{item.unit})</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
+                  <span className="text-orange-400">{Math.round(t.calories)} קק&quot;ל</span>
+                  <span className="text-indigo-400">{Math.round(t.protein)}ג&apos; חלב&apos;</span>
+                  <span className="text-emerald-400">{Math.round(t.carbs)}ג&apos; פחמ&apos;</span>
+                  <span className="text-amber-400">{Math.round(t.fat)}ג&apos; שומן</span>
+                </div>
+                {scanResult.insight && (
+                  <p className="flex items-start gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 mt-1">
+                    <Lightbulb size={12} className="shrink-0 mt-0.5 text-amber-400" />
+                    {scanResult.insight}
+                  </p>
+                )}
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {scanError && (
             <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
@@ -1556,59 +1602,71 @@ export default function NutritionPage() {
                       💡 {meal.insight}
                     </p>
                   )}
-                  <textarea
-                    value={meal.ingredients}
-                    onChange={e => updateVoiceMeal(i, { ingredients: e.target.value })}
-                    rows={2}
-                    className="w-full bg-transparent text-xs text-slate-400 leading-relaxed focus:outline-none border-b border-slate-600/20 focus:border-slate-500/40 resize-none transition-colors pb-0.5"
-                    dir="rtl"
-                  />
-                  <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold pt-0.5">
-                    <label className="flex items-center gap-0.5 text-orange-400">
-                      <input
-                        type="number"
-                        value={meal.calories}
-                        onChange={e => updateVoiceMeal(i, { calories: Number(e.target.value) || 0 })}
-                        className="w-10 bg-transparent text-orange-400 text-[11px] font-semibold focus:outline-none text-center border-b border-orange-400/30 focus:border-orange-400/60"
-                      />
-                      קק&quot;ל
-                    </label>
-                    <label className="flex items-center gap-0.5 text-indigo-400">
-                      <input
-                        type="number"
-                        value={meal.protein}
-                        onChange={e => updateVoiceMeal(i, { protein: Number(e.target.value) || 0 })}
-                        className="w-8 bg-transparent text-indigo-400 text-[11px] font-semibold focus:outline-none text-center border-b border-indigo-400/30 focus:border-indigo-400/60"
-                      />
-                      ג&apos; חלב&apos;
-                    </label>
-                    <label className="flex items-center gap-0.5 text-emerald-400">
-                      <input
-                        type="number"
-                        value={meal.carbs}
-                        onChange={e => updateVoiceMeal(i, { carbs: Number(e.target.value) || 0 })}
-                        className="w-8 bg-transparent text-emerald-400 text-[11px] font-semibold focus:outline-none text-center border-b border-emerald-400/30 focus:border-emerald-400/60"
-                      />
-                      ג&apos; פחמ&apos;
-                    </label>
-                    <label className="flex items-center gap-0.5 text-amber-400">
-                      <input
-                        type="number"
-                        value={meal.fat}
-                        onChange={e => updateVoiceMeal(i, { fat: Number(e.target.value) || 0 })}
-                        className="w-8 bg-transparent text-amber-400 text-[11px] font-semibold focus:outline-none text-center border-b border-amber-400/30 focus:border-amber-400/60"
-                      />
-                      ג&apos; שומן
-                    </label>
-                    <label className="flex items-center gap-0.5 text-pink-400">
-                      <input
-                        type="number"
-                        value={meal.sugar}
-                        onChange={e => updateVoiceMeal(i, { sugar: Number(e.target.value) || 0 })}
-                        className="w-8 bg-transparent text-pink-400 text-[11px] font-semibold focus:outline-none text-center border-b border-pink-400/30 focus:border-pink-400/60"
-                      />
-                      ג&apos; סוכר
-                    </label>
+                  {/* פריטים נפרדים — לא שורה אחת מסוכמת לכל הארוחה */}
+                  <div className="space-y-1.5">
+                    {meal.items.map((item, ii) => (
+                      <div key={ii} className="bg-slate-950/40 rounded-lg p-2 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={e => updateVoiceMealItem(i, ii, { name: e.target.value })}
+                            className="flex-1 bg-transparent text-xs font-medium text-slate-300 focus:outline-none border-b border-slate-700/40 focus:border-violet-400/50 pb-0.5 transition-colors"
+                            dir="rtl"
+                          />
+                          <span className="text-[10px] text-slate-600 shrink-0">
+                            {item.quantity}{item.unit}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] font-semibold">
+                          <label className="flex items-center gap-0.5 text-orange-400">
+                            <input
+                              type="number"
+                              value={item.calories}
+                              onChange={e => updateVoiceMealItem(i, ii, { calories: Number(e.target.value) || 0 })}
+                              className="w-9 bg-transparent text-orange-400 text-[10px] font-semibold focus:outline-none text-center border-b border-orange-400/30 focus:border-orange-400/60"
+                            />
+                            קק&quot;ל
+                          </label>
+                          <label className="flex items-center gap-0.5 text-indigo-400">
+                            <input
+                              type="number"
+                              value={item.protein}
+                              onChange={e => updateVoiceMealItem(i, ii, { protein: Number(e.target.value) || 0 })}
+                              className="w-7 bg-transparent text-indigo-400 text-[10px] font-semibold focus:outline-none text-center border-b border-indigo-400/30 focus:border-indigo-400/60"
+                            />
+                            ג&apos; חלב&apos;
+                          </label>
+                          <label className="flex items-center gap-0.5 text-emerald-400">
+                            <input
+                              type="number"
+                              value={item.carbs}
+                              onChange={e => updateVoiceMealItem(i, ii, { carbs: Number(e.target.value) || 0 })}
+                              className="w-7 bg-transparent text-emerald-400 text-[10px] font-semibold focus:outline-none text-center border-b border-emerald-400/30 focus:border-emerald-400/60"
+                            />
+                            ג&apos; פחמ&apos;
+                          </label>
+                          <label className="flex items-center gap-0.5 text-amber-400">
+                            <input
+                              type="number"
+                              value={item.fat}
+                              onChange={e => updateVoiceMealItem(i, ii, { fat: Number(e.target.value) || 0 })}
+                              className="w-7 bg-transparent text-amber-400 text-[10px] font-semibold focus:outline-none text-center border-b border-amber-400/30 focus:border-amber-400/60"
+                            />
+                            ג&apos; שומן
+                          </label>
+                          <label className="flex items-center gap-0.5 text-pink-400">
+                            <input
+                              type="number"
+                              value={item.sugar}
+                              onChange={e => updateVoiceMealItem(i, ii, { sugar: Number(e.target.value) || 0 })}
+                              className="w-7 bg-transparent text-pink-400 text-[10px] font-semibold focus:outline-none text-center border-b border-pink-400/30 focus:border-pink-400/60"
+                            />
+                            ג&apos; סוכר
+                          </label>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
