@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.13.2",
+    description:
+      "UX Fix: Added an intermediary dropzone modal for the Label Scanner to properly support clipboard pasting without instantly opening the OS file picker.",
+  },
+  {
     version: "v1.13.1",
     description:
       "Fix & Feature: Resolved instant-save bug on unit input, added single-item weight option, and implemented clipboard paste support for the Label Scanner.",
@@ -216,4 +221,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.13.1"
+export const APP_VERSION = "v1.13.2"

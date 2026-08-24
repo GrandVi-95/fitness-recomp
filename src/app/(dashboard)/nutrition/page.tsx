@@ -29,6 +29,7 @@ import {
   Coffee,
   Settings,
   Lightbulb,
+  Upload,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -439,6 +440,71 @@ function UnitDefinitionInput({
 }
 
 // ─────────────────────────────────────────────────────────────
+// LabelScannerModal — an intermediary surface between clicking "סרוק תווית"
+// and actually picking a file. Clicking the native file input directly steals
+// browser focus to the OS picker, leaving nowhere for the user to Ctrl+V a
+// screenshot onto — this modal is that missing UI surface: a dropzone the
+// user can click (opens the file picker), drag an image onto, or paste into.
+// ─────────────────────────────────────────────────────────────
+
+function LabelScannerModal({
+  onClose,
+  onDropzoneClick,
+  onDropFile,
+}: {
+  onClose: () => void
+  onDropzoneClick: () => void
+  onDropFile: (e: React.DragEvent) => void
+}) {
+  const [dragOver, setDragOver] = useState(false)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-4 space-y-3"
+        dir="rtl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-cyan-300 flex items-center gap-1.5">
+            <ScanLine size={14} /> סריקת תווית תזונה
+          </p>
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+            aria-label="סגור"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={onDropzoneClick}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { setDragOver(false); onDropFile(e) }}
+          className={cn(
+            "w-full flex flex-col items-center gap-2.5 rounded-xl border-2 border-dashed py-10 px-4 transition-colors",
+            dragOver
+              ? "border-cyan-400 bg-cyan-500/10"
+              : "border-slate-700 hover:border-cyan-600/60 hover:bg-slate-800/50",
+          )}
+        >
+          <Upload size={26} className={dragOver ? "text-cyan-300" : "text-slate-500"} />
+          <p className="text-xs text-slate-300 text-center leading-relaxed">
+            לחץ לבחירת תמונה, או פשוט הדבק (Ctrl+V) / גרור לכאן
+          </p>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // עמוד תזונה
 // ─────────────────────────────────────────────────────────────
 
@@ -466,6 +532,7 @@ export default function NutritionPage() {
 
   // Nutrition label scanner state
   const labelInputRef = useRef<HTMLInputElement>(null)
+  const [labelModalOpen,   setLabelModalOpen]   = useState(false)
   const [labelLoading,     setLabelLoading]     = useState(false)
   const [labelScan,        setLabelScan]        = useState<LabelScan | null>(null)
   const [labelError,       setLabelError]       = useState<string | null>(null)
@@ -801,16 +868,26 @@ export default function NutritionPage() {
   const handleLabelScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setLabelModalOpen(false)
     await processLabelImageFile(file)
     if (labelInputRef.current) labelInputRef.current.value = ""
   }
 
+  // Drag-and-drop straight onto the modal's dropzone.
+  const handleLabelDropFile = async (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    setLabelModalOpen(false)
+    await processLabelImageFile(file)
+  }
+
   // Clipboard paste (Ctrl+V / Cmd+V) — lets the user paste a screenshot of a
-  // nutrition label directly instead of picking a file. A text paste never
-  // contains an image clipboard item, so this never interferes with normal
-  // pasting into the product-name field or elsewhere on the page.
+  // nutrition label directly instead of picking a file. Only wired up while
+  // the scanner modal is open (see the effect below), so it never interferes
+  // with pasting elsewhere on the page (e.g. the product-name field).
   const handleLabelPasteImage = async (e: ClipboardEvent) => {
-    if (labelLoading || parsing || scanLoading || voiceState !== "idle") return
+    if (labelLoading) return
     const items = e.clipboardData?.items
     if (!items) return
     for (const item of items) {
@@ -818,6 +895,7 @@ export default function NutritionPage() {
         const file = item.getAsFile()
         if (file) {
           e.preventDefault()
+          setLabelModalOpen(false)
           await processLabelImageFile(file)
         }
         return
@@ -826,9 +904,10 @@ export default function NutritionPage() {
   }
 
   useEffect(() => {
+    if (!labelModalOpen) return
     window.addEventListener("paste", handleLabelPasteImage)
     return () => window.removeEventListener("paste", handleLabelPasteImage)
-  }, [labelLoading, parsing, scanLoading, voiceState]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [labelModalOpen, labelLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Weight of one unit: from the label's per-unit column, or derived as
   // packageWeight / unitsPerPackage when the user tells us the piece count.
@@ -1442,9 +1521,11 @@ export default function NutritionPage() {
                 </>
               )}
             </button>
-            {/* Label-scan button */}
+            {/* Label-scan button — opens the intermediary dropzone modal
+                rather than the native file picker directly, so there's a UI
+                surface to Ctrl+V a screenshot onto before a file is chosen. */}
             <button
-              onClick={() => labelInputRef.current?.click()}
+              onClick={() => setLabelModalOpen(true)}
               disabled={labelLoading || parsing || scanLoading || voiceState !== "idle"}
               className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-cyan-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors"
             >
@@ -1461,6 +1542,14 @@ export default function NutritionPage() {
               )}
             </button>
           </div>
+
+          {labelModalOpen && (
+            <LabelScannerModal
+              onClose={() => setLabelModalOpen(false)}
+              onDropzoneClick={() => labelInputRef.current?.click()}
+              onDropFile={handleLabelDropFile}
+            />
+          )}
 
           {/* ── כרטיס מנה ממוצר סרוק ─────────────────────────── */}
           {labelScan && (
