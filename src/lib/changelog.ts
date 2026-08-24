@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.13.1",
+    description:
+      "Fix & Feature: Resolved instant-save bug on unit input, added single-item weight option, and implemented clipboard paste support for the Label Scanner.",
+  },
+  {
     version: "v1.13.0",
     description:
       "Fix: Forced granular item separation in AI parsing and improved image scale calibration, leveraging the Label Scanner for branded items.",
@@ -211,4 +216,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.13.0"
+export const APP_VERSION = "v1.13.1"

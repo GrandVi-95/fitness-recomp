@@ -344,6 +344,100 @@ function FoodItemRow({
   )
 }
 
+// Parses a positive number from a text input, or null if empty/invalid/zero —
+// shared by the page and the unit-definition sub-component below.
+function posNum(s: string): number | null {
+  const n = parseFloat(s)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+// ─────────────────────────────────────────────────────────────
+// הגדרת "יחידה" לתווית סרוקה — לפי מספר יחידות באריזה, או לפי שקילה ישירה
+// של יחידה אחת על מאזני מטבח (למשל פרוסת גבינה ~28 גרם).
+//
+// Local draft state stays fully inside this component and only reaches the
+// parent's labelScan on explicit confirm (button click or Enter) — never on
+// every keystroke, which previously caused the input to vanish mid-typing
+// (typing "1" of "15" already satisfied the parent's "has a unit weight"
+// condition and unmounted this block instantly).
+// ─────────────────────────────────────────────────────────────
+
+function UnitDefinitionInput({
+  hasPackageWeight,
+  onConfirmCount,
+  onConfirmWeight,
+}: {
+  hasPackageWeight: boolean
+  onConfirmCount: (units: string) => void
+  onConfirmWeight: (grams: string) => void
+}) {
+  const [mode, setMode] = useState<"count" | "weight">(hasPackageWeight ? "count" : "weight")
+  const [draft, setDraft] = useState("")
+
+  const confirm = () => {
+    if (!posNum(draft)) return
+    if (mode === "count") onConfirmCount(draft)
+    else onConfirmWeight(draft)
+    setDraft("")
+  }
+
+  return (
+    <div className="space-y-2 bg-slate-900/50 rounded-lg px-3 py-2">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => { setMode("count"); setDraft("") }}
+          className={cn(
+            "px-2 py-1 rounded-md text-[10px] font-semibold transition-colors",
+            mode === "count" ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400",
+          )}
+        >
+          לפי מספר יחידות באריזה
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMode("weight"); setDraft("") }}
+          className={cn(
+            "px-2 py-1 rounded-md text-[10px] font-semibold transition-colors",
+            mode === "weight" ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400",
+          )}
+        >
+          לפי שקילה של יחידה אחת (גרם)
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-amber-300/90 shrink-0">
+          {mode === "count"
+            ? "כמה יחידות יש באריזה כולה?"
+            : "מה משקל יחידה אחת? — שקול על מאזני מטבח"}
+        </span>
+        <input
+          type="number"
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); confirm() }
+          }}
+          placeholder={mode === "count" ? "4" : "28"}
+          className="w-16 bg-slate-900/70 rounded-lg px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+        />
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={!posNum(draft)}
+          className="flex items-center gap-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 text-[11px] font-semibold text-white transition-colors"
+        >
+          <Check size={11} /> אישור
+        </button>
+      </div>
+      {mode === "count" && !hasPackageWeight && (
+        <p className="text-[10px] text-slate-500">(נדרש גם משקל אריזה כדי לחשב לפי מספר יחידות)</p>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────
 // עמוד תזונה
 // ─────────────────────────────────────────────────────────────
@@ -661,9 +755,8 @@ export default function NutritionPage() {
   }
 
   // ── סריקת תווית תזונה ────────────────────────────────────────
-  const handleLabelScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // Core label-scan logic, shared by the file-picker input and clipboard paste.
+  const processLabelImageFile = async (file: File) => {
     setLabelLoading(true)
     setLabelScan(null)
     setLabelError(null)
@@ -702,14 +795,40 @@ export default function NutritionPage() {
       setLabelError("שגיאה בסריקת התווית — נסה שוב")
     } finally {
       setLabelLoading(false)
-      if (labelInputRef.current) labelInputRef.current.value = ""
     }
   }
 
-  const posNum = (s: string): number | null => {
-    const n = parseFloat(s)
-    return Number.isFinite(n) && n > 0 ? n : null
+  const handleLabelScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await processLabelImageFile(file)
+    if (labelInputRef.current) labelInputRef.current.value = ""
   }
+
+  // Clipboard paste (Ctrl+V / Cmd+V) — lets the user paste a screenshot of a
+  // nutrition label directly instead of picking a file. A text paste never
+  // contains an image clipboard item, so this never interferes with normal
+  // pasting into the product-name field or elsewhere on the page.
+  const handleLabelPasteImage = async (e: ClipboardEvent) => {
+    if (labelLoading || parsing || scanLoading || voiceState !== "idle") return
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile()
+        if (file) {
+          e.preventDefault()
+          await processLabelImageFile(file)
+        }
+        return
+      }
+    }
+  }
+
+  useEffect(() => {
+    window.addEventListener("paste", handleLabelPasteImage)
+    return () => window.removeEventListener("paste", handleLabelPasteImage)
+  }, [labelLoading, parsing, scanLoading, voiceState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Weight of one unit: from the label's per-unit column, or derived as
   // packageWeight / unitsPerPackage when the user tells us the piece count.
@@ -1427,21 +1546,19 @@ export default function NutritionPage() {
                 </span>
               </div>
 
-              {/* Unit weight unknown → ask for the piece count to derive it */}
+              {/* Unit weight unknown → let the user define it either by piece
+                  count (needs package weight too) or by weighing one unit
+                  directly on a kitchen scale (needs nothing else). */}
               {labelPortionMode === "units" && !labelUnitWeightG() && (
-                <div className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-3 py-2">
-                  <span className="text-[11px] text-amber-300/90 shrink-0">כמה יחידות יש באריזה כולה?</span>
-                  <input
-                    type="number"
-                    value={labelScan.unitsPerPackage}
-                    onChange={e => setLabelScan({ ...labelScan, unitsPerPackage: e.target.value })}
-                    placeholder="4"
-                    className="w-14 bg-slate-900/70 rounded-lg px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
-                  />
-                  {!posNum(labelScan.packageWeightG) && (
-                    <span className="text-[10px] text-slate-500">(נדרש גם משקל אריזה)</span>
-                  )}
-                </div>
+                <UnitDefinitionInput
+                  hasPackageWeight={!!posNum(labelScan.packageWeightG)}
+                  onConfirmCount={(units) =>
+                    setLabelScan((prev) => (prev ? { ...prev, unitsPerPackage: units } : prev))
+                  }
+                  onConfirmWeight={(grams) =>
+                    setLabelScan((prev) => (prev ? { ...prev, unitWeightG: grams } : prev))
+                  }
+                />
               )}
 
               {(() => {
