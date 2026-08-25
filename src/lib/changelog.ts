@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.13.3",
+    description:
+      "UX Fix: Added an explicit 'Upload/Camera' button inside the Label Scanner modal to support mobile device workflows (camera/gallery integration).",
+  },
+  {
     version: "v1.13.2",
     description:
       "UX Fix: Added an intermediary dropzone modal for the Label Scanner to properly support clipboard pasting without instantly opening the OS file picker.",
@@ -221,4 +226,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.13.2"
+export const APP_VERSION = "v1.13.3"

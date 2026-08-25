@@ -481,14 +481,22 @@ function LabelScannerModal({
           </button>
         </div>
 
-        <button
-          type="button"
+        {/* Whole area is tappable (a massive touch target on mobile) — a
+            plain <div> rather than a <button> so the explicit CTA button
+            below can be nested inside it without invalid button-in-button
+            markup. */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={onDropzoneClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDropzoneClick() }
+          }}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { setDragOver(false); onDropFile(e) }}
           className={cn(
-            "w-full flex flex-col items-center gap-2.5 rounded-xl border-2 border-dashed py-10 px-4 transition-colors",
+            "w-full flex flex-col items-center gap-3 rounded-xl border-2 border-dashed py-8 px-4 transition-colors cursor-pointer",
             dragOver
               ? "border-cyan-400 bg-cyan-500/10"
               : "border-slate-700 hover:border-cyan-600/60 hover:bg-slate-800/50",
@@ -498,7 +506,18 @@ function LabelScannerModal({
           <p className="text-xs text-slate-300 text-center leading-relaxed">
             לחץ לבחירת תמונה, או פשוט הדבק (Ctrl+V) / גרור לכאן
           </p>
-        </button>
+
+          {/* Explicit, prominent CTA — mobile has no Ctrl+V / drag-and-drop,
+              so this is the primary action there (opens the native
+              camera-or-gallery chooser via the underlying file input). */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDropzoneClick() }}
+            className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 rounded-xl py-3.5 text-sm font-bold text-white transition-colors shadow-lg shadow-cyan-900/30"
+          >
+            📸 צלם או בחר תמונה מגלריה
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1468,7 +1487,9 @@ export default function NutritionPage() {
             ref={labelInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
+            // No `capture` attribute here (unlike scanInputRef above) — that
+            // attribute forces the camera open directly on mobile, skipping
+            // the native "Camera or Photo Library" chooser we want to offer.
             className="hidden"
             onChange={handleLabelScan}
           />
