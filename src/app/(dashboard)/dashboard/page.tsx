@@ -16,7 +16,9 @@ import { db } from "@/lib/db"
 import { computeTargets, SUGAR_TARGET } from "@/lib/nutrition"
 import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition-server"
 import { cn } from "@/lib/utils"
+import { classifyProteinStatus } from "@/utils/nutrition-math"
 import VersionBadge from "@/components/dashboard/ChangelogModal"
+import CheckInCard from "@/components/dashboard/CheckInCard"
 
 const DEMO_USER_ID  = "demo-user"
 const TZ_OFFSET_MS  = 3 * 60 * 60 * 1000 // Israel UTC+3
@@ -366,7 +368,14 @@ export default async function DashboardPage() {
 
   const caloriesLeft   = targetCalories - todayNutrition.calories
   const proteinLeft    = targetProtein  - todayNutrition.protein
-  const isProteinBehind = proteinLeft > targetProtein * 0.3
+  // Protein "Green Zone" — evaluated in g/kg bodyweight, not % of a fixed
+  // gram target, so 1.8–2.19 g/kg ("good") is a genuine success and is
+  // NEVER flagged as a miss, even if it happens to sit under the 2.2 g/kg
+  // "optimal" target in raw grams.
+  const proteinStatus = latestWeight
+    ? classifyProteinStatus(todayNutrition.protein, latestWeight)
+    : null
+  const isProteinBehind = proteinStatus?.status === "needs_improvement"
 
   return (
     <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
@@ -375,6 +384,9 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-bold">שלום, {userName} 👋</h1>
         <p className="text-sm text-slate-400 mt-0.5">בואו נכה ביעדי הרכב הגוף היום.</p>
       </div>
+
+      {/* צ'ק-אין דו-שבועי — Controlled Lean Gain Engine */}
+      <CheckInCard />
 
       {/* התראה חכמה */}
       {showSmartAlert && (
@@ -464,7 +476,20 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {proteinLeft > 0 && (
+        {/* אזור חלבון — Green Zone: "good" (1.8–2.19 ג'/ק"ג) הוא הצלחה, לא כישלון */}
+        {proteinStatus && proteinStatus.status !== "needs_improvement" ? (
+          <p
+            className={cn(
+              "text-xs text-center font-medium",
+              proteinStatus.status === "optimal" ? "text-emerald-400" : "text-green-400",
+            )}
+          >
+            🟢{" "}
+            {proteinStatus.status === "optimal" ? "אופטימלי" : "אזור ירוק — מצוין"}
+            {" · "}
+            {proteinStatus.gPerKg} גר&apos;/ק&quot;ג
+          </p>
+        ) : proteinLeft > 0 && (
           <p className="text-xs text-slate-400 text-center">
             <span className="text-indigo-300 font-semibold">
               נותרו {Math.round(proteinLeft)} גר' חלבון

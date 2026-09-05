@@ -134,53 +134,6 @@ export function formatRestTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`
 }
 
-// ── TDEE / calorie targets ────────────────────────────────
-
-// 2.5 g/kg compensates for the lower DIAAS (~0.55–0.65) of vegetarian protein
-// sources (tofu, seitan, legumes) vs. the ~1.0 of animal proteins the standard
-// 2.2 g/kg hypertrophy figure assumes (van Vliet 2015; Gorissen 2018).
-export const PROTEIN_MULTIPLIER = 2.5 // g protein per kg bodyweight
-
-/**
- * Mifflin-St Jeor BMR.
- *  Male:   (10 × kg) + (6.25 × cm) − (5 × age) + 5
- *  Female: (10 × kg) + (6.25 × cm) − (5 × age) − 161
- */
-export function calculateBMR(
-  weightKg: number,
-  heightCm: number,
-  age: number,
-  gender: string,
-): number {
-  const base = 10 * weightKg + 6.25 * heightCm - 5 * age
-  return Math.round(gender === "female" ? base - 161 : base + 5)
-}
-
-/** TDEE = BMR × activity multiplier, rounded to nearest 50 kcal */
-export function calculateTDEE(bmr: number, activityMultiplier: number): number {
-  return Math.round((bmr * activityMultiplier) / 50) * 50
-}
-
-export function calculateAutoProtein(weightKg: number): number {
-  return Math.round(weightKg * PROTEIN_MULTIPLIER)
-}
-
-/** Fat target: 25% of total calories, at 9 kcal/g */
-export function calculateTargetFats(targetCalories: number): number {
-  return Math.round((targetCalories * 0.25) / 9)
-}
-
-/** Carb target: remaining calories after protein and fat, at 4 kcal/g */
-export function calculateTargetCarbs(
-  targetCalories: number,
-  targetProtein: number,
-  targetFats: number,
-): number {
-  const proteinKcal = targetProtein * 4
-  const fatKcal = targetFats * 9
-  return Math.round((targetCalories - proteinKcal - fatKcal) / 4)
-}
-
 // ── Progress helpers ──────────────────────────────────────────
 
 export function progressPercent(current: number, target: number): number {

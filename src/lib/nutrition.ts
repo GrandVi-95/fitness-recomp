@@ -3,6 +3,8 @@
 // It has NO server-only imports (no `db`, no `fs`, no Node built-ins) so it can
 // be safely imported by both Client Components and Server Components / API routes.
 
+import { calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/utils/nutrition-math"
+
 // ─── Shared sugar limit ───────────────────────────────────────────────────────
 // Tracks TOTAL daily sugar (including natural sugars from fruit/dairy), not
 // just added sugar — 100 g is a reasonable ceiling for a plant-based athlete
@@ -55,11 +57,14 @@ export const DEFAULT_MILK_VOLUME_ML = 125
 // ─── Macro target calculator — single source of truth ────────────────────────
 
 /**
- * Canonical macro target formula used by every screen.
- *  • autoProteinGoal + weightKg → protein = weight × 2.5 g/kg
- *    (2.5 rather than 2.2 to offset the lower DIAAS of vegetarian proteins)
- *  • fat  = targetFats  (DB override) OR 25 % of calories
- *  • carbs = targetCarbs (DB override) OR energy-balance residual
+ * Canonical macro target formula used by every screen — Controlled Lean Gain
+ * Engine (v1.14.0): protein and fat are DYNAMIC, always recomputed off the
+ * athlete's current logged weight rather than trusting a possibly-stale
+ * stored gram value.
+ *  • autoProteinGoal + weightKg → protein = weight × 2.2 g/kg
+ *  • weightKg known             → fat = weight × 0.9 g/kg
+ *    (else falls back to stored targetFats, then 25% of calories)
+ *  • carbs = targetCarbs (DB override) OR the absolute remainder of calories
  *    (calories − protein×4 − fat×9) / 4
  */
 export function computeTargets(params: {
@@ -72,14 +77,14 @@ export function computeTargets(params: {
 }): MacroTargets {
   const calories = params.targetCalories ?? 2600
   const protein  = (params.autoProteinGoal && params.weightKg)
-    ? Math.round(params.weightKg * 2.5)
+    ? calculateAutoProtein(params.weightKg)
     : (params.targetProtein ?? 185)
-  const fat   = params.targetFats  != null
-    ? params.targetFats
-    : Math.round((calories * 0.25) / 9)
+  const fat = params.weightKg
+    ? calculateTargetFats(params.weightKg)
+    : (params.targetFats ?? Math.round((calories * 0.25) / 9))
   const carbs = params.targetCarbs != null
     ? params.targetCarbs
-    : Math.round((calories - protein * 4 - fat * 9) / 4)
+    : calculateTargetCarbs(calories, protein, fat)
   return { calories, protein, carbs, fat }
 }
 

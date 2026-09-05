@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
+import {
+  calculateBMR,
+  calculateTDEE,
+  calculateCurrentTarget,
+  calculateAutoProtein,
+  calculateTargetFats,
+  calculateTargetCarbs,
+} from "@/utils/nutrition-math"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -30,6 +37,7 @@ export async function GET() {
           weightKg: true,
           bodyFatPct: true,
           muscleMassKg: true,
+          waistCm: true,
         },
       }),
     ])
@@ -55,10 +63,13 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const { weightKg, bodyFatPct } = await request.json()
+    const { weightKg, bodyFatPct, waistCm } = await request.json()
 
     if (typeof weightKg !== "number" || weightKg <= 0 || weightKg > 300) {
       return NextResponse.json({ error: "משקל לא תקין" }, { status: 400 })
+    }
+    if (waistCm !== undefined && waistCm !== null && (typeof waistCm !== "number" || waistCm <= 0 || waistCm > 300)) {
+      return NextResponse.json({ error: "היקף מותן לא תקין" }, { status: 400 })
     }
 
     const muscleMassKg =
@@ -72,6 +83,7 @@ export async function POST(request: Request) {
         weightKg,
         bodyFatPct: typeof bodyFatPct === "number" ? bodyFatPct : null,
         muscleMassKg,
+        waistCm: typeof waistCm === "number" ? waistCm : null,
         date: new Date(),
       },
     })
@@ -86,6 +98,8 @@ export async function POST(request: Request) {
 
     if (!user?.startWeight) userUpdates.startWeight = weightKg
 
+    // Controlled Lean Gain: auto calories = (TDEE × 1.05) + the persistent
+    // check-in offset — never raw TDEE.
     if (settings?.autoCalorieGoal) {
       const bmr = calculateBMR(
         weightKg,
@@ -93,17 +107,19 @@ export async function POST(request: Request) {
         settings.age,
         settings.gender,
       )
-      userUpdates.targetCalories = calculateTDEE(bmr, settings.activityMultiplier)
+      const tdee = calculateTDEE(bmr, settings.activityMultiplier)
+      userUpdates.targetCalories = calculateCurrentTarget(tdee, settings.calorieAdjustmentOffset ?? 0)
     }
 
     if (settings?.autoProteinGoal) {
       userUpdates.targetProtein = calculateAutoProtein(weightKg)
     }
 
-    if (userUpdates.targetCalories !== undefined || userUpdates.targetProtein !== undefined) {
+    // Fat is always weight-based (g/kg); carbs are the absolute remainder.
+    {
       const calForMacros = userUpdates.targetCalories ?? user?.targetCalories ?? 2500
       const protForMacros = userUpdates.targetProtein ?? user?.targetProtein ?? 180
-      userUpdates.targetFats = calculateTargetFats(calForMacros)
+      userUpdates.targetFats = calculateTargetFats(weightKg)
       userUpdates.targetCarbs = calculateTargetCarbs(calForMacros, protForMacros, userUpdates.targetFats)
     }
 

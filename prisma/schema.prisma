@@ -42,6 +42,7 @@ model User {
   bodyMetrics     BodyMetric[]
   progressPhotos  ProgressPhoto[]
   userSettings    UserSettings?
+  checkIns        CheckIn[]
 }
 
 model UserSettings {
@@ -68,6 +69,11 @@ model UserSettings {
   // Weekly report
   reportEnabled        Boolean @default(true)         // send weekly coaching email
   reportEmail          String?                        // recipient — falls back to REPORT_EMAIL env var
+  // Controlled Lean Gain Engine — bi-weekly check-in (see CheckIn model)
+  // Persistent, CUMULATIVE kcal correction on top of (TDEE × 1.05). A check-in
+  // never resets this to a fixed value — it only adds/subtracts ±150 per cycle,
+  // so e.g. +150 now and -150 next cycle returns exactly to 0.
+  calorieAdjustmentOffset Int @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -267,7 +273,35 @@ model BodyMetric {
   weightKg   Float
   bodyFatPct Float?   // % — from calipers / smart scale
   muscleMassKg Float? // derived: bodyweight * (1 - bodyFatPct/100)
+  waistCm    Float?   // waist circumference cm — "Waist Increase" signal for check-ins
   notes      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// CONTROLLED LEAN GAIN — BI-WEEKLY CHECK-IN ENGINE
+// ─────────────────────────────────────────────
+
+// One row per completed bi-weekly check-in. Kept as history (not just a
+// pointer field) so the decision matrix can look back at the PREVIOUS
+// check-in's trend labels — the "2 consecutive check-ins" rule needs that.
+model CheckIn {
+  id               String   @id @default(cuid())
+  userId           String
+  date             DateTime @default(now())
+  // Noise-filtered trend inputs at the time of this check-in
+  weightTrendPct   Float    // 7-day-avg vs prior-7-day-avg, % change per week (signed)
+  weightTrendLabel String   // "fast_loss" | "down" | "stable" | "up"
+  waistCm          Float?   // waist reading used for this check-in, if any
+  waistDeltaCm     Float?   // signed change vs the previous check-in's waistCm
+  waistTrendLabel  String   // "down" | "stable" | "up"
+  perfTrendLabel   String   // "down" | "stable" | "up" — training volume trend
+  // Decision
+  decision         String   // "no_change" | "increase" | "decrease"
+  offsetDelta      Int      // 0 | +150 | -150 applied this cycle
+  offsetAfter      Int      // calorieAdjustmentOffset value after this check-in
+  reasoning        String   // short Hebrew explanation shown to the user
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

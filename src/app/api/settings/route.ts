@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
+import {
+  calculateBMR,
+  calculateTDEE,
+  calculateCurrentTarget,
+  calculateAutoProtein,
+  calculateTargetFats,
+  calculateTargetCarbs,
+} from "@/utils/nutrition-math"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -28,10 +35,17 @@ export async function GET() {
     const autoCalorieGoal    = s?.autoCalorieGoal    ?? true
     const autoProteinGoal    = s?.autoProteinGoal    ?? true
 
+    const calorieAdjustmentOffset = s?.calorieAdjustmentOffset ?? 0
+
     // Derived auto-targets (for display / preview in the UI)
+    // Controlled Lean Gain: calorie target = (TDEE × 1.05) + the persistent
+    // check-in offset — never raw TDEE.
     const calculatedProtein = latestWeight ? calculateAutoProtein(latestWeight) : null
     const calculatedCalories = latestWeight
-      ? calculateTDEE(calculateBMR(latestWeight, height, age, gender), activityMultiplier)
+      ? calculateCurrentTarget(
+          calculateTDEE(calculateBMR(latestWeight, height, age, gender), activityMultiplier),
+          calorieAdjustmentOffset,
+        )
       : null
 
     return NextResponse.json({
@@ -56,6 +70,7 @@ export async function GET() {
       dietaryPreference:   s?.dietaryPreference  ?? "vegetarian",
       reportEnabled:       s?.reportEnabled      ?? true,
       reportEmail:         s?.reportEmail        ?? "",
+      calorieAdjustmentOffset,
     })
   } catch (err) {
     console.error("[GET /api/settings]", err)
@@ -173,9 +188,14 @@ export async function PUT(request: Request) {
 
     if (name !== undefined) userUpdates.name = name.trim()
 
+    // Controlled Lean Gain: auto calories = (TDEE × 1.05) + the persistent,
+    // cumulative check-in offset — never raw TDEE. The offset itself is only
+    // ever changed by the bi-weekly check-in engine (see /api/checkin), not here.
+    const effectiveOffset = existing?.calorieAdjustmentOffset ?? 0
     if (effectiveAutoCalorie && effectiveWeight !== null) {
       const bmr = calculateBMR(effectiveWeight, effectiveHeight, effectiveAge, effectiveGender)
-      userUpdates.targetCalories = calculateTDEE(bmr, effectiveActivityMultiplier)
+      const tdee = calculateTDEE(bmr, effectiveActivityMultiplier)
+      userUpdates.targetCalories = calculateCurrentTarget(tdee, effectiveOffset)
     } else if (!effectiveAutoCalorie && targetCalories !== undefined) {
       userUpdates.targetCalories = Math.round(targetCalories)
     }
@@ -186,11 +206,12 @@ export async function PUT(request: Request) {
       userUpdates.targetProtein = Math.round(targetProtein)
     }
 
-    // Always recompute fats/carbs whenever calories or protein changes
-    if (userUpdates.targetCalories !== undefined || userUpdates.targetProtein !== undefined) {
+    // Fat is always weight-based (g/kg) — there's no manual-fat override.
+    // Carbs are always the absolute remainder of calories after protein + fat.
+    if (userUpdates.targetCalories !== undefined || userUpdates.targetProtein !== undefined || effectiveWeight !== null) {
       const calForMacros = userUpdates.targetCalories ?? currentUser?.targetCalories ?? 2500
       const protForMacros = userUpdates.targetProtein ?? currentUser?.targetProtein ?? 180
-      userUpdates.targetFats = calculateTargetFats(calForMacros)
+      userUpdates.targetFats = effectiveWeight !== null ? calculateTargetFats(effectiveWeight) : calculateTargetFats(70)
       userUpdates.targetCarbs = calculateTargetCarbs(calForMacros, protForMacros, userUpdates.targetFats)
     }
 

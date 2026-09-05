@@ -120,12 +120,12 @@ async function main() {
     const plan = await prisma.workoutPlan.create({
       data: {
         userId: user.id,
-        name: "Ultimate Hypertrophy",
+        name: "PPL Hypertrophy",
         splitType: "CUSTOM",
         workouts: {
           create: [
             {
-              name: "Workout A",
+              name: "FitRoom A",
               dayLabel: "A",
               order: 0,
               muscleGroups: '["chest","quads","biceps"]',
@@ -141,7 +141,7 @@ async function main() {
               },
             },
             {
-              name: "Workout B",
+              name: "FitRoom B",
               dayLabel: "B",
               order: 1,
               muscleGroups: '["back","shoulders","triceps"]',
@@ -156,7 +156,7 @@ async function main() {
               },
             },
             {
-              name: "Workout C",
+              name: "FitRoom C",
               dayLabel: "C",
               order: 2,
               muscleGroups: '["hamstrings","back","chest","core"]',

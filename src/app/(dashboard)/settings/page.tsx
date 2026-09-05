@@ -25,7 +25,14 @@ import {
   XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { calculateBMR, calculateTDEE, calculateAutoProtein, calculateTargetFats, calculateTargetCarbs } from "@/lib/utils"
+import {
+  calculateBMR,
+  calculateTDEE,
+  calculateCurrentTarget,
+  calculateAutoProtein,
+  calculateTargetFats,
+  calculateTargetCarbs,
+} from "@/utils/nutrition-math"
 import { useRouter } from "next/navigation"
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -69,6 +76,7 @@ interface SettingsData {
   dietaryPreference: string
   reportEnabled: boolean
   reportEmail: string
+  calorieAdjustmentOffset: number
 }
 
 // ── Small shared components ──────────────────────────────────────────────────
@@ -167,6 +175,10 @@ export default function SettingsPage() {
   const [age, setAge]                           = useState(31)
   const [gender, setGender]                     = useState("male")
   const [activityMultiplier, setActivityMultiplier] = useState(1.45)
+  // Persistent, cumulative bi-weekly check-in correction — read-only here
+  // (only the check-in engine changes it), shown so the formula breakdown
+  // below is fully transparent.
+  const [calorieAdjustmentOffset, setCalorieAdjustmentOffset] = useState(0)
 
   // Nutrition auto toggles
   const [autoCalorieGoal, setAutoCalorieGoal] = useState(true)
@@ -217,6 +229,7 @@ export default function SettingsPage() {
         setDietaryPreference(d.dietaryPreference ?? "vegetarian")
         setReportEnabled(d.reportEnabled ?? true)
         setReportEmail(d.reportEmail ?? "")
+        setCalorieAdjustmentOffset(d.calorieAdjustmentOffset ?? 0)
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -224,16 +237,26 @@ export default function SettingsPage() {
 
   // ── Live-calculated targets (instant preview as body-profile fields change) ──
 
-  const { bmr, tdee, autoProteinG } = useMemo(() => {
+  const { bmr, tdee, currentTarget, autoProteinG, autoFatsG } = useMemo(() => {
     const w = weight > 0 ? weight : 0
     const bmr  = w > 0 ? calculateBMR(w, height, age, gender) : 0
     const tdee = bmr  > 0 ? calculateTDEE(bmr, activityMultiplier) : 0
-    return { bmr, tdee, autoProteinG: w > 0 ? calculateAutoProtein(w) : 0 }
-  }, [weight, height, age, gender, activityMultiplier])
+    const currentTarget = tdee > 0 ? calculateCurrentTarget(tdee, calorieAdjustmentOffset) : 0
+    return {
+      bmr,
+      tdee,
+      currentTarget,
+      autoProteinG: w > 0 ? calculateAutoProtein(w) : 0,
+      autoFatsG:    w > 0 ? calculateTargetFats(w) : 0,
+    }
+  }, [weight, height, age, gender, activityMultiplier, calorieAdjustmentOffset])
 
-  const effectiveCalories = autoCalorieGoal ? tdee         : manualCalories
-  const effectiveProtein  = autoProtein     ? autoProteinG : manualProtein
-  const effectiveFats     = effectiveCalories > 0 ? calculateTargetFats(effectiveCalories) : 0
+  // Controlled Lean Gain: auto calories = (TDEE × 1.05) + the persistent
+  // check-in offset — never raw TDEE. Fat is always weight-based (g/kg) —
+  // there's no manual-fat override in this UI, only manual calories/protein.
+  const effectiveCalories = autoCalorieGoal ? currentTarget : manualCalories
+  const effectiveProtein  = autoProtein     ? autoProteinG  : manualProtein
+  const effectiveFats     = autoFatsG
   const effectiveCarbs    = effectiveCalories > 0 && effectiveFats > 0
     ? calculateTargetCarbs(effectiveCalories, effectiveProtein, effectiveFats)
     : 0
@@ -493,9 +516,9 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <Flame size={16} className="text-orange-400" />
                   <div>
-                    <p className="text-[11px] text-slate-500">TDEE מחושב</p>
+                    <p className="text-[11px] text-slate-500">יעד קלוריות מחושב (Lean Gain)</p>
                     <p className="text-2xl font-black text-orange-300 leading-none">
-                      {tdee > 0 ? tdee.toLocaleString() : "—"}
+                      {currentTarget > 0 ? currentTarget.toLocaleString() : "—"}
                       <span className="text-sm font-normal text-slate-400"> קק&quot;ל</span>
                     </p>
                   </div>
@@ -510,7 +533,14 @@ export default function SettingsPage() {
                     BMR = (10×{weight}) + (6.25×{height}) − (5×{age}) {gender === "female" ? "− 161" : "+ 5"} = <span className="text-slate-400">{bmr.toLocaleString()}</span>
                   </p>
                   <p className="text-[10px] text-slate-600 font-mono">
-                    TDEE = {bmr.toLocaleString()} × {activityMultiplier} = <span className="text-orange-400 font-semibold">{tdee.toLocaleString()}</span>
+                    TDEE = {bmr.toLocaleString()} × {activityMultiplier} = <span className="text-slate-400">{tdee.toLocaleString()}</span>
+                  </p>
+                  <p className="text-[10px] text-slate-600 font-mono">
+                    יעד = TDEE × 1.05{" "}
+                    {calorieAdjustmentOffset !== 0
+                      ? `${calorieAdjustmentOffset > 0 ? "+" : "−"} ${Math.abs(calorieAdjustmentOffset)} (תיקון בדיקה)`
+                      : ""}
+                    {" "}= <span className="text-orange-400 font-semibold">{currentTarget.toLocaleString()}</span>
                   </p>
                 </div>
               )}
