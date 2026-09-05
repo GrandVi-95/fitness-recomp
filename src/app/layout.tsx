@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next"
-import { Geist } from "next/font/google"
+import { Inter } from "next/font/google"
 import "./globals.css"
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
+// Cupertino-esque redesign (v1.15.0) — a clean, neutral sans-serif stack
+// (Inter, falling back to the OS system font) replaces Geist app-wide.
+const inter = Inter({ subsets: ["latin"], variable: "--font-geist" })
 
 export const metadata: Metadata = {
   title: "RecompOS",
@@ -23,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="he" dir="rtl" className={geist.variable} suppressHydrationWarning>
+    <html lang="he" dir="rtl" className={inter.variable} suppressHydrationWarning>
       <body className="bg-slate-950 text-slate-100 antialiased min-h-screen" suppressHydrationWarning>
         {children}
       </body>

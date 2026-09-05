@@ -71,6 +71,7 @@ export async function GET() {
       reportEnabled:       s?.reportEnabled      ?? true,
       reportEmail:         s?.reportEmail        ?? "",
       calorieAdjustmentOffset,
+      vacationMode:        s?.vacationMode       ?? false,
     })
   } catch (err) {
     console.error("[GET /api/settings]", err)
@@ -100,6 +101,7 @@ interface SettingsBody {
   dietaryPreference?: string
   reportEnabled?: boolean
   reportEmail?: string
+  vacationMode?: boolean
 }
 
 /** PUT /api/settings */
@@ -124,6 +126,7 @@ export async function PUT(request: Request) {
       dietaryPreference,
       reportEnabled,
       reportEmail,
+      vacationMode,
     } = body
 
     // ── 1. Validate manual ranges ────────────────────────────────────────────
@@ -234,6 +237,7 @@ export async function PUT(request: Request) {
       ...(dietaryPreference      !== undefined ? { dietaryPreference }                  : {}),
       ...(reportEnabled          !== undefined ? { reportEnabled }                      : {}),
       ...(reportEmail            !== undefined ? { reportEmail: reportEmail.trim() || null } : {}),
+      ...(vacationMode           !== undefined ? { vacationMode }                       : {}),
     }
 
     if (Object.keys(settingsData).length > 0) {

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.0",
+    description:
+      "Feat: Complete Apple-inspired minimalist UI overhaul and introduced algorithm-pausing Vacation Mode for relaxed tracking.",
+  },
+  {
     version: "v1.14.1",
     description:
       "Feat: Added optional waist measurement field to the daily metrics log and explicitly seeded FitRoom A/B/C zero-axial-loading templates.",
@@ -236,4 +241,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.14.1"
+export const APP_VERSION = "v1.15.0"

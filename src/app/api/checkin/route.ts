@@ -100,6 +100,13 @@ async function computeSignals(): Promise<CheckInSignals> {
 export async function GET() {
   try {
     const settings = await db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } })
+
+    // Vacation Mode: the check-in timer is completely paused — never due, and
+    // we don't even compute weight/waist/performance trends while it's on.
+    if (settings?.vacationMode) {
+      return NextResponse.json({ due: false, vacationMode: true })
+    }
+
     const signals = await computeSignals()
 
     if (!signals.due) {
@@ -137,6 +144,12 @@ export async function GET() {
 export async function POST() {
   try {
     const settings = await db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } })
+
+    // Vacation Mode: never apply a check-in — calorieAdjustmentOffset stays frozen.
+    if (settings?.vacationMode) {
+      return NextResponse.json({ error: "מצב חופשה פעיל — הצ'ק-אין מושהה" }, { status: 400 })
+    }
+
     const signals = await computeSignals()
 
     if (!signals.due) {

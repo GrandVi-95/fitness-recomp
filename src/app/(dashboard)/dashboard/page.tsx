@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   Calendar,
+  Palmtree,
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
@@ -22,6 +23,15 @@ import CheckInCard from "@/components/dashboard/CheckInCard"
 
 const DEMO_USER_ID  = "demo-user"
 const TZ_OFFSET_MS  = 3 * 60 * 60 * 1000 // Israel UTC+3
+
+// Apple/Cupertino palette — used as literal hex values (arbitrary Tailwind
+// values) rather than new CSS tokens, since this redesign is deliberately
+// scoped to the dashboard rather than a global theme migration.
+const INK       = "#1d1d1f" // near-black primary text
+const MUTED     = "#86868b" // secondary/muted text
+const HAIRLINE  = "#e5e5ea" // unfilled ring track / hairline dividers
+const ACCENT    = "#0071e3" // system blue — actions, calories
+const GREEN     = "#34c759" // vibrant-but-soft green — Green Zone success
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -200,6 +210,7 @@ async function getDashboardData() {
     nextWorkout,
     showSmartAlert,
     weekDays,
+    vacationMode: settings?.vacationMode ?? false,
   }
 }
 
@@ -220,29 +231,29 @@ function MacroRing({
 }) {
   const pct = Math.min((current / target) * 100, 100)
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="relative w-14 h-14">
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="relative w-16 h-16">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1e293b" strokeWidth="3" />
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke={HAIRLINE} strokeWidth="2.5" />
           <circle
             cx="18"
             cy="18"
             r="15.9"
             fill="none"
             stroke={color}
-            strokeWidth="3"
+            strokeWidth="2.5"
             strokeDasharray={`${pct} ${100 - pct}`}
             strokeLinecap="round"
           />
         </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold">
+        <span className="absolute inset-0 flex items-center justify-center text-[12px] font-semibold" style={{ color: INK }}>
           {Math.round(pct)}%
         </span>
       </div>
-      <p className="text-[11px] text-slate-400">{label}</p>
-      <p className="text-[11px] font-semibold">
+      <p className="text-[11px] font-medium" style={{ color: MUTED }}>{label}</p>
+      <p className="text-[12px] font-semibold" style={{ color: INK }}>
         {current}
-        <span className="text-slate-500 font-normal">{unit}</span>
+        <span className="font-normal" style={{ color: MUTED }}>{unit}</span>
       </p>
     </div>
   )
@@ -253,23 +264,23 @@ function StatCard({
   label,
   value,
   sub,
-  iconColor = "text-indigo-400",
+  tint = ACCENT,
 }: {
   icon: React.ElementType
   label: string
   value: string
   sub?: string
-  iconColor?: string
+  tint?: string
 }) {
   return (
-    <div className="bg-slate-900 rounded-2xl p-4 flex items-center gap-3">
-      <div className={`p-2 rounded-xl bg-slate-800 ${iconColor}`}>
-        <Icon size={18} strokeWidth={2} />
+    <div className="bg-white rounded-3xl p-5 flex items-center gap-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+      <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${tint}14`, color: tint }}>
+        <Icon size={19} strokeWidth={2} />
       </div>
-      <div>
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-base font-bold leading-tight">{value}</p>
-        {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
+      <div className="min-w-0">
+        <p className="text-[12px]" style={{ color: MUTED }}>{label}</p>
+        <p className="text-[15px] font-semibold leading-tight truncate" style={{ color: INK }}>{value}</p>
+        {sub && <p className="text-[11px] mt-0.5 truncate" style={{ color: MUTED }}>{sub}</p>}
       </div>
     </div>
   )
@@ -280,9 +291,9 @@ const DAY_LABELS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"]
 
 function WeeklyStreak({ days }: { days: WeekDayData[] }) {
   return (
-    <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
-      <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-        <Calendar size={15} className="text-violet-400" /> מדד התמדה שבועי
+    <div className="bg-white rounded-3xl p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+      <h2 className="text-[15px] font-semibold flex items-center gap-2" style={{ color: INK }}>
+        <Calendar size={16} style={{ color: ACCENT }} /> מדד התמדה שבועי
       </h2>
 
       <div className="grid grid-cols-7 gap-1">
@@ -290,42 +301,40 @@ function WeeklyStreak({ days }: { days: WeekDayData[] }) {
           <div
             key={day.dayKey}
             className={cn(
-              "flex flex-col items-center gap-1.5 py-2 rounded-xl transition-colors",
-              day.isToday ? "bg-slate-800 ring-1 ring-violet-500/40" : "",
+              "flex flex-col items-center gap-2 py-2 rounded-2xl transition-colors",
+              day.isToday ? "bg-[#f5f5f7]" : "",
             )}
           >
             {/* Day label */}
             <span
-              className={cn(
-                "text-[10px] font-medium",
-                day.isToday ? "text-violet-300" : "text-slate-500",
-              )}
+              className="text-[10px] font-medium"
+              style={{ color: day.isToday ? ACCENT : MUTED }}
             >
               {DAY_LABELS[i]}
             </span>
 
             {/* Workout indicator */}
             {day.isFuture ? (
-              <div className="w-5 h-5 rounded-full border border-slate-700/40 bg-slate-800/40" />
+              <div className="w-5 h-5 rounded-full" style={{ border: `1px solid ${HAIRLINE}` }} />
             ) : day.hadWorkout ? (
-              <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
+              <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ACCENT }}>
                 <Dumbbell size={9} className="text-white" />
               </div>
             ) : (
-              <div className="w-5 h-5 rounded-full border border-slate-700 bg-slate-800/60" />
+              <div className="w-5 h-5 rounded-full" style={{ border: `1px solid ${HAIRLINE}` }} />
             )}
 
             {/* Nutrition indicator */}
             {day.isFuture ? (
-              <div className="w-5 h-5 rounded-full border border-slate-700/40 bg-slate-800/40" />
+              <div className="w-5 h-5 rounded-full" style={{ border: `1px solid ${HAIRLINE}` }} />
             ) : day.nutritionStatus === "hit" ? (
-              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+              <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: GREEN }}>
                 <span className="text-white text-[9px] font-black leading-none">✓</span>
               </div>
             ) : day.nutritionStatus === "partial" ? (
-              <div className="w-5 h-5 rounded-full bg-amber-400/80" />
+              <div className="w-5 h-5 rounded-full" style={{ backgroundColor: "#ff9f0a" }} />
             ) : (
-              <div className="w-5 h-5 rounded-full border border-slate-700 bg-slate-800/60" />
+              <div className="w-5 h-5 rounded-full" style={{ border: `1px solid ${HAIRLINE}` }} />
             )}
           </div>
         ))}
@@ -333,16 +342,16 @@ function WeeklyStreak({ days }: { days: WeekDayData[] }) {
 
       {/* Legend */}
       <div className="flex items-center justify-center gap-5 pt-0.5">
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
+        <span className="flex items-center gap-1.5 text-[10px]" style={{ color: MUTED }}>
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: ACCENT }} />
           אימון
         </span>
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+        <span className="flex items-center gap-1.5 text-[10px]" style={{ color: MUTED }}>
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: GREEN }} />
           יעד תזונה ✓
         </span>
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80 inline-block" />
+        <span className="flex items-center gap-1.5 text-[10px]" style={{ color: MUTED }}>
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: "#ff9f0a" }} />
           חלקי
         </span>
       </div>
@@ -364,6 +373,7 @@ export default async function DashboardPage() {
     nextWorkout,
     showSmartAlert,
     weekDays,
+    vacationMode,
   } = await getDashboardData()
 
   const caloriesLeft   = targetCalories - todayNutrition.calories
@@ -375,145 +385,158 @@ export default async function DashboardPage() {
   const proteinStatus = latestWeight
     ? classifyProteinStatus(todayNutrition.protein, latestWeight)
     : null
-  const isProteinBehind = proteinStatus?.status === "needs_improvement"
+  // Vacation Mode: no red warnings, no "needs improvement" flags — ever.
+  const isProteinBehind = !vacationMode && proteinStatus?.status === "needs_improvement"
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="min-h-full px-6 py-9 space-y-7 max-w-lg mx-auto" style={{ backgroundColor: "#f5f5f7" }}>
       {/* ברכה */}
       <div>
-        <h1 className="text-2xl font-bold">שלום, {userName} 👋</h1>
-        <p className="text-sm text-slate-400 mt-0.5">בואו נכה ביעדי הרכב הגוף היום.</p>
+        <h1 className="text-[28px] font-bold tracking-tight" style={{ color: INK }}>שלום, {userName} 👋</h1>
+        <p className="text-[15px] mt-1" style={{ color: MUTED }}>בואו נכה ביעדי הרכב הגוף היום.</p>
       </div>
 
-      {/* צ'ק-אין דו-שבועי — Controlled Lean Gain Engine */}
+      {/* צ'ק-אין דו-שבועי — Controlled Lean Gain Engine (מושהה במצב חופשה) */}
       <CheckInCard />
 
       {/* התראה חכמה */}
-      {showSmartAlert && (
-        <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
-          <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />
-          <p className="text-sm text-slate-200 leading-relaxed">
-            ⚠️ שים לב: נראה שלא הגעת ליעדי התזונה ביומיים האחרונים. בוא נחזור למסלול היום!
+      {showSmartAlert && !vacationMode && (
+        <div className="flex items-start gap-3 bg-white rounded-3xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
+          <p className="text-[14px] leading-relaxed" style={{ color: INK }}>
+            שים לב: נראה שלא הגעת ליעדי התזונה ביומיים האחרונים. בוא נחזור למסלול היום!
           </p>
         </div>
       )}
 
       {/* התראת חלבון */}
       {isProteinBehind && (
-        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-          <AlertTriangle size={18} className="text-amber-400 mt-0.5 shrink-0" />
+        <div className="flex items-start gap-3 bg-white rounded-3xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" style={{ color: "#ff9f0a" }} />
           <div>
-            <p className="text-sm font-semibold text-amber-400">בדיקת חלבון</p>
-            <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+            <p className="text-[14px] font-semibold" style={{ color: INK }}>בדיקת חלבון</p>
+            <p className="text-[13px] mt-0.5 leading-relaxed" style={{ color: MUTED }}>
               נותרו לך {Math.round(proteinLeft)} גר' לעמידה ביעד — הוסף שייק או ארוחה עשירת חלבון.
             </p>
           </div>
         </div>
       )}
 
-      {/* מאקרו של היום */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-            <Flame size={16} className="text-orange-400" /> תזונת היום
-          </h2>
-          <Link
-            href="/nutrition"
-            className="text-xs text-indigo-400 flex items-center gap-0.5 hover:text-indigo-300"
-          >
-            רשום מזון <ChevronLeft size={12} />
-          </Link>
+      {/* מאקרו של היום — או תצוגת חופשה רגועה */}
+      {vacationMode ? (
+        <div className="rounded-3xl p-8 text-center space-y-3 bg-gradient-to-br from-amber-100 via-orange-50 to-sky-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <Palmtree size={30} className="mx-auto text-amber-500" strokeWidth={1.6} />
+          <p className="text-[19px] font-semibold" style={{ color: INK }}>תיהנו מהזמן שלכם! 🌴</p>
+          <p className="text-[13px] leading-relaxed max-w-[26ch] mx-auto" style={{ color: MUTED }}>
+            מצב חופשה פעיל — המעקב המדויק מושהה. נמשיך לתעד ברוגע, בלי מספרים ובלי לחץ.
+          </p>
         </div>
-
-        {/* סרגל קלוריות */}
-        <div>
-          <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-            <span>{todayNutrition.calories} קק"ל נצרכו</span>
-            <span className={caloriesLeft >= 0 ? "text-green-400" : "text-red-400"}>
-              {caloriesLeft >= 0 ? `נותרו ${caloriesLeft}` : `ביתר ${Math.abs(caloriesLeft)}`}
-            </span>
+      ) : (
+        <div className="bg-white rounded-3xl p-6 space-y-6 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-[15px] font-semibold flex items-center gap-2" style={{ color: INK }}>
+                <Flame size={16} style={{ color: "#ff9500" }} /> תזונת היום
+              </h2>
+              <p className="text-[11px] mt-0.5" style={{ color: MUTED }}>
+                היעד היומי שלך לרה-קומפוזיציה אמיתית
+              </p>
+            </div>
+            <Link
+              href="/nutrition"
+              className="text-[13px] font-medium flex items-center gap-0.5"
+              style={{ color: ACCENT }}
+            >
+              רשום מזון <ChevronLeft size={12} />
+            </Link>
           </div>
-          <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-orange-400 transition-all"
-              style={{
-                width: `${Math.min((todayNutrition.calories / targetCalories) * 100, 100)}%`,
-              }}
+
+          {/* סרגל קלוריות */}
+          <div>
+            <div className="flex justify-between text-[13px] mb-2" style={{ color: MUTED }}>
+              <span>{todayNutrition.calories} קק&quot;ל נצרכו</span>
+              <span style={{ color: caloriesLeft >= 0 ? GREEN : "#ff3b30" }} className="font-medium">
+                {caloriesLeft >= 0 ? `נותרו ${caloriesLeft}` : `ביתר ${Math.abs(caloriesLeft)}`}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: HAIRLINE }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min((todayNutrition.calories / targetCalories) * 100, 100)}%`,
+                  backgroundColor: ACCENT,
+                }}
+              />
+            </div>
+            <p className="text-[11px] mt-1.5" style={{ color: MUTED }}>יעד: {targetCalories} קק&quot;ל</p>
+          </div>
+
+          {/* טבעות מאקרו — Protein · Carbs · Fat · Sugar */}
+          <div className="flex justify-around pt-1">
+            <MacroRing
+              label="חלבון"
+              current={todayNutrition.protein}
+              target={targetProtein}
+              unit=" גר'"
+              color={ACCENT}
+            />
+            <MacroRing
+              label="פחמימות"
+              current={todayNutrition.carbs}
+              target={targetCarbs}
+              unit=" גר'"
+              color={GREEN}
+            />
+            <MacroRing
+              label="שומן"
+              current={todayNutrition.fat}
+              target={targetFats}
+              unit=" גר'"
+              color="#ff9500"
+            />
+            <MacroRing
+              label="סוכר"
+              current={todayNutrition.sugar}
+              target={SUGAR_TARGET}
+              unit=" גר'"
+              color="#ff3b30"
             />
           </div>
-          <p className="text-[11px] text-slate-600 mt-1">יעד: {targetCalories} קק"ל</p>
-        </div>
 
-        {/* טבעות מאקרו — Protein · Carbs · Fat · Sugar */}
-        <div className="flex justify-around pt-1">
-          <MacroRing
-            label="חלבון"
-            current={todayNutrition.protein}
-            target={targetProtein}
-            unit=" גר'"
-            color="#6366f1"
-          />
-          <MacroRing
-            label="פחמימות"
-            current={todayNutrition.carbs}
-            target={targetCarbs}
-            unit=" גר'"
-            color="#22c55e"
-          />
-          <MacroRing
-            label="שומן"
-            current={todayNutrition.fat}
-            target={targetFats}
-            unit=" גר'"
-            color="#f59e0b"
-          />
-          <MacroRing
-            label="סוכר"
-            current={todayNutrition.sugar}
-            target={SUGAR_TARGET}
-            unit=" גר'"
-            color="#f43f5e"
-          />
+          {/* אזור חלבון — Green Zone: "good" (1.8–2.19 ג'/ק"ג) הוא הצלחה, לא כישלון */}
+          {proteinStatus && proteinStatus.status !== "needs_improvement" ? (
+            <p className="text-[13px] text-center font-medium" style={{ color: GREEN }}>
+              🟢{" "}
+              {proteinStatus.status === "optimal" ? "אופטימלי" : "אזור ירוק — מצוין"}
+              {" · "}
+              {proteinStatus.gPerKg} גר&apos;/ק&quot;ג
+            </p>
+          ) : proteinLeft > 0 && (
+            <p className="text-[13px] text-center" style={{ color: MUTED }}>
+              <span className="font-medium" style={{ color: ACCENT }}>
+                נותרו {Math.round(proteinLeft)} גר' חלבון
+              </span>{" "}
+              — העדיפו ארוחות עשירות בחלבון.
+            </p>
+          )}
         </div>
-
-        {/* אזור חלבון — Green Zone: "good" (1.8–2.19 ג'/ק"ג) הוא הצלחה, לא כישלון */}
-        {proteinStatus && proteinStatus.status !== "needs_improvement" ? (
-          <p
-            className={cn(
-              "text-xs text-center font-medium",
-              proteinStatus.status === "optimal" ? "text-emerald-400" : "text-green-400",
-            )}
-          >
-            🟢{" "}
-            {proteinStatus.status === "optimal" ? "אופטימלי" : "אזור ירוק — מצוין"}
-            {" · "}
-            {proteinStatus.gPerKg} גר&apos;/ק&quot;ג
-          </p>
-        ) : proteinLeft > 0 && (
-          <p className="text-xs text-slate-400 text-center">
-            <span className="text-indigo-300 font-semibold">
-              נותרו {Math.round(proteinLeft)} גר' חלבון
-            </span>{" "}
-            — העדיפו ארוחות עשירות בחלבון.
-          </p>
-        )}
-      </div>
+      )}
 
       {/* רשת סטטיסטיקות */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3.5">
         <StatCard
           icon={TrendingUp}
           label="משקל גוף"
           value={latestWeight ? `${latestWeight} ק"ג` : "לא נמדד"}
           sub={latestWeight ? `יעד: ${targetProtein} גר' חלבון` : "הוסף מדידה במדדים"}
-          iconColor="text-green-400"
+          tint={GREEN}
         />
         <StatCard
           icon={Dumbbell}
           label="האימון הבא"
           value={nextWorkout?.name ?? "יום מנוחה"}
           sub={nextWorkout?.dayLabel ?? ""}
-          iconColor="text-indigo-400"
+          tint={ACCENT}
         />
       </div>
 
@@ -521,13 +544,14 @@ export default async function DashboardPage() {
       {nextWorkout && (
         <Link
           href="/gym"
-          className="flex items-center justify-between w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-2xl px-5 py-4 transition-colors"
+          className="flex items-center justify-between w-full rounded-3xl px-6 py-5 transition-opacity active:opacity-80"
+          style={{ backgroundColor: ACCENT }}
         >
           <div>
-            <p className="text-xs text-indigo-200">מוכן לאמן?</p>
-            <p className="text-base font-bold">{nextWorkout.name}</p>
+            <p className="text-[12px] text-white/70">מוכן לאמן?</p>
+            <p className="text-[16px] font-semibold text-white">{nextWorkout.name}</p>
           </div>
-          <Zap size={24} className="text-indigo-200" />
+          <Zap size={22} className="text-white/90" />
         </Link>
       )}
 

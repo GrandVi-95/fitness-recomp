@@ -16,6 +16,11 @@ interface CheckInPreview {
   offsetAfter?: number
 }
 
+const INK    = "#1d1d1f"
+const MUTED  = "#86868b"
+const ACCENT = "#0071e3"
+const GREEN  = "#34c759"
+
 const WEIGHT_LABELS: Record<string, string> = {
   fast_loss: "ירידה מהירה",
   down: "ירידה",
@@ -28,8 +33,11 @@ const PERF_LABELS: Record<string, string> = { down: "ירידה", stable: "יצ�
 function TrendChip({ label, trend }: { label: string; trend: "down" | "stable" | "up" | "fast_loss" }) {
   const Icon = trend === "up" ? TrendingUp : trend === "down" || trend === "fast_loss" ? TrendingDown : Minus
   return (
-    <span className="inline-flex items-center gap-1 bg-slate-800 rounded-full px-2.5 py-1 text-[11px] font-medium text-slate-300">
-      <Icon size={11} className="text-slate-500" />
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
+      style={{ backgroundColor: "#f5f5f7", color: INK }}
+    >
+      <Icon size={11} style={{ color: MUTED }} />
       {label}
     </span>
   )
@@ -38,7 +46,9 @@ function TrendChip({ label, trend }: { label: string; trend: "down" | "stable" |
 /** Bi-weekly Controlled Lean Gain check-in prompt — appears on the dashboard
  *  once 14–21 days have passed since the last check-in, shows the decision
  *  engine's computed trend read + recommendation, and lets the user apply it
- *  (persisting the cumulative calorieAdjustmentOffset) or dismiss for now. */
+ *  (persisting the cumulative calorieAdjustmentOffset) or dismiss for now.
+ *  Never appears at all while Vacation Mode is on — /api/checkin reports
+ *  `due: false` unconditionally in that case. */
 export default function CheckInCard() {
   const [preview, setPreview] = useState<CheckInPreview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,13 +81,13 @@ export default function CheckInCard() {
 
   if (applied) {
     return (
-      <div className="flex items-start gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4" dir="rtl">
-        <Check size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+      <div className="flex items-start gap-3 bg-white rounded-3xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]" dir="rtl">
+        <Check size={18} className="mt-0.5 shrink-0" style={{ color: GREEN }} />
         <div>
-          <p className="text-sm font-semibold text-emerald-400">הצ&apos;ק-אין הוחל</p>
-          <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">{applied.reasoning}</p>
+          <p className="text-[14px] font-semibold" style={{ color: GREEN }}>הצ&apos;ק-אין הוחל</p>
+          <p className="text-[13px] mt-0.5 leading-relaxed" style={{ color: MUTED }}>{applied.reasoning}</p>
           {applied.offsetDelta !== 0 && (
-            <p className="text-[11px] text-slate-500 mt-1">
+            <p className="text-[11px] mt-1" style={{ color: MUTED }}>
               תיקון קלוריות מצטבר: {applied.offsetAfter! > 0 ? "+" : ""}
               {applied.offsetAfter} קק&quot;ל
             </p>
@@ -88,14 +98,15 @@ export default function CheckInCard() {
   }
 
   return (
-    <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-4 space-y-3" dir="rtl">
+    <div className="bg-white rounded-3xl p-5 space-y-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]" dir="rtl">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-indigo-300 flex items-center gap-1.5">
+        <p className="text-[14px] font-semibold flex items-center gap-1.5" style={{ color: ACCENT }}>
           <ClipboardCheck size={16} /> צ&apos;ק-אין דו-שבועי
         </p>
         <button
           onClick={() => setDismissed(true)}
-          className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+          className="p-1 rounded-full hover:bg-[#f5f5f7] transition-colors"
+          style={{ color: MUTED }}
           aria-label="סגור"
         >
           <X size={14} />
@@ -114,10 +125,10 @@ export default function CheckInCard() {
         )}
       </div>
 
-      <p className="text-xs text-slate-300 leading-relaxed">{preview.reasoning}</p>
+      <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>{preview.reasoning}</p>
 
       {preview.offsetDelta !== 0 && (
-        <p className="text-xs font-semibold text-indigo-300">
+        <p className="text-[13px] font-semibold" style={{ color: ACCENT }}>
           {preview.decision === "increase" ? "המלצה: הוספת" : "המלצה: הפחתת"} {Math.abs(preview.offsetDelta ?? 0)} קק&quot;ל ליעד היומי
         </p>
       )}
@@ -126,9 +137,9 @@ export default function CheckInCard() {
         onClick={handleApply}
         disabled={applying}
         className={cn(
-          "w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors",
-          "bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white",
+          "w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-semibold transition-opacity active:opacity-80 disabled:opacity-40 text-white",
         )}
+        style={{ backgroundColor: ACCENT }}
       >
         {applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
         {applying ? "מחיל..." : preview.offsetDelta !== 0 ? "החל שינוי" : "אשר — ללא שינוי"}

@@ -110,6 +110,48 @@ const SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה באפליקצי�
   "insight": "משפט אחד בעברית לפי כלל 9 לעיל"
 }`
 
+// ── Vacation Mode prompt — relaxed, judgment-free rough estimation ──────────
+// Used instead of SYSTEM_PROMPT whenever UserSettings.vacationMode is true.
+// The user explicitly doesn't want precise gram-level tracking or any protein-
+// quality commentary right now — the only goal is a rough estimate that keeps
+// the logging streak alive without any pressure.
+const VACATION_SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה רגוע במצב חופשה (Vacation Mode) באפליקציית כושר.
+המשתמש נמצא בחופשה ולא מעוניין במעקב מדויק כרגע — המטרה היחידה היא לשמור על רצף
+התיעוד בלי שום לחץ או דרישה לדיוק.
+
+כללים:
+1. זהה בגסות מה המשתמש אכל/שתה מהטקסט.
+2. תן הערכת קלוריות ומאקרו סבירה וגסה בלבד — אין צורך בדיוק גרם-לגרם, ואל תבקש
+   מהמשתמש פרטים נוספים או כמויות מדויקות.
+3. אפשר לפרק לכמה פריטים אם זה טבעי, אך גם פריט מסוכם אחד לארוחה שלמה מקובל
+   לגמרי אם זה פשוט יותר — אין דרישה להפרדה קפדנית כרגע.
+4. אל תעיר שום הערה על איכות מקורות חלבון, יחס חלבון-קלוריות, או כל ביקורת
+   תזונתית אחרת. הטון תמיד קליל, חיובי ונטול שיפוטיות — אין "צריך לשפר" ואין
+   "לשקול להוסיף". זו חופשה.
+5. matchedFoodId תמיד null (אין צורך להתאים למסד הנתונים).
+6. insight (אופציונלי) — לכל היותר משפט קליל אחד ומעודד, למשל "תיהנו מהחופשה!"
+   — לעולם לא הערה ביקורתית או המלצה לשיפור. מותר גם להשמיט לגמרי.
+
+החזר תשובה בפורמט JSON בלבד (ללא טקסט נוסף לפני או אחרי):
+{
+  "items": [
+    {
+      "name": "פיצה",
+      "matchedFoodId": null,
+      "quantity": 300,
+      "unit": "g",
+      "calories": 750,
+      "protein": 30,
+      "carbs": 90,
+      "fat": 28,
+      "fiber": 3,
+      "sugar": 6,
+      "saturatedFat": 12
+    }
+  ],
+  "insight": "משפט קליל אחד או השמט לגמרי"
+}`
+
 function buildUserMessage(text: string, foodList: object[]): string {
   return `טקסט המשתמש: "${text}"
 
@@ -157,13 +199,13 @@ const PROVIDER_NAMES: Record<string, string> = {
 
 // ── Provider dispatch ────────────────────────────────────────────────────────
 
-async function callAnthropic(userMessage: string, apiKey: string): Promise<string> {
+async function callAnthropic(userMessage: string, apiKey: string, systemPrompt: string): Promise<string> {
   const client = new Anthropic({ apiKey })
   try {
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     })
     const content = message.content[0]
@@ -178,7 +220,7 @@ async function callAnthropic(userMessage: string, apiKey: string): Promise<strin
   }
 }
 
-async function callOpenAI(userMessage: string, apiKey: string): Promise<string> {
+async function callOpenAI(userMessage: string, apiKey: string, systemPrompt: string): Promise<string> {
   const MAX_ATTEMPTS = 3
   const RETRY_DELAY_MS = 1500
   let lastStatus = 0
@@ -192,7 +234,7 @@ async function callOpenAI(userMessage: string, apiKey: string): Promise<string> 
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
         max_tokens: 8192,
@@ -218,13 +260,13 @@ async function callOpenAI(userMessage: string, apiKey: string): Promise<string> 
 
 // Delegates to the shared utility (header auth, 503/429 retry-backoff, model
 // fallback) and translates its auth error into this route's API_KEY_ protocol.
-async function callGemini(userMessage: string, apiKey: string): Promise<string> {
+async function callGemini(userMessage: string, apiKey: string, systemPrompt: string): Promise<string> {
   try {
     return await callGeminiShared(
       apiKey,
       [{ role: "user", parts: [{ text: userMessage }] }],
       {
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json" },
       },
     )
@@ -381,16 +423,17 @@ export async function POST(request: Request) {
     })
 
     const userMessage = buildUserMessage(text, foodList)
+    const systemPrompt = settings?.vacationMode ? VACATION_SYSTEM_PROMPT : SYSTEM_PROMPT
 
     // ── Dispatch to chosen provider ───────────────────────────────────────
     let rawText: string
     try {
       if (provider === "openai") {
-        rawText = await callOpenAI(userMessage, apiKey)
+        rawText = await callOpenAI(userMessage, apiKey, systemPrompt)
       } else if (provider === "gemini") {
-        rawText = await callGemini(userMessage, apiKey)
+        rawText = await callGemini(userMessage, apiKey, systemPrompt)
       } else {
-        rawText = await callAnthropic(userMessage, apiKey)
+        rawText = await callAnthropic(userMessage, apiKey, systemPrompt)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -421,9 +464,11 @@ export async function POST(request: Request) {
       )
     }
 
+    // Vacation Mode never gets the ratio-based low-protein nudge fallback —
+    // if the AI didn't write an insight, silence is fine; no lecturing.
     const insight = typeof parsed.insight === "string" && parsed.insight.trim()
       ? parsed.insight.trim().slice(0, 300)
-      : computeFallbackInsight(parsed.items)
+      : settings?.vacationMode ? "" : computeFallbackInsight(parsed.items)
 
     // ── Save to DB ────────────────────────────────────────────────────────
     const log = await db.nutritionLog.create({

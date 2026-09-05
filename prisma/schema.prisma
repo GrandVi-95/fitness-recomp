@@ -74,6 +74,10 @@ model UserSettings {
   // never resets this to a fixed value — it only adds/subtracts ±150 per cycle,
   // so e.g. +150 now and -150 next cycle returns exactly to 0.
   calorieAdjustmentOffset Int @default(0)
+  // Vacation Mode — pauses the check-in timer entirely (never "due" while on),
+  // never touches calorieAdjustmentOffset, and relaxes AI meal-logging prompts
+  // to rough, judgment-free estimates.
+  vacationMode            Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

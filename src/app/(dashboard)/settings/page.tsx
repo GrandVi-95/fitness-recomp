@@ -23,6 +23,7 @@ import {
   Mail,
   Send,
   XCircle,
+  Palmtree,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -77,6 +78,7 @@ interface SettingsData {
   reportEnabled: boolean
   reportEmail: string
   calorieAdjustmentOffset: number
+  vacationMode: boolean
 }
 
 // ── Small shared components ──────────────────────────────────────────────────
@@ -199,6 +201,9 @@ export default function SettingsPage() {
   const [smartAlertsEnabled, setSmartAlertsEnabled] = useState(true)
   const [showWeeklySummary, setShowWeeklySummary]   = useState(true)
 
+  // Vacation Mode — pauses the Lean Gain check-in engine entirely
+  const [vacationMode, setVacationMode] = useState(false)
+
   // Weekly report
   const [reportEnabled, setReportEnabled] = useState(true)
   const [reportEmail, setReportEmail]     = useState("")
@@ -230,6 +235,7 @@ export default function SettingsPage() {
         setReportEnabled(d.reportEnabled ?? true)
         setReportEmail(d.reportEmail ?? "")
         setCalorieAdjustmentOffset(d.calorieAdjustmentOffset ?? 0)
+        setVacationMode(d.vacationMode ?? false)
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -261,6 +267,22 @@ export default function SettingsPage() {
     ? calculateTargetCarbs(effectiveCalories, effectiveProtein, effectiveFats)
     : 0
 
+  // Vacation Mode toggles immediately (not batched into the main save button)
+  // — it's a mode switch, not a form field, so it should take effect the
+  // instant it's flipped.
+  const handleToggleVacation = async (value: boolean) => {
+    setVacationMode(value)
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vacationMode: value }),
+      })
+    } catch {
+      // Best-effort — the next full form save will still pick this up.
+    }
+  }
+
   // ── Save ────────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
@@ -274,6 +296,7 @@ export default function SettingsPage() {
         autoProteinGoal: autoProtein,
         smartAlertsEnabled,
         showWeeklySummary,
+        vacationMode,
         dietaryPreference,
         reportEnabled,
         reportEmail: reportEmail.trim(),
@@ -490,6 +513,30 @@ export default function SettingsPage() {
             </select>
             <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
+        </div>
+      </section>
+
+      {/* ── מצב חופשה — משהה את מנוע ה-Check-In לגמרי ──────── */}
+      <section
+        className={cn(
+          "rounded-2xl p-4 space-y-1 border transition-colors",
+          vacationMode
+            ? "bg-gradient-to-br from-amber-500/10 to-sky-500/10 border-amber-400/30"
+            : "bg-slate-900 border-transparent",
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Palmtree size={17} className={vacationMode ? "text-amber-400" : "text-slate-400"} />
+            <div>
+              <p className="text-sm font-semibold">מצב חופשה</p>
+              <p className="text-[11px] text-slate-500">
+                משהה את הצ&apos;ק-אין הדו-שבועי, לא מבקש מדידות משקל/מותן, ומקפיא
+                את תיקון הקלוריות במקומו — מעקב ה-AI גם הופך לגס ורגוע יותר.
+              </p>
+            </div>
+          </div>
+          <Toggle enabled={vacationMode} onChange={handleToggleVacation} />
         </div>
       </section>
 
