@@ -14,6 +14,7 @@ interface BodyMetric {
   weightKg: number
   bodyFatPct: number | null
   muscleMassKg: number | null
+  waistCm: number | null
 }
 
 interface Goals {
@@ -55,6 +56,7 @@ const ANGLE_LABELS: Record<string, string> = {
 function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
   const [weight, setWeight] = useState("")
   const [bodyFat, setBodyFat] = useState("")
+  const [waist, setWaist] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -73,12 +75,14 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
         body: JSON.stringify({
           weightKg: kg,
           bodyFatPct: bodyFat ? parseFloat(bodyFat) : undefined,
+          waistCm: waist ? parseFloat(waist) : undefined,
         }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? "שגיאה בשמירה"); return }
       setWeight("")
       setBodyFat("")
+      setWaist("")
       onSaved(kg)
     } catch {
       setError("שגיאת חיבור — נסה שוב")
@@ -118,6 +122,20 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-indigo-500"
           />
         </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs text-slate-400">היקף מותניים (ס&quot;מ, אופציונלי)</label>
+        <input
+          type="number"
+          value={waist}
+          onChange={(e) => setWaist(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit() }}
+          placeholder="85.0"
+          min={40}
+          max={200}
+          step={0.1}
+          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-indigo-500"
+        />
       </div>
       {error && (
         <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
@@ -427,8 +445,11 @@ export default function MetricsPage() {
                 ) : (
                   <span className="text-xs text-slate-600 w-10" />
                 )}
-                <span className="text-xs text-slate-600 w-14 text-end">
-                  {m.bodyFatPct != null ? `${m.bodyFatPct}% שומן` : "—"}
+                <span className="text-xs text-slate-600 w-20 text-end">
+                  {[
+                    m.bodyFatPct != null ? `${m.bodyFatPct}% שומן` : null,
+                    m.waistCm != null ? `${m.waistCm} ס"מ מותן` : null,
+                  ].filter(Boolean).join(" · ") || "—"}
                 </span>
               </div>
             )

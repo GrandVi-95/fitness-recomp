@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.14.1",
+    description:
+      "Feat: Added optional waist measurement field to the daily metrics log and explicitly seeded FitRoom A/B/C zero-axial-loading templates.",
+  },
+  {
     version: "v1.14.0",
     description:
       "Deployed Lean Gain Engine (TDEE * 1.05), adaptive Protein Green Zones, and persistent offset-based Check-In feedback loop.",
@@ -231,4 +236,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.14.0"
+export const APP_VERSION = "v1.14.1"
