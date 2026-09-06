@@ -122,6 +122,9 @@ const MEALS = [
 
 type MealType = (typeof MEALS)[number]["type"]
 
+// Shared "bento box" card treatment — matches the dashboard page / CheckInCard / Metrics page.
+const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+
 // ─────────────────────────────────────────────────────────────
 // טבעת מאקרו — SVG
 // ─────────────────────────────────────────────────────────────
@@ -154,7 +157,7 @@ function MacroRing({
     <div className="flex flex-col items-center gap-1.5">
       <div className="relative" style={{ width: dim, height: dim }}>
         <svg width={dim} height={dim} viewBox={`0 0 ${dim} ${dim}`} className="-rotate-90">
-          <circle cx={dim / 2} cy={dim / 2} r={R} fill="none" stroke="#1e293b" strokeWidth={SW} />
+          <circle cx={dim / 2} cy={dim / 2} r={R} fill="none" stroke="#F3F4F6" strokeWidth={SW} />
           <circle
             cx={dim / 2}
             cy={dim / 2}
@@ -174,7 +177,7 @@ function MacroRing({
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span
             className={cn(
-              "font-black tabular-nums leading-none",
+              "font-black tabular-nums leading-none text-gray-900",
               size === "lg" ? "text-xl" : "text-sm"
             )}
           >
@@ -182,12 +185,12 @@ function MacroRing({
           </span>
         </div>
       </div>
-      <p className={cn("text-slate-400 font-medium", size === "lg" ? "text-xs" : "text-[10px]")}>
+      <p className={cn("text-gray-400 font-medium", size === "lg" ? "text-xs" : "text-[10px]")}>
         {label}
       </p>
-      <p className={cn("font-bold", size === "lg" ? "text-sm" : "text-[11px]")}>
+      <p className={cn("font-bold text-gray-900", size === "lg" ? "text-sm" : "text-[11px]")}>
         {Math.round(current)}
-        <span className="text-slate-500 font-normal text-[10px]"> {unit}</span>
+        <span className="text-gray-400 font-normal text-[10px]"> {unit}</span>
       </p>
     </div>
   )
@@ -234,12 +237,12 @@ function FoodItemRow({
       <div className="py-2 space-y-2">
         {/* שם + ביטול */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-200 font-medium truncate flex-1 me-2">
+          <span className="text-sm text-gray-900 font-medium truncate flex-1 me-2">
             {item.name}
           </span>
           <button
             onClick={onEditCancel}
-            className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+            className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors shrink-0"
             aria-label="ביטול"
           >
             <X size={14} />
@@ -258,23 +261,23 @@ function FoodItemRow({
               if (e.key === "Enter" && qty > 0) onEditSave(qty)
               if (e.key === "Escape") onEditCancel()
             }}
-            className="w-20 bg-slate-800 border border-indigo-500/60 rounded-lg px-2 py-1.5 text-sm text-center font-semibold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+            className="w-20 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-semibold text-gray-900 focus:outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20"
             autoFocus
             dir="ltr"
           />
-          <span className="text-xs text-slate-500 shrink-0">{item.unit}</span>
+          <span className="text-xs text-gray-400 shrink-0">{item.unit}</span>
           {qty > 0 && (
-            <span className="text-xs text-slate-500 flex-1">
+            <span className="text-xs text-gray-400 flex-1">
               ≈{" "}
-              <span className="text-orange-400">{previewCal} קק"ל</span>
+              <span className="text-orange-500">{previewCal} קק"ל</span>
               {" · "}
-              <span className="text-indigo-400">{previewProt} ח'</span>
+              <span className="text-[#007AFF]">{previewProt} ח'</span>
             </span>
           )}
           <button
             onClick={() => qty > 0 && onEditSave(qty)}
             disabled={qty <= 0}
-            className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white transition-colors shrink-0"
+            className="p-1.5 rounded-lg bg-[#007AFF] hover:bg-[#007AFF]/90 disabled:opacity-40 text-white transition-colors shrink-0"
             aria-label="שמור"
           >
             <Check size={13} />
@@ -288,14 +291,14 @@ function FoodItemRow({
     <div className={cn("py-1.5 transition-opacity", isDeleting && "opacity-30 pointer-events-none")}>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
-          <span className="text-sm text-slate-300 truncate flex items-center gap-1">
+          <span className="text-sm text-gray-900 truncate flex items-center gap-1">
             {item.name}
             {item.insight && (
               <button
                 onClick={() => setShowInsight((v) => !v)}
                 className={cn(
                   "shrink-0 transition-colors",
-                  showInsight ? "text-amber-300" : "text-amber-500/70 hover:text-amber-400",
+                  showInsight ? "text-[#FF9500]" : "text-[#FF9500]/60 hover:text-[#FF9500]/80",
                 )}
                 aria-label="טיפ תזונתי מה-AI"
                 title={item.insight}
@@ -304,18 +307,18 @@ function FoodItemRow({
               </button>
             )}
           </span>
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-gray-400">
             {item.quantity} {item.unit}
           </span>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-xs text-slate-500">{Math.round(item.calories)} קק"ל</span>
-          <span className="text-xs text-indigo-400 font-medium">{Math.round(item.protein)} ח'</span>
+          <span className="text-xs text-gray-400">{Math.round(item.calories)} קק"ל</span>
+          <span className="text-xs text-[#007AFF] font-medium">{Math.round(item.protein)} ח'</span>
 
           <button
             onClick={onEditStart}
-            className="p-1 rounded text-slate-600 hover:text-indigo-400 hover:bg-slate-800 transition-colors"
+            className="p-1 rounded text-gray-300 hover:text-[#007AFF] hover:bg-blue-50 transition-colors"
             aria-label="ערוך"
           >
             <Pencil size={12} />
@@ -324,7 +327,7 @@ function FoodItemRow({
           <button
             onClick={onDelete}
             disabled={isDeleting}
-            className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            className="p-1 rounded text-gray-300 hover:text-[#FF3B30] hover:bg-red-50 transition-colors"
             aria-label="מחק"
         >
           {isDeleting ? (
@@ -337,7 +340,7 @@ function FoodItemRow({
       </div>
 
       {showInsight && item.insight && (
-        <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 mt-1.5" dir="rtl">
+        <p className="text-[11px] text-[#FF9500] bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5 mt-1.5" dir="rtl">
           💡 {item.insight}
         </p>
       )}
@@ -383,14 +386,14 @@ function UnitDefinitionInput({
   }
 
   return (
-    <div className="space-y-2 bg-slate-900/50 rounded-lg px-3 py-2">
+    <div className="space-y-2 bg-white border border-cyan-100 rounded-lg px-3 py-2">
       <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => { setMode("count"); setDraft("") }}
           className={cn(
             "px-2 py-1 rounded-md text-[10px] font-semibold transition-colors",
-            mode === "count" ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400",
+            mode === "count" ? "bg-cyan-600 text-white" : "bg-gray-100 text-gray-500",
           )}
         >
           לפי מספר יחידות באריזה
@@ -400,14 +403,14 @@ function UnitDefinitionInput({
           onClick={() => { setMode("weight"); setDraft("") }}
           className={cn(
             "px-2 py-1 rounded-md text-[10px] font-semibold transition-colors",
-            mode === "weight" ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400",
+            mode === "weight" ? "bg-cyan-600 text-white" : "bg-gray-100 text-gray-500",
           )}
         >
           לפי שקילה של יחידה אחת (גרם)
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-amber-300/90 shrink-0">
+        <span className="text-[11px] text-[#FF9500] shrink-0">
           {mode === "count"
             ? "כמה יחידות יש באריזה כולה?"
             : "מה משקל יחידה אחת? — שקול על מאזני מטבח"}
@@ -421,19 +424,19 @@ function UnitDefinitionInput({
             if (e.key === "Enter") { e.preventDefault(); confirm() }
           }}
           placeholder={mode === "count" ? "4" : "28"}
-          className="w-16 bg-slate-900/70 rounded-lg px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+          className="w-16 bg-gray-50 rounded-lg px-2 py-1 text-xs text-gray-900 placeholder:text-gray-300 focus:outline-none border border-gray-200 focus:border-cyan-400 text-center transition-colors"
         />
         <button
           type="button"
           onClick={confirm}
           disabled={!posNum(draft)}
-          className="flex items-center gap-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 text-[11px] font-semibold text-white transition-colors"
+          className="flex items-center gap-1 bg-cyan-600 hover:bg-cyan-600/90 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 text-[11px] font-semibold text-white transition-colors"
         >
           <Check size={11} /> אישור
         </button>
       </div>
       {mode === "count" && !hasPackageWeight && (
-        <p className="text-[10px] text-slate-500">(נדרש גם משקל אריזה כדי לחשב לפי מספר יחידות)</p>
+        <p className="text-[10px] text-gray-400">(נדרש גם משקל אריזה כדי לחשב לפי מספר יחידות)</p>
       )}
     </div>
   )
@@ -460,21 +463,21 @@ function LabelScannerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-4 space-y-3"
+        className="w-full max-w-sm bg-white border border-gray-100 rounded-2xl p-4 space-y-3 shadow-[0_8px_30px_rgb(0,0,0,0.08)]"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-cyan-300 flex items-center gap-1.5">
+          <p className="text-sm font-semibold text-[#007AFF] flex items-center gap-1.5">
             <ScanLine size={14} /> סריקת תווית תזונה
           </p>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+            className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors"
             aria-label="סגור"
           >
             <X size={15} />
@@ -498,12 +501,12 @@ function LabelScannerModal({
           className={cn(
             "w-full flex flex-col items-center gap-3 rounded-xl border-2 border-dashed py-8 px-4 transition-colors cursor-pointer",
             dragOver
-              ? "border-cyan-400 bg-cyan-500/10"
-              : "border-slate-700 hover:border-cyan-600/60 hover:bg-slate-800/50",
+              ? "border-[#007AFF] bg-blue-50"
+              : "border-gray-200 hover:border-[#007AFF]/50 hover:bg-gray-50",
           )}
         >
-          <Upload size={26} className={dragOver ? "text-cyan-300" : "text-slate-500"} />
-          <p className="text-xs text-slate-300 text-center leading-relaxed">
+          <Upload size={26} className={dragOver ? "text-[#007AFF]" : "text-gray-300"} />
+          <p className="text-xs text-gray-500 text-center leading-relaxed">
             לחץ לבחירת תמונה, או פשוט הדבק (Ctrl+V) / גרור לכאן
           </p>
 
@@ -513,7 +516,7 @@ function LabelScannerModal({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDropzoneClick() }}
-            className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 rounded-xl py-3.5 text-sm font-bold text-white transition-colors shadow-lg shadow-cyan-900/30"
+            className="w-full flex items-center justify-center gap-2 bg-[#007AFF] hover:bg-[#007AFF]/90 active:scale-95 rounded-full py-3.5 text-sm font-bold text-white transition shadow-lg shadow-blue-500/20"
           >
             📸 צלם או בחר תמונה מגלריה
           </button>
@@ -1192,12 +1195,12 @@ export default function NutritionPage() {
   const sugarPct    = Math.min((sugarToday / sugarTarget) * 100, 100)
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
       {/* ── כותרת ─────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">תזונה יומית</h1>
-          <p className="text-sm text-slate-400 mt-0.5">מעקב מאקרו צמחוני</p>
+          <h1 className="text-2xl font-bold text-gray-900">תזונה יומית</h1>
+          <p className="text-sm text-gray-500 mt-0.5">מעקב מאקרו צמחוני</p>
         </div>
 
         {/* ── Coffee quick-log cluster ─────────────────────── */}
@@ -1208,8 +1211,8 @@ export default function NutritionPage() {
             className={cn(
               "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
               coffeeSuccess
-                ? "bg-emerald-600/80 text-white"
-                : "bg-slate-800 text-amber-400 hover:bg-slate-700 active:scale-95",
+                ? "bg-[#34C759] text-white"
+                : "bg-gray-100 text-[#FF9500] hover:bg-gray-200 active:scale-95",
             )}
             title="רשום קפה עם חלב"
           >
@@ -1225,7 +1228,7 @@ export default function NutritionPage() {
             onClick={() => setShowCoffeeSettings(v => !v)}
             className={cn(
               "flex items-center justify-center w-7 h-7 rounded-lg transition-all",
-              showCoffeeSettings ? "bg-slate-600 text-white" : "text-slate-500 hover:text-slate-300",
+              showCoffeeSettings ? "bg-black text-white" : "text-gray-400 hover:text-gray-600",
             )}
             title="הגדרות קפה"
           >
@@ -1236,10 +1239,10 @@ export default function NutritionPage() {
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowCoffeeSettings(false)} />
               <div
-                className="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-700/60 rounded-2xl p-3 shadow-xl z-50 space-y-3"
+                className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-100 rounded-2xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.08)] z-50 space-y-3"
                 dir="rtl"
               >
-                <p className="text-[11px] font-bold text-slate-300">סוג חלב</p>
+                <p className="text-[11px] font-bold text-gray-500">סוג חלב</p>
                 <div className="space-y-1">
                   {Object.values(MILK_PRESETS).map(preset => (
                     <button
@@ -1248,17 +1251,17 @@ export default function NutritionPage() {
                       className={cn(
                         "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all",
                         preferredMilkPreset === preset.id
-                          ? "bg-amber-500/20 text-amber-300 font-semibold"
-                          : "text-slate-400 hover:bg-slate-700/50",
+                          ? "bg-orange-50 text-[#FF9500] font-semibold"
+                          : "text-gray-500 hover:bg-gray-50",
                       )}
                     >
                       <span>{preset.name}</span>
-                      <span className="text-[10px] opacity-60">{preset.calories} קק&quot;ל/100מ&quot;ל</span>
+                      <span className="text-[10px] text-gray-400">{preset.calories} קק&quot;ל/100מ&quot;ל</span>
                     </button>
                   ))}
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-slate-300 mb-1.5">כמות (מ&quot;ל)</p>
+                  <p className="text-[11px] font-bold text-gray-500 mb-1.5">כמות (מ&quot;ל)</p>
                   <div className="flex gap-1.5">
                     {[100, 125, 150, 200].map(vol => (
                       <button
@@ -1267,8 +1270,8 @@ export default function NutritionPage() {
                         className={cn(
                           "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all",
                           defaultMilkVolumeMl === vol
-                            ? "bg-amber-500/20 text-amber-300"
-                            : "bg-slate-700/50 text-slate-400 hover:bg-slate-700",
+                            ? "bg-orange-50 text-[#FF9500]"
+                            : "bg-gray-100 text-gray-500 hover:bg-gray-200",
                         )}
                       >
                         {vol}
@@ -1276,7 +1279,7 @@ export default function NutritionPage() {
                     ))}
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-500 text-center border-t border-slate-700/40 pt-2">
+                <p className="text-[10px] text-gray-400 text-center border-t border-gray-100 pt-2">
                   {(() => {
                     const p = MILK_PRESETS[preferredMilkPreset]
                     const f = defaultMilkVolumeMl / 100
@@ -1290,21 +1293,21 @@ export default function NutritionPage() {
       </div>
 
       {coffeeError && (
-        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+        <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2" dir="rtl">
           <AlertCircle size={13} className="shrink-0" />
           {coffeeError}
         </div>
       )}
 
       {/* ── Toggle: יום אימון / יום מנוחה ─────────────────── */}
-      <div className="flex items-center gap-2 bg-slate-900/60 rounded-2xl p-1.5" dir="rtl">
+      <div className="flex items-center gap-2 bg-gray-100 rounded-2xl p-1.5" dir="rtl">
         <button
           onClick={() => handleToggleTrainingDay(true)}
           className={cn(
             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
             isTrainingDay
-              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
-              : "text-slate-400 hover:text-slate-200",
+              ? "bg-[#007AFF] text-white shadow-lg shadow-blue-500/25"
+              : "text-gray-400 hover:text-gray-600",
           )}
         >
           <span>🏋️</span> יום אימון
@@ -1314,15 +1317,15 @@ export default function NutritionPage() {
           className={cn(
             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
             !isTrainingDay
-              ? "bg-slate-600 text-white shadow-lg shadow-slate-500/20"
-              : "text-slate-400 hover:text-slate-200",
+              ? "bg-black text-white shadow-lg shadow-black/10"
+              : "text-gray-400 hover:text-gray-600",
           )}
         >
           <span>🛌</span> יום מנוחה
         </button>
       </div>
       {!isTrainingDay && (
-        <p className="text-[11px] text-slate-500 text-center -mt-3" dir="rtl">
+        <p className="text-[11px] text-gray-400 text-center -mt-3" dir="rtl">
           יעד קלוריות הופחת ב-15% · פחמימות ושומן מותאמים · חלבון נשמר מלא
         </p>
       )}
@@ -1330,41 +1333,41 @@ export default function NutritionPage() {
       {/* ╔══════════════════════════════════════════════════╗
           ║            כרטיס סיכום מאקרו יומי               ║
           ╚══════════════════════════════════════════════════╝ */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
+      <div className={cn(CARD, "p-6 space-y-4")}>
         {/* סרגל קלוריות */}
         <div>
           <div className="flex justify-between text-xs mb-1.5">
-            <span className="text-slate-200 font-semibold flex items-center gap-1.5">
-              <Flame size={13} className="text-orange-400" />
+            <span className="text-gray-900 font-semibold flex items-center gap-1.5">
+              <Flame size={13} className="text-orange-500" />
               {totals.calories} קק"ל
             </span>
-            <span className={calRemain >= 0 ? "text-slate-400" : "text-red-400"}>
+            <span className={calRemain >= 0 ? "text-gray-400" : "text-[#FF3B30]"}>
               {calRemain >= 0 ? `נותרו ${calRemain}` : `ביתר ${Math.abs(calRemain)}`} קק"ל
             </span>
           </div>
-          <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
+          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-700"
               style={{ width: `${Math.min((totals.calories / targets.calories) * 100, 100)}%` }}
             />
           </div>
-          <p className="text-[10px] text-slate-600 mt-1">יעד: {targets.calories} קק"ל</p>
+          <p className="text-[10px] text-gray-300 mt-1">יעד: {targets.calories} קק"ל</p>
         </div>
 
         {/* טבעות מאקרו */}
         <div className="flex items-end justify-around pt-1">
           <div className="flex flex-col items-center gap-1">
-            <div className="text-[10px] text-indigo-400 font-bold mb-0.5">יעד עיקרי</div>
+            <div className="text-[10px] text-[#007AFF] font-bold mb-0.5">יעד עיקרי</div>
             <MacroRing
               label="חלבון"
               current={totals.protein}
               target={targets.protein}
               unit="גר'"
-              color="#6366f1"
+              color="#007AFF"
               size="lg"
               glow
             />
-            <p className="text-[10px] text-indigo-400 mt-0.5">
+            <p className="text-[10px] text-[#007AFF] mt-0.5">
               {Math.max(0, Math.round(protRemain))} גר' נותרו
             </p>
           </div>
@@ -1391,15 +1394,15 @@ export default function NutritionPage() {
         {/* סרגל סוכר */}
         <div className="pt-1">
           <div className="flex justify-between text-[11px] mb-1">
-            <span className="text-slate-400 flex items-center gap-1">
+            <span className="text-gray-500 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
               סוכר יומי
             </span>
-            <span className={sugarPct >= 100 ? "text-rose-400 font-semibold" : "text-slate-500"}>
+            <span className={sugarPct >= 100 ? "text-rose-500 font-semibold" : "text-gray-400"}>
               {Math.round(sugarToday)} / {sugarTarget} גר'
             </span>
           </div>
-          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-700",
@@ -1414,12 +1417,12 @@ export default function NutritionPage() {
       {/* ╔══════════════════════════════════════════════════╗
           ║          קלט NLP — רישום מזון חופשי              ║
           ╚══════════════════════════════════════════════════╝ */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
+      <div className={cn(CARD, "p-6 space-y-3")}>
         <div>
-          <p className="text-sm font-semibold text-slate-100">רישום מהיר בעברית חופשית</p>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-sm font-semibold text-gray-900">רישום מהיר בעברית חופשית</p>
+          <p className="text-xs text-gray-500 mt-0.5">
             לדוגמה:{" "}
-            <span className="text-indigo-300 italic">
+            <span className="text-[#007AFF] italic">
               "אכלתי 200 גרם טופו עם אורז מלא ואדממה"
             </span>
           </p>
@@ -1434,8 +1437,8 @@ export default function NutritionPage() {
               className={cn(
                 "flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border",
                 selectedMeal === type
-                  ? "bg-indigo-600 border-indigo-500 text-white"
-                  : "bg-transparent border-slate-800 text-slate-500 hover:border-slate-600"
+                  ? "bg-[#007AFF] border-[#007AFF] text-white"
+                  : "bg-transparent border-gray-200 text-gray-500 hover:border-gray-300"
               )}
             >
               <span>{emoji}</span> {label}
@@ -1445,7 +1448,7 @@ export default function NutritionPage() {
 
         {/* שדה קלט */}
         <div className="flex gap-2 items-end">
-          <div className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 focus-within:border-indigo-500 transition-colors">
+          <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-[#007AFF] transition-colors">
             <textarea
               ref={textareaRef}
               rows={2}
@@ -1459,17 +1462,17 @@ export default function NutritionPage() {
               }}
               placeholder="מה אכלת?"
               disabled={parsing}
-              className="w-full bg-transparent text-sm focus:outline-none placeholder:text-slate-600 disabled:opacity-50 resize-none"
+              className="w-full bg-transparent text-sm text-gray-900 focus:outline-none placeholder:text-gray-300 disabled:opacity-50 resize-none"
               dir="rtl"
             />
           </div>
           <button
             onClick={handleParse}
             disabled={!nlpText.trim() || parsing}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-xl px-4 h-14 flex items-center justify-center transition-colors shrink-0"
+            className="bg-[#007AFF] hover:bg-[#007AFF]/90 disabled:opacity-40 rounded-xl px-4 h-14 flex items-center justify-center transition-colors shrink-0"
             aria-label="שלח"
           >
-            {parsing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            {parsing ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
           </button>
         </div>
 
@@ -1498,16 +1501,16 @@ export default function NutritionPage() {
             <button
               onClick={() => scanInputRef.current?.click()}
               disabled={scanLoading || parsing || voiceState !== "idle"}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-teal-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-teal-300 transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed border border-gray-200 hover:border-emerald-300 rounded-xl py-2 text-xs font-medium text-gray-500 hover:text-emerald-600 transition-colors"
             >
               {scanLoading ? (
                 <>
-                  <Loader2 size={13} className="animate-spin text-teal-400" />
-                  <span className="text-teal-300">מנתח...</span>
+                  <Loader2 size={13} className="animate-spin text-emerald-500" />
+                  <span className="text-emerald-600">מנתח...</span>
                 </>
               ) : (
                 <>
-                  <Camera size={13} className="text-teal-400" />
+                  <Camera size={13} className="text-emerald-500" />
                   מצלמה
                 </>
               )}
@@ -1519,10 +1522,10 @@ export default function NutritionPage() {
               className={cn(
                 "flex-1 flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-medium transition-colors border",
                 voiceState === "recording"
-                  ? "bg-red-900/30 border-red-500/50 text-red-400 hover:bg-red-900/50"
+                  ? "bg-red-50 border-red-200 text-[#FF3B30] hover:bg-red-100"
                   : voiceState === "processing"
-                  ? "bg-slate-800 border-slate-700 text-teal-300 opacity-100 cursor-not-allowed"
-                  : "bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-violet-600/50 text-slate-400 hover:text-violet-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                  ? "bg-gray-50 border-gray-200 text-emerald-600 opacity-100 cursor-not-allowed"
+                  : "bg-gray-50 hover:bg-gray-100 border-gray-200 hover:border-violet-300 text-gray-500 hover:text-violet-600 disabled:opacity-40 disabled:cursor-not-allowed"
               )}
             >
               {voiceState === "recording" ? (
@@ -1532,12 +1535,12 @@ export default function NutritionPage() {
                 </>
               ) : voiceState === "processing" ? (
                 <>
-                  <Loader2 size={13} className="animate-spin text-teal-400" />
+                  <Loader2 size={13} className="animate-spin text-emerald-500" />
                   מפענח...
                 </>
               ) : (
                 <>
-                  <Mic size={13} className="text-violet-400" />
+                  <Mic size={13} className="text-violet-500" />
                   הקלטת קול
                 </>
               )}
@@ -1548,16 +1551,16 @@ export default function NutritionPage() {
             <button
               onClick={() => setLabelModalOpen(true)}
               disabled={labelLoading || parsing || scanLoading || voiceState !== "idle"}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 hover:border-cyan-600/50 rounded-xl py-2 text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed border border-gray-200 hover:border-cyan-300 rounded-xl py-2 text-xs font-medium text-gray-500 hover:text-cyan-600 transition-colors"
             >
               {labelLoading ? (
                 <>
-                  <Loader2 size={13} className="animate-spin text-cyan-400" />
-                  <span className="text-cyan-300">סורק...</span>
+                  <Loader2 size={13} className="animate-spin text-cyan-500" />
+                  <span className="text-cyan-600">סורק...</span>
                 </>
               ) : (
                 <>
-                  <ScanLine size={13} className="text-cyan-400" />
+                  <ScanLine size={13} className="text-cyan-500" />
                   סרוק תווית
                 </>
               )}
@@ -1574,17 +1577,17 @@ export default function NutritionPage() {
 
           {/* ── כרטיס מנה ממוצר סרוק ─────────────────────────── */}
           {labelScan && (
-            <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 space-y-2.5" dir="rtl">
+            <div className="bg-cyan-50 border border-cyan-100 rounded-xl p-3 space-y-2.5" dir="rtl">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] text-cyan-400 font-semibold flex items-center gap-1.5">
+                <p className="text-[11px] text-cyan-600 font-semibold flex items-center gap-1.5">
                   <ScanLine size={12} /> תווית נסרקה
                   {labelScan.confidence !== "high" && (
-                    <span className="text-amber-400 font-normal">· ודא ערכים — סריקה חלקית</span>
+                    <span className="text-[#FF9500] font-normal">· ודא ערכים — סריקה חלקית</span>
                   )}
                 </p>
                 <button
                   onClick={() => setLabelScan(null)}
-                  className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                  className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors"
                   aria-label="סגור"
                 >
                   <X size={13} />
@@ -1596,31 +1599,31 @@ export default function NutritionPage() {
                 value={labelScan.productName}
                 onChange={e => setLabelScan({ ...labelScan, productName: e.target.value })}
                 placeholder="שם המוצר"
-                className="w-full bg-slate-900/70 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 transition-colors"
+                className="w-full bg-white rounded-lg px-3 py-2 text-xs text-gray-900 placeholder:text-gray-300 focus:outline-none border border-gray-200 focus:border-cyan-400 transition-colors"
               />
 
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-gray-500">
                 ל-100 גרם: {labelScan.per100g.calories} קק"ל · {labelScan.per100g.protein}ג' חלבון · {labelScan.per100g.carbs}ג' פחמ' · {labelScan.per100g.fat}ג' שומן · {labelScan.per100g.sugar}ג' סוכר
               </p>
 
               <div className="flex items-center gap-2">
-                <label className="text-[11px] text-slate-400 shrink-0">משקל אריזה (אופציונלי)</label>
+                <label className="text-[11px] text-gray-500 shrink-0">משקל אריזה (אופציונלי)</label>
                 <input
                   type="number"
                   value={labelScan.packageWeightG}
                   onChange={e => setLabelScan({ ...labelScan, packageWeightG: e.target.value })}
                   placeholder="גרם"
-                  className="w-20 bg-slate-900/70 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+                  className="w-20 bg-white rounded-lg px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-300 focus:outline-none border border-gray-200 focus:border-cyan-400 text-center transition-colors"
                 />
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex bg-slate-900/70 rounded-lg p-0.5">
+                <div className="flex bg-gray-100 rounded-lg p-0.5">
                   <button
                     onClick={() => { setLabelPortionMode("units"); setLabelPortion("1") }}
                     className={cn(
                       "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
-                      labelPortionMode === "units" ? "bg-cyan-600 text-white" : "text-slate-400",
+                      labelPortionMode === "units" ? "bg-cyan-600 text-white" : "text-gray-500",
                     )}
                   >
                     יחידות
@@ -1629,7 +1632,7 @@ export default function NutritionPage() {
                     onClick={() => { setLabelPortionMode("grams"); setLabelPortion("50") }}
                     className={cn(
                       "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
-                      labelPortionMode === "grams" ? "bg-cyan-600 text-white" : "text-slate-400",
+                      labelPortionMode === "grams" ? "bg-cyan-600 text-white" : "text-gray-500",
                     )}
                   >
                     גרם
@@ -1639,7 +1642,7 @@ export default function NutritionPage() {
                     disabled={!labelPackageGrams()}
                     className={cn(
                       "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all disabled:opacity-30",
-                      labelPortionMode === "percent" ? "bg-cyan-600 text-white" : "text-slate-400",
+                      labelPortionMode === "percent" ? "bg-cyan-600 text-white" : "text-gray-500",
                     )}
                   >
                     % מהאריזה
@@ -1649,9 +1652,9 @@ export default function NutritionPage() {
                   type="number"
                   value={labelPortion}
                   onChange={e => setLabelPortion(e.target.value)}
-                  className="w-16 bg-slate-900/70 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none border border-slate-700/50 focus:border-cyan-500/50 text-center transition-colors"
+                  className="w-16 bg-white rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none border border-gray-200 focus:border-cyan-400 text-center transition-colors"
                 />
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-gray-500">
                   {labelPortionMode === "units" ? "יח'" : labelPortionMode === "grams" ? "גרם" : "%"}
                 </span>
               </div>
@@ -1674,7 +1677,7 @@ export default function NutritionPage() {
               {(() => {
                 const grams = labelPortionGrams()
                 if (!grams) return (
-                  <p className="text-[10px] text-amber-400/80">
+                  <p className="text-[10px] text-[#FF9500]/80">
                     {labelPortionMode === "units"
                       ? "הזן משקל אריזה ומספר יחידות כדי לחשב משקל יחידה"
                       : labelPortionMode === "percent" && !labelPackageGrams()
@@ -1687,8 +1690,8 @@ export default function NutritionPage() {
                   ? `${labelPortion} יח' (${Math.round(grams)} גרם)`
                   : `${Math.round(grams)} גרם`
                 return (
-                  <p className="text-[11px] font-semibold text-slate-300">
-                    {prefix} = <span className="text-orange-400">{Math.round(labelScan.per100g.calories * f)} קק"ל</span> · <span className="text-indigo-400">{Math.round(labelScan.per100g.protein * f * 10) / 10}ג' חלב'</span> · <span className="text-emerald-400">{Math.round(labelScan.per100g.carbs * f * 10) / 10}ג' פחמ'</span> · <span className="text-amber-400">{Math.round(labelScan.per100g.fat * f * 10) / 10}ג' שומן</span>
+                  <p className="text-[11px] font-semibold text-gray-700">
+                    {prefix} = <span className="text-orange-500">{Math.round(labelScan.per100g.calories * f)} קק"ל</span> · <span className="text-[#007AFF]">{Math.round(labelScan.per100g.protein * f * 10) / 10}ג' חלב'</span> · <span className="text-emerald-600">{Math.round(labelScan.per100g.carbs * f * 10) / 10}ג' פחמ'</span> · <span className="text-amber-600">{Math.round(labelScan.per100g.fat * f * 10) / 10}ג' שומן</span>
                   </p>
                 )
               })()}
@@ -1699,26 +1702,26 @@ export default function NutritionPage() {
                   disabled={!labelPackageGrams()}
                   className={cn(
                     "flex items-center gap-1.5 text-[11px] transition-colors disabled:opacity-40",
-                    labelSaveProduct && labelPackageGrams() ? "text-cyan-300" : "text-slate-500",
+                    labelSaveProduct && labelPackageGrams() ? "text-cyan-600" : "text-gray-400",
                   )}
                 >
                   <span className={cn(
                     "w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors",
-                    labelSaveProduct && labelPackageGrams() ? "bg-cyan-600 border-cyan-500" : "border-slate-600",
+                    labelSaveProduct && labelPackageGrams() ? "bg-cyan-600 border-cyan-500" : "border-gray-300",
                   )}>
                     {labelSaveProduct && !!labelPackageGrams() && <Check size={10} className="text-white" />}
                   </span>
                   שמור למתכונים שלי
                 </button>
                 {!labelPackageGrams() && (
-                  <span className="text-[10px] text-slate-500">(נדרש משקל אריזה לשמירה)</span>
+                  <span className="text-[10px] text-gray-400">(נדרש משקל אריזה לשמירה)</span>
                 )}
               </div>
 
               <button
                 onClick={handleLogLabelPortion}
                 disabled={labelLogging || !labelPortionGrams()}
-                className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
+                className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-600/90 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
               >
                 {labelLogging ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                 {labelLogging ? "רושם..." : "רשום מנה"}
@@ -1727,7 +1730,7 @@ export default function NutritionPage() {
           )}
 
           {labelError && (
-            <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+            <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2" dir="rtl">
               <AlertCircle size={13} className="shrink-0" />
               {labelError}
             </div>
@@ -1744,27 +1747,27 @@ export default function NutritionPage() {
               { calories: 0, protein: 0, carbs: 0, fat: 0 },
             )
             return (
-              <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 space-y-1.5" dir="rtl">
-                <p className="text-[11px] text-teal-400 font-semibold flex items-center gap-1.5">
+              <div className="bg-teal-50 border border-teal-100 rounded-xl p-3 space-y-1.5" dir="rtl">
+                <p className="text-[11px] text-teal-600 font-semibold flex items-center gap-1.5">
                   <ScanLine size={12} /> זוהו {scanResult.items.length} פריטים — הועברו לשדה הקלט
                 </p>
                 <ul className="space-y-0.5">
                   {scanResult.items.map((item, i) => (
-                    <li key={i} className="text-xs text-slate-400">
+                    <li key={i} className="text-xs text-gray-500">
                       · {item.name}{" "}
-                      <span className="text-slate-500">({item.quantity}{item.unit})</span>
+                      <span className="text-gray-400">({item.quantity}{item.unit})</span>
                     </li>
                   ))}
                 </ul>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
-                  <span className="text-orange-400">{Math.round(t.calories)} קק&quot;ל</span>
-                  <span className="text-indigo-400">{Math.round(t.protein)}ג&apos; חלב&apos;</span>
-                  <span className="text-emerald-400">{Math.round(t.carbs)}ג&apos; פחמ&apos;</span>
-                  <span className="text-amber-400">{Math.round(t.fat)}ג&apos; שומן</span>
+                  <span className="text-orange-500">{Math.round(t.calories)} קק&quot;ל</span>
+                  <span className="text-[#007AFF]">{Math.round(t.protein)}ג&apos; חלב&apos;</span>
+                  <span className="text-emerald-600">{Math.round(t.carbs)}ג&apos; פחמ&apos;</span>
+                  <span className="text-amber-600">{Math.round(t.fat)}ג&apos; שומן</span>
                 </div>
                 {scanResult.insight && (
-                  <p className="flex items-start gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 mt-1">
-                    <Lightbulb size={12} className="shrink-0 mt-0.5 text-amber-400" />
+                  <p className="flex items-start gap-1.5 text-[11px] text-[#FF9500] bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5 mt-1">
+                    <Lightbulb size={12} className="shrink-0 mt-0.5 text-[#FF9500]" />
                     {scanResult.insight}
                   </p>
                 )}
@@ -1773,41 +1776,41 @@ export default function NutritionPage() {
           })()}
 
           {scanError && (
-            <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2">
               <AlertCircle size={13} className="shrink-0" />
               {scanError}
             </div>
           )}
 
           {voiceError && (
-            <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+            <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2" dir="rtl">
               <AlertCircle size={13} className="shrink-0" />
               {voiceError}
             </div>
           )}
 
           {voiceMeals && voiceMeals.length > 0 && (
-            <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 space-y-2.5" dir="rtl">
+            <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 space-y-2.5" dir="rtl">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] text-violet-400 font-semibold flex items-center gap-1.5">
+                <p className="text-[11px] text-violet-600 font-semibold flex items-center gap-1.5">
                   <Mic size={12} /> זוהו {voiceMeals.length} ארוחות
                 </p>
                 <button
                   onClick={() => setVoiceMeals(null)}
-                  className="p-1 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                  className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors"
                   aria-label="סגור"
                 >
                   <X size={13} />
                 </button>
               </div>
               {voiceMeals.map((meal, i) => (
-                <div key={i} className="bg-slate-900/70 rounded-lg p-2.5 space-y-1.5">
+                <div key={i} className="bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)] p-2.5 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <input
                       type="text"
                       value={meal.mealName}
                       onChange={e => updateVoiceMeal(i, { mealName: e.target.value })}
-                      className="flex-1 bg-transparent text-xs font-semibold text-violet-300 focus:outline-none border-b border-violet-500/20 focus:border-violet-400/60 pb-0.5 transition-colors"
+                      className="flex-1 bg-transparent text-xs font-semibold text-violet-600 focus:outline-none border-b border-violet-100 focus:border-violet-400 pb-0.5 transition-colors"
                       dir="rtl"
                     />
                     {meal.insight && (
@@ -1815,7 +1818,7 @@ export default function NutritionPage() {
                         onClick={() => setExpandedVoiceInsight(v => (v === i ? null : i))}
                         className={cn(
                           "shrink-0 transition-colors",
-                          expandedVoiceInsight === i ? "text-amber-300" : "text-amber-500/70 hover:text-amber-400",
+                          expandedVoiceInsight === i ? "text-[#FF9500]" : "text-[#FF9500]/60 hover:text-[#FF9500]/80",
                         )}
                         aria-label="טיפ תזונתי מה-AI"
                         title={meal.insight}
@@ -1825,69 +1828,69 @@ export default function NutritionPage() {
                     )}
                   </div>
                   {expandedVoiceInsight === i && meal.insight && (
-                    <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5" dir="rtl">
+                    <p className="text-[11px] text-[#FF9500] bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5" dir="rtl">
                       💡 {meal.insight}
                     </p>
                   )}
                   {/* פריטים נפרדים — לא שורה אחת מסוכמת לכל הארוחה */}
                   <div className="space-y-1.5">
                     {meal.items.map((item, ii) => (
-                      <div key={ii} className="bg-slate-950/40 rounded-lg p-2 space-y-1">
+                      <div key={ii} className="bg-gray-50 rounded-lg p-2 space-y-1">
                         <div className="flex items-center gap-1.5">
                           <input
                             type="text"
                             value={item.name}
                             onChange={e => updateVoiceMealItem(i, ii, { name: e.target.value })}
-                            className="flex-1 bg-transparent text-xs font-medium text-slate-300 focus:outline-none border-b border-slate-700/40 focus:border-violet-400/50 pb-0.5 transition-colors"
+                            className="flex-1 bg-transparent text-xs font-medium text-gray-900 focus:outline-none border-b border-gray-200 focus:border-violet-400 pb-0.5 transition-colors"
                             dir="rtl"
                           />
-                          <span className="text-[10px] text-slate-600 shrink-0">
+                          <span className="text-[10px] text-gray-400 shrink-0">
                             {item.quantity}{item.unit}
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] font-semibold">
-                          <label className="flex items-center gap-0.5 text-orange-400">
+                          <label className="flex items-center gap-0.5 text-orange-600">
                             <input
                               type="number"
                               value={item.calories}
                               onChange={e => updateVoiceMealItem(i, ii, { calories: Number(e.target.value) || 0 })}
-                              className="w-9 bg-transparent text-orange-400 text-[10px] font-semibold focus:outline-none text-center border-b border-orange-400/30 focus:border-orange-400/60"
+                              className="w-9 bg-transparent text-orange-600 text-[10px] font-semibold focus:outline-none text-center border-b border-orange-300 focus:border-orange-500"
                             />
                             קק&quot;ל
                           </label>
-                          <label className="flex items-center gap-0.5 text-indigo-400">
+                          <label className="flex items-center gap-0.5 text-[#007AFF]">
                             <input
                               type="number"
                               value={item.protein}
                               onChange={e => updateVoiceMealItem(i, ii, { protein: Number(e.target.value) || 0 })}
-                              className="w-7 bg-transparent text-indigo-400 text-[10px] font-semibold focus:outline-none text-center border-b border-indigo-400/30 focus:border-indigo-400/60"
+                              className="w-7 bg-transparent text-[#007AFF] text-[10px] font-semibold focus:outline-none text-center border-b border-blue-200 focus:border-[#007AFF]"
                             />
                             ג&apos; חלב&apos;
                           </label>
-                          <label className="flex items-center gap-0.5 text-emerald-400">
+                          <label className="flex items-center gap-0.5 text-emerald-600">
                             <input
                               type="number"
                               value={item.carbs}
                               onChange={e => updateVoiceMealItem(i, ii, { carbs: Number(e.target.value) || 0 })}
-                              className="w-7 bg-transparent text-emerald-400 text-[10px] font-semibold focus:outline-none text-center border-b border-emerald-400/30 focus:border-emerald-400/60"
+                              className="w-7 bg-transparent text-emerald-600 text-[10px] font-semibold focus:outline-none text-center border-b border-emerald-200 focus:border-emerald-500"
                             />
                             ג&apos; פחמ&apos;
                           </label>
-                          <label className="flex items-center gap-0.5 text-amber-400">
+                          <label className="flex items-center gap-0.5 text-amber-600">
                             <input
                               type="number"
                               value={item.fat}
                               onChange={e => updateVoiceMealItem(i, ii, { fat: Number(e.target.value) || 0 })}
-                              className="w-7 bg-transparent text-amber-400 text-[10px] font-semibold focus:outline-none text-center border-b border-amber-400/30 focus:border-amber-400/60"
+                              className="w-7 bg-transparent text-amber-600 text-[10px] font-semibold focus:outline-none text-center border-b border-amber-200 focus:border-amber-500"
                             />
                             ג&apos; שומן
                           </label>
-                          <label className="flex items-center gap-0.5 text-pink-400">
+                          <label className="flex items-center gap-0.5 text-pink-600">
                             <input
                               type="number"
                               value={item.sugar}
                               onChange={e => updateVoiceMealItem(i, ii, { sugar: Number(e.target.value) || 0 })}
-                              className="w-7 bg-transparent text-pink-400 text-[10px] font-semibold focus:outline-none text-center border-b border-pink-400/30 focus:border-pink-400/60"
+                              className="w-7 bg-transparent text-pink-600 text-[10px] font-semibold focus:outline-none text-center border-b border-pink-200 focus:border-pink-500"
                             />
                             ג&apos; סוכר
                           </label>
@@ -1900,7 +1903,7 @@ export default function NutritionPage() {
               <button
                 onClick={handleLogAllMeals}
                 disabled={loggingVoice}
-                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
+                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-600/90 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
               >
                 {loggingVoice ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -1917,7 +1920,7 @@ export default function NutritionPage() {
 
         {/* שגיאה */}
         {parseError && (
-          <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
+          <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2">
             <AlertCircle size={14} className="shrink-0" />
             {parseError}
           </div>
@@ -1925,34 +1928,34 @@ export default function NutritionPage() {
 
         {/* תוצאת ניתוח */}
         {lastAdded && (
-          <div className="bg-green-950/40 border border-green-500/30 rounded-xl p-3 space-y-2">
-            <div className="flex items-center gap-2 text-xs text-green-400 font-semibold">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 space-y-2">
+            <div className="flex items-center gap-2 text-xs text-[#34C759] font-semibold">
               <CheckCircle2 size={14} />
               נוסף בהצלחה — {lastAdded.items.length} פריטים
             </div>
-            <div className="flex gap-3 text-xs text-slate-400">
-              <span className="text-orange-400 font-bold">
+            <div className="flex gap-3 text-xs text-gray-500">
+              <span className="text-orange-500 font-bold">
                 {Math.round(lastAdded.totals.calories)} קק"ל
               </span>
-              <span className="text-indigo-400 font-bold">
+              <span className="text-[#007AFF] font-bold">
                 {Math.round(lastAdded.totals.protein)} גר' חלבון
               </span>
-              <span className="text-green-400">{Math.round(lastAdded.totals.carbs)} גר' פחמ'</span>
-              <span className="text-amber-400">{Math.round(lastAdded.totals.fat)} גר' שומן</span>
+              <span className="text-emerald-600">{Math.round(lastAdded.totals.carbs)} גר' פחמ'</span>
+              <span className="text-amber-600">{Math.round(lastAdded.totals.fat)} גר' שומן</span>
             </div>
             <ul className="space-y-0.5">
               {lastAdded.items.map((item, i) => (
-                <li key={i} className="text-xs text-slate-300">
+                <li key={i} className="text-xs text-gray-700">
                   · {item.name}{" "}
-                  <span className="text-slate-500">
+                  <span className="text-gray-400">
                     ({item.quantity} {item.unit})
                   </span>
                 </li>
               ))}
             </ul>
             {lastAdded.insight && (
-              <p className="flex items-start gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5" dir="rtl">
-                <Lightbulb size={12} className="shrink-0 mt-0.5 text-amber-400" />
+              <p className="flex items-start gap-1.5 text-[11px] text-[#FF9500] bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5" dir="rtl">
+                <Lightbulb size={12} className="shrink-0 mt-0.5 text-[#FF9500]" />
                 {lastAdded.insight}
               </p>
             )}
@@ -1978,7 +1981,7 @@ export default function NutritionPage() {
       {/* ── קטעי ארוחות ──────────────────────────────────── */}
       {loading ? (
         <div className="flex justify-center py-8">
-          <Loader2 size={20} className="animate-spin text-slate-500" />
+          <Loader2 size={20} className="animate-spin text-gray-400" />
         </div>
       ) : (
         <div className="space-y-3">
@@ -1989,17 +1992,17 @@ export default function NutritionPage() {
             const isOpen = openMeal === type
 
             return (
-              <div key={type} className="bg-slate-900 rounded-2xl overflow-hidden">
+              <div key={type} className="bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)] overflow-hidden">
                 {/* כותרת ארוחה */}
                 <button
                   onClick={() => setOpenMeal(isOpen ? null : type)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/50 transition-colors"
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <span className="text-base">{emoji}</span>
-                    <span className="text-sm font-semibold">{label}</span>
+                    <span className="text-sm font-semibold text-gray-900">{label}</span>
                     {items.length > 0 && (
-                      <span className="text-[10px] bg-indigo-500/20 text-indigo-400 rounded-full px-1.5 py-0.5 font-medium">
+                      <span className="text-[10px] bg-blue-50 text-[#007AFF] rounded-full px-1.5 py-0.5 font-medium">
                         {items.length}
                       </span>
                     )}
@@ -2007,17 +2010,17 @@ export default function NutritionPage() {
                   <div className="flex items-center gap-3">
                     {items.length > 0 && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-slate-400">{Math.round(mealCal)} קק"ל</span>
-                        <span className="text-indigo-400 font-medium">
+                        <span className="text-gray-500">{Math.round(mealCal)} קק"ל</span>
+                        <span className="text-[#007AFF] font-medium">
                           {Math.round(mealProt)} גר' ח'
                         </span>
                       </div>
                     )}
-                    {items.length === 0 && <span className="text-xs text-slate-600">ריק</span>}
+                    {items.length === 0 && <span className="text-xs text-gray-300">ריק</span>}
                     <ChevronLeft
                       size={16}
                       className={cn(
-                        "text-slate-600 transition-transform duration-200",
+                        "text-gray-300 transition-transform duration-200",
                         isOpen ? "rotate-90" : "rtl:-rotate-180"
                       )}
                     />
@@ -2026,11 +2029,11 @@ export default function NutritionPage() {
 
                 {/* תוכן ארוחה */}
                 {isOpen && (
-                  <div className="px-4 pb-3 border-t border-slate-800">
+                  <div className="px-4 pb-3 border-t border-gray-100">
                     {items.length === 0 ? (
-                      <p className="text-xs text-slate-600 py-2">עדיין לא נרשמו מאכלים.</p>
+                      <p className="text-xs text-gray-300 py-2">עדיין לא נרשמו מאכלים.</p>
                     ) : (
-                      <div className="divide-y divide-slate-800/60">
+                      <div className="divide-y divide-gray-100">
                         {items.map((item) => (
                           <FoodItemRow
                             key={item.id}
@@ -2053,7 +2056,7 @@ export default function NutritionPage() {
                           .querySelector<HTMLTextAreaElement>('textarea[placeholder="מה אכלת?"]')
                           ?.focus()
                       }}
-                      className="w-full mt-2 flex items-center justify-center gap-1.5 border border-dashed border-slate-700 hover:border-indigo-600/50 rounded-xl py-2 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                      className="w-full mt-2 flex items-center justify-center gap-1.5 border-2 border-dashed border-gray-200 hover:border-[#007AFF]/50 rounded-xl py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                     >
                       <Plus size={13} /> הוסף ל{label}
                     </button>

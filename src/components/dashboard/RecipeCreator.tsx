@@ -229,8 +229,8 @@ export default function RecipeCreator({ onSaved }: Props) {
   }
 
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-3.5 space-y-3">
-      <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3.5 space-y-3">
+      <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
         <ChefHat size={13} /> מתכון חדש
       </p>
 
@@ -240,18 +240,18 @@ export default function RecipeCreator({ onSaved }: Props) {
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="שם המתכון (לדוגמה: פאי טופו גדול)"
-        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500/60 placeholder:text-slate-600 transition-colors"
+        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-amber-400 placeholder:text-gray-300 transition-colors"
         dir="rtl"
       />
 
       {/* Ingredients textarea */}
-      <div className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 focus-within:border-amber-500/60 transition-colors">
+      <div className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-amber-400 transition-colors">
         <textarea
           rows={3}
           value={ingredients}
           onChange={(e) => setIngredients(e.target.value)}
           placeholder="רכיבים וכמויות לכל המתכון (400 גרם טופו, 2 כפות שמן זית, 100 גרם תרד...)"
-          className="w-full bg-transparent text-sm focus:outline-none placeholder:text-slate-600 resize-none"
+          className="w-full bg-transparent text-sm text-gray-900 focus:outline-none placeholder:text-gray-300 resize-none"
           dir="rtl"
         />
       </div>
@@ -269,12 +269,12 @@ export default function RecipeCreator({ onSaved }: Props) {
         <button
           onClick={() => scanInputRef.current?.click()}
           disabled={scanLoading || voiceState !== "idle"}
-          className="flex-1 flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 border border-slate-700 hover:border-teal-600/50 rounded-xl py-1.5 text-xs text-slate-400 hover:text-teal-300 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-40 border border-gray-200 hover:border-teal-400/60 rounded-xl py-1.5 text-xs text-gray-500 hover:text-teal-600 transition-colors"
         >
           {scanLoading ? (
-            <><Loader2 size={12} className="animate-spin text-teal-400" /> מנתח...</>
+            <><Loader2 size={12} className="animate-spin text-teal-500" /> מנתח...</>
           ) : (
-            <><Camera size={12} className="text-teal-400" /> תמונה</>
+            <><Camera size={12} className="text-teal-500" /> תמונה</>
           )}
         </button>
         <button
@@ -283,25 +283,25 @@ export default function RecipeCreator({ onSaved }: Props) {
           className={cn(
             "flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-xs transition-colors border",
             voiceState === "recording"
-              ? "bg-red-900/30 border-red-500/50 text-red-400"
+              ? "bg-red-50 border-red-200 text-[#FF3B30]"
               : voiceState === "processing"
-              ? "bg-slate-900 border-slate-700 text-teal-300 cursor-not-allowed"
-              : "bg-slate-900 hover:bg-slate-800 border-slate-700 hover:border-violet-600/50 text-slate-400 hover:text-violet-300 disabled:opacity-40"
+              ? "bg-white border-gray-200 text-teal-600 cursor-not-allowed"
+              : "bg-white hover:bg-gray-50 border-gray-200 hover:border-violet-400/60 text-gray-500 hover:text-violet-600 disabled:opacity-40"
           )}
         >
           {voiceState === "recording" ? (
             <><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />{formatTimer(voiceTimer)}</>
           ) : voiceState === "processing" ? (
-            <><Loader2 size={12} className="animate-spin text-teal-400" /> מפענח...</>
+            <><Loader2 size={12} className="animate-spin text-teal-500" /> מפענח...</>
           ) : (
-            <><Mic size={12} className="text-violet-400" /> הקלטה</>
+            <><Mic size={12} className="text-violet-500" /> הקלטה</>
           )}
         </button>
       </div>
 
       {/* Scan / voice errors */}
       {(scanError ?? voiceError) && (
-        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+        <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2" dir="rtl">
           <AlertCircle size={12} className="shrink-0" />
           {scanError ?? voiceError}
         </div>
@@ -312,7 +312,7 @@ export default function RecipeCreator({ onSaved }: Props) {
         <button
           onClick={handleAnalyze}
           disabled={analyzing}
-          className="w-full flex items-center justify-center gap-1.5 bg-amber-600/15 hover:bg-amber-600/25 disabled:opacity-40 border border-amber-600/30 rounded-xl py-2 text-xs font-medium text-amber-300 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 border border-amber-200 rounded-xl py-2 text-xs font-medium text-amber-700 transition-colors"
         >
           {analyzing ? (
             <><Loader2 size={12} className="animate-spin" /> מחשב מאקרו...</>
@@ -323,7 +323,7 @@ export default function RecipeCreator({ onSaved }: Props) {
       )}
 
       {analyzeError && (
-        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2" dir="rtl">
+        <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2" dir="rtl">
           <AlertCircle size={12} className="shrink-0" />
           {analyzeError}
         </div>
@@ -331,18 +331,18 @@ export default function RecipeCreator({ onSaved }: Props) {
 
       {/* Macros preview + save */}
       {analyzed && (
-        <div className="bg-amber-500/8 border border-amber-500/20 rounded-xl p-3 space-y-2.5" dir="rtl">
-          <p className="text-[11px] text-amber-400 font-semibold">מאקרו עבור המתכון כולו:</p>
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 space-y-2.5" dir="rtl">
+          <p className="text-[11px] text-amber-700 font-semibold">מאקרו עבור המתכון כולו:</p>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-semibold">
-            <span className="text-orange-400">{analyzed.totalCalories} קק"ל</span>
-            <span className="text-indigo-400">{analyzed.totalProtein}ג' חלב'</span>
-            <span className="text-emerald-400">{analyzed.totalCarbs}ג' פחמ'</span>
-            <span className="text-amber-400">{analyzed.totalFat}ג' שומן</span>
+            <span className="text-[#FF9500]">{analyzed.totalCalories} קק"ל</span>
+            <span className="text-[#007AFF]">{analyzed.totalProtein}ג' חלב'</span>
+            <span className="text-[#34C759]">{analyzed.totalCarbs}ג' פחמ'</span>
+            <span className="text-amber-600">{analyzed.totalFat}ג' שומן</span>
           </div>
 
           {/* Default serving % */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 shrink-0">מנה סטנדרטית:</span>
+            <span className="text-xs text-gray-500 shrink-0">מנה סטנדרטית:</span>
             <input
               type="number"
               value={defaultPct}
@@ -350,11 +350,11 @@ export default function RecipeCreator({ onSaved }: Props) {
               max={100}
               step={1}
               onChange={(e) => setDefaultPct(Math.max(1, Math.min(100, Number(e.target.value) || 25)))}
-              className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-center focus:outline-none focus:border-amber-500/60"
+              className="w-14 bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs text-center text-gray-900 focus:outline-none focus:border-amber-400"
               dir="ltr"
             />
-            <span className="text-xs text-slate-500">%</span>
-            <span className="text-xs text-slate-600 ms-auto">
+            <span className="text-xs text-gray-400">%</span>
+            <span className="text-xs text-gray-400 ms-auto">
               ≈ {Math.round(analyzed.totalCalories * defaultPct / 100)} קק"ל
             </span>
           </div>
@@ -362,7 +362,7 @@ export default function RecipeCreator({ onSaved }: Props) {
           <button
             onClick={handleSave}
             disabled={!name.trim() || saving}
-            className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 rounded-xl py-2.5 text-xs font-semibold text-white transition-colors"
+            className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 rounded-full py-2.5 text-xs font-semibold text-white active:scale-95 transition"
           >
             {saving ? (
               <><Loader2 size={12} className="animate-spin" /> שומר...</>
@@ -372,7 +372,7 @@ export default function RecipeCreator({ onSaved }: Props) {
           </button>
 
           {saveError && (
-            <div className="flex items-center gap-2 text-xs text-red-400" dir="rtl">
+            <div className="flex items-center gap-2 text-xs text-[#FF3B30]" dir="rtl">
               <AlertCircle size={11} /> {saveError}
             </div>
           )}
@@ -380,7 +380,7 @@ export default function RecipeCreator({ onSaved }: Props) {
       )}
 
       {saved && (
-        <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 rounded-xl px-3 py-2" dir="rtl">
+        <div className="flex items-center gap-2 text-xs text-[#34C759] bg-green-50 rounded-xl px-3 py-2" dir="rtl">
           <CheckCircle2 size={12} className="shrink-0" />
           המתכון נשמר בהצלחה!
         </div>

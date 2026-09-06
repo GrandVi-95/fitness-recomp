@@ -112,54 +112,54 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
       : "הגעת ליעד הקלוריות היום"
 
   return (
-    <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
+    <div className="bg-white rounded-[2rem] p-6 space-y-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <ChefHat size={15} className="text-violet-400" /> הצעת ארוחה חכמה
+        <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <ChefHat size={15} className="text-violet-500" /> הצעת ארוחה חכמה
         </h2>
-        <p className="text-[11px] text-slate-500">{macroLine}</p>
+        <p className="text-[11px] text-gray-400">{macroLine}</p>
       </div>
 
       {/* Suggestion result */}
       {parsedSuggestion && (
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 space-y-4">
+        <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 space-y-4">
           {parsedSuggestion.meals.map((meal, i) => (
             <div
               key={i}
-              className={cn(i > 0 && "pt-4 border-t border-violet-500/20")}
+              className={cn(i > 0 && "pt-4 border-t border-violet-100")}
               dir="rtl"
             >
               {parsedSuggestion.meals.length > 1 && (
-                <p className="text-[11px] text-violet-400 font-semibold mb-1">ארוחה {i + 1}</p>
+                <p className="text-[11px] text-violet-600 font-semibold mb-1">ארוחה {i + 1}</p>
               )}
-              <p className="text-sm font-bold text-slate-100 mb-2">{meal.name}</p>
+              <p className="text-sm font-bold text-gray-900 mb-2">{meal.name}</p>
 
               <ul className="space-y-0.5 mb-2">
                 {meal.ingredients.map((ing, j) => (
-                  <li key={j} className="text-xs text-slate-400">
-                    <span className="text-slate-600 ml-1">—</span>
+                  <li key={j} className="text-xs text-gray-500">
+                    <span className="text-gray-300 ml-1">—</span>
                     {ing.quantity} {ing.name}
                   </li>
                 ))}
               </ul>
 
               {meal.preparation && (
-                <p className="text-xs text-slate-400 leading-relaxed mb-2.5">{meal.preparation}</p>
+                <p className="text-xs text-gray-500 leading-relaxed mb-2.5">{meal.preparation}</p>
               )}
 
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
-                <span className="text-orange-400">{meal.macros.calories} קק"ל</span>
-                <span className="text-indigo-400">{meal.macros.protein}ג' חלב'</span>
-                <span className="text-emerald-400">{meal.macros.carbs}ג' פחמ'</span>
-                <span className="text-amber-400">{meal.macros.fat}ג' שומן</span>
-                <span className="text-rose-400">{meal.macros.sugar}ג' סוכר</span>
+                <span className="text-[#FF9500]">{meal.macros.calories} קק"ל</span>
+                <span className="text-[#007AFF]">{meal.macros.protein}ג' חלב'</span>
+                <span className="text-[#34C759]">{meal.macros.carbs}ג' פחמ'</span>
+                <span className="text-amber-600">{meal.macros.fat}ג' שומן</span>
+                <span className="text-rose-500">{meal.macros.sugar}ג' סוכר</span>
               </div>
             </div>
           ))}
 
           {parsedSuggestion.warning && (
-            <p className="text-[11px] text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 leading-relaxed" dir="rtl">
+            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed" dir="rtl">
               ⚠️ {parsedSuggestion.warning}
             </p>
           )}
@@ -167,7 +167,7 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
           {onUseSuggestion && (
             <button
               onClick={() => onUseSuggestion(extractIngredients(suggestion!))}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600/80 hover:bg-emerald-600 rounded-lg py-2 text-xs font-semibold text-emerald-50 transition-colors"
+              className="w-full flex items-center justify-center gap-2 bg-[#34C759] hover:opacity-90 rounded-full py-2.5 text-xs font-semibold text-white active:scale-95 transition"
             >
               <ClipboardPaste size={13} />
               השתמש בהצעה זו
@@ -178,17 +178,17 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
 
       {/* Meal type selector */}
       <div className="space-y-1.5">
-        <p className="text-[11px] text-slate-500 font-medium">סוג ארוחה</p>
+        <p className="text-[11px] text-gray-400 font-medium">סוג ארוחה</p>
         <div className="flex gap-1.5 flex-wrap">
           {MEAL_TYPES.map((t) => (
             <button
               key={t.value}
               onClick={() => setMealType(t.value)}
               className={cn(
-                "px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors",
+                "px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
                 mealType === t.value
-                  ? "bg-violet-600 border-violet-500 text-white"
-                  : "bg-transparent border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300"
+                  ? "bg-violet-500 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
               )}
             >
               {t.label}
@@ -199,17 +199,17 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
 
       {/* Flavor profile selector */}
       <div className="space-y-1.5">
-        <p className="text-[11px] text-slate-500 font-medium">פרופיל טעם</p>
+        <p className="text-[11px] text-gray-400 font-medium">פרופיל טעם</p>
         <div className="flex gap-1.5 flex-wrap">
           {FLAVOR_PROFILES.map((f) => (
             <button
               key={f.value}
               onClick={() => setFlavorProfile(f.value)}
               className={cn(
-                "px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors",
+                "px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
                 flavorProfile === f.value
-                  ? "bg-violet-600 border-violet-500 text-white"
-                  : "bg-transparent border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300"
+                  ? "bg-violet-500 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
               )}
             >
               {f.label}
@@ -222,7 +222,7 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
       <button
         onClick={() => suggest()}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl py-2.5 text-sm font-semibold transition-colors"
+        className="w-full flex items-center justify-center gap-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-full py-3 text-sm font-semibold text-white active:scale-95 transition"
       >
         {loading ? (
           <Loader2 size={15} className="animate-spin" />
@@ -236,14 +236,14 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
 
       {/* Divider */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-px bg-slate-800" />
-        <span className="text-[11px] text-slate-600">או</span>
-        <div className="flex-1 h-px bg-slate-800" />
+        <div className="flex-1 h-px bg-gray-100" />
+        <span className="text-[11px] text-gray-300">או</span>
+        <div className="flex-1 h-px bg-gray-100" />
       </div>
 
       {/* Ingredients section */}
       <div className="space-y-2">
-        <p className="text-xs text-slate-500 font-medium">מרכיבים שיש לי בבית</p>
+        <p className="text-xs text-gray-400 font-medium">מרכיבים שיש לי בבית</p>
         <div className="flex gap-2">
           <input
             type="text"
@@ -255,23 +255,23 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
             placeholder="לדוגמה: ביצים, גבינה, ברוקולי..."
             dir="rtl"
             disabled={loading}
-            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+            className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-violet-400 transition-colors disabled:opacity-50"
           />
           <button
             onClick={() => suggest(ingredients.trim())}
             disabled={loading || !ingredients.trim()}
-            className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-medium transition-colors shrink-0 text-slate-200"
+            className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed rounded-full px-3 py-2 text-sm font-medium transition-colors shrink-0 text-gray-700"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             הצע
           </button>
         </div>
-        <p className="text-[11px] text-slate-600">הצעה מותאמת למרכיבים שברשותך</p>
+        <p className="text-[11px] text-gray-300">הצעה מותאמת למרכיבים שברשותך</p>
       </div>
 
       {/* Error */}
       {error && (
-        <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">{error}</p>
+        <p className="text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2">{error}</p>
       )}
     </div>
   )

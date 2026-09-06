@@ -44,23 +44,12 @@ interface Plan {
   workouts: WorkoutDay[]
 }
 
-// ─────────────────────────────────────────────────────────
-// Colour maps (shared with gym page)
-// ─────────────────────────────────────────────────────────
+// Shared "bento box" card treatment — matches the dashboard page / CheckInCard.
+const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
 
-const MUSCLE_COLOR: Record<string, string> = {
-  chest:      "bg-red-500/20 text-red-300",
-  back:       "bg-blue-500/20 text-blue-300",
-  shoulders:  "bg-purple-500/20 text-purple-300",
-  biceps:     "bg-green-500/20 text-green-300",
-  triceps:    "bg-yellow-500/20 text-yellow-300",
-  legs:       "bg-orange-500/20 text-orange-300",
-  quads:      "bg-orange-500/20 text-orange-300",
-  hamstrings: "bg-amber-500/20 text-amber-300",
-  glutes:     "bg-pink-500/20 text-pink-300",
-  calves:     "bg-teal-500/20 text-teal-300",
-  core:       "bg-indigo-500/20 text-indigo-300",
-}
+// ─────────────────────────────────────────────────────────
+// Hebrew muscle-group labels
+// ─────────────────────────────────────────────────────────
 
 const MUSCLE_HE: Record<string, string> = {
   chest: "חזה", back: "גב", shoulders: "כתפיים", biceps: "בייספס",
@@ -127,7 +116,7 @@ export default function WorkoutsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64 text-slate-500">
+      <div className="flex items-center justify-center min-h-64 text-gray-400">
         <Loader2 size={20} className="animate-spin me-2" /> טוען תוכניות...
       </div>
     )
@@ -136,23 +125,23 @@ export default function WorkoutsPage() {
   const activePlan = plans?.find((p) => p.isActive) ?? plans?.[0] ?? null
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
 
       {/* כותרת */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">אימונים</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">אימונים</h1>
           {activePlan ? (
-            <p className="text-sm text-slate-400 mt-0.5">
+            <p className="text-sm text-gray-500 mt-0.5">
               {activePlan.name} · {activePlan.splitType}
             </p>
           ) : (
-            <p className="text-sm text-slate-400 mt-0.5">אין תוכנית פעילה</p>
+            <p className="text-sm text-gray-500 mt-0.5">אין תוכנית פעילה</p>
           )}
         </div>
         <button
           onClick={() => setEditingPlanId("new")}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl px-3 py-2 text-sm font-medium transition-colors"
+          className="flex items-center gap-1.5 rounded-full bg-[#007AFF] text-white px-4 py-2.5 text-sm font-semibold active:scale-95 transition"
         >
           <Plus size={16} /> תוכנית חדשה
         </button>
@@ -160,17 +149,17 @@ export default function WorkoutsPage() {
 
       {/* מצב ריק */}
       {(!plans || plans.length === 0) && (
-        <div className="bg-slate-900 rounded-2xl p-8 flex flex-col items-center gap-4 text-center">
-          <Dumbbell size={40} className="text-slate-700" />
+        <div className={cn(CARD, "p-8 flex flex-col items-center gap-4 text-center")}>
+          <Dumbbell size={40} className="text-gray-300" />
           <div>
-            <p className="text-base font-semibold text-slate-300">אין תוכניות אימון</p>
-            <p className="text-sm text-slate-500 mt-1">
-              לחץ על "תוכנית חדשה" כדי לבנות את האימון שלך.
+            <p className="text-base font-semibold text-gray-900">אין תוכניות אימון</p>
+            <p className="text-sm text-gray-500 mt-1">
+              לחץ על &quot;תוכנית חדשה&quot; כדי לבנות את האימון שלך.
             </p>
           </div>
           <button
             onClick={() => setEditingPlanId("new")}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 rounded-full bg-[#007AFF] text-white px-5 py-3 text-sm font-semibold active:scale-95 transition"
           >
             <Plus size={16} /> צור תוכנית
           </button>
@@ -181,10 +170,10 @@ export default function WorkoutsPage() {
       {activePlan && (
         <>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-300">ימי האימון</h2>
+            <h2 className="text-sm font-semibold text-gray-900">ימי האימון</h2>
             <button
               onClick={() => setEditingPlanId(activePlan.id)}
-              className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium text-[#007AFF] hover:opacity-70 transition-opacity"
             >
               <Pencil size={13} /> ערוך תוכנית
             </button>
@@ -192,20 +181,20 @@ export default function WorkoutsPage() {
 
           <div className="space-y-3">
             {activePlan.workouts.map((workout) => (
-              <div key={workout.id} className="bg-slate-900 rounded-2xl p-4 space-y-3">
+              <div key={workout.id} className={cn(CARD, "p-5 space-y-3")}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-500/20 rounded-xl">
-                      <Dumbbell size={18} className="text-indigo-400" />
+                    <div className="p-2 bg-blue-50 rounded-xl">
+                      <Dumbbell size={18} className="text-[#007AFF]" />
                     </div>
                     <div>
-                      <p className="font-semibold">{workout.name}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="font-semibold text-gray-900">{workout.name}</p>
+                      <p className="text-xs text-gray-500">
                         {workout.exercises.length} תרגילים
                       </p>
                     </div>
                   </div>
-                  <ChevronLeft size={18} className="text-slate-600" />
+                  <ChevronLeft size={18} className="text-gray-300" />
                 </div>
 
                 {/* תגיות קבוצות שרירים */}
@@ -214,10 +203,7 @@ export default function WorkoutsPage() {
                     {workout.muscleGroups.map((m) => (
                       <span
                         key={m}
-                        className={cn(
-                          "text-[11px] font-medium px-2 py-0.5 rounded-full",
-                          MUSCLE_COLOR[m] ?? "bg-slate-700 text-slate-300"
-                        )}
+                        className="text-xs font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-700"
                       >
                         {MUSCLE_HE[m] ?? m}
                       </span>
@@ -253,11 +239,11 @@ export default function WorkoutsPage() {
                           const ex = group[0]
                           counter += 1
                           return (
-                            <p key={ex.id} className="text-xs text-slate-500">
-                              <span className="text-slate-600 me-1">{counter}.</span>
+                            <p key={ex.id} className="text-xs text-gray-500">
+                              <span className="text-gray-400 me-1">{counter}.</span>
                               {ex.name}
-                              <span className="text-slate-700 mx-1">·</span>
-                              <span className="text-slate-600">{ex.targetSets} × {ex.targetReps}</span>
+                              <span className="text-gray-300 mx-1">·</span>
+                              <span className="text-gray-400">{ex.targetSets} × {ex.targetReps}</span>
                             </p>
                           )
                         }
@@ -266,24 +252,24 @@ export default function WorkoutsPage() {
                         return (
                           <div
                             key={`ss-${gi}`}
-                            className="bg-indigo-500/10 border border-indigo-500/25 rounded-lg px-2 py-1.5 space-y-1"
+                            className="bg-blue-50 border border-blue-100 rounded-xl px-2 py-1.5 space-y-1"
                           >
                             {group.map((ex, idx) => (
-                              <p key={ex.id} className="text-xs text-slate-400">
-                                <span className="text-slate-600 me-1">{startNum + idx}.</span>
+                              <p key={ex.id} className="text-xs text-gray-500">
+                                <span className="text-gray-400 me-1">{startNum + idx}.</span>
                                 {ex.name}
-                                <span className="text-slate-700 mx-1">·</span>
-                                <span className="text-slate-500">{ex.targetSets} × {ex.targetReps}</span>
+                                <span className="text-gray-300 mx-1">·</span>
+                                <span className="text-gray-400">{ex.targetSets} × {ex.targetReps}</span>
                               </p>
                             ))}
-                            <p className="text-[10px] text-indigo-400 font-semibold flex items-center gap-1">
+                            <p className="text-[10px] text-[#007AFF] font-semibold flex items-center gap-1">
                               🔗 סופר-סט — ללא מנוחה בין התרגילים
                             </p>
                           </div>
                         )
                       })}
                       {remaining > 0 && (
-                        <p className="text-xs text-slate-600">
+                        <p className="text-xs text-gray-400">
                           +{remaining} תרגילים נוספים
                         </p>
                       )}
@@ -292,14 +278,14 @@ export default function WorkoutsPage() {
                 })()}
 
                 {/* שורת תחתית */}
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800">
-                  <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                  <span className="text-xs text-gray-400 flex items-center gap-1.5">
                     <Calendar size={12} />
                     {workout.dayLabel}
                   </span>
                   <Link
                     href="/gym"
-                    className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                    className="text-xs font-semibold text-[#007AFF] hover:opacity-70 flex items-center gap-1 transition-opacity"
                   >
                     התחל <ChevronLeft size={12} />
                   </Link>
@@ -309,8 +295,8 @@ export default function WorkoutsPage() {
           </div>
 
           {activePlan.workouts.length === 0 && (
-            <div className="bg-slate-900 rounded-2xl p-5 text-center text-sm text-slate-500">
-              <p>התוכנית ריקה — לחץ "ערוך תוכנית" כדי להוסיף ימי אימון ותרגילים.</p>
+            <div className={cn(CARD, "p-5 text-center text-sm text-gray-500")}>
+              <p>התוכנית ריקה — לחץ &quot;ערוך תוכנית&quot; כדי להוסיף ימי אימון ותרגילים.</p>
             </div>
           )}
         </>
@@ -319,23 +305,23 @@ export default function WorkoutsPage() {
       {/* תוכניות נוספות */}
       {plans && plans.length > 1 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-semibold text-slate-500">תוכניות נוספות</h2>
+          <h2 className="text-sm font-semibold text-gray-400">תוכניות נוספות</h2>
           {plans.filter((p) => p.id !== activePlan?.id).map((plan) => (
-            <div key={plan.id} className="bg-slate-900 rounded-2xl px-4 py-3 flex items-center gap-3">
+            <div key={plan.id} className={cn(CARD, "px-4 py-3 flex items-center gap-3")}>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">{plan.name}</p>
-                <p className="text-xs text-slate-500">{plan.splitType} · {plan.workouts.length} ימים</p>
+                <p className="text-sm font-semibold truncate text-gray-900">{plan.name}</p>
+                <p className="text-xs text-gray-500">{plan.splitType} · {plan.workouts.length} ימים</p>
               </div>
               <button
                 onClick={() => setEditingPlanId(plan.id)}
-                className="p-1.5 text-slate-500 hover:text-indigo-400 transition-colors"
+                className="p-1.5 text-gray-400 hover:text-[#007AFF] transition-colors"
               >
                 <Pencil size={15} />
               </button>
               <button
                 onClick={() => handleDelete(plan.id)}
                 disabled={deleting === plan.id}
-                className="p-1.5 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                className="p-1.5 text-gray-400 hover:text-[#FF3B30] transition-colors disabled:opacity-40"
               >
                 {deleting === plan.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
               </button>

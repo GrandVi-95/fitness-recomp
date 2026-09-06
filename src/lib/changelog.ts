@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.2",
+    description:
+      "UI Fix: Swept the app to remove leftover dark mode components (specifically on the Workouts page) and aligned all cards and buttons with the new light Cupertino aesthetic.",
+  },
+  {
     version: "v1.15.1",
     description:
       "UI Overhaul: Forced true Cupertino aesthetic with backdrop-blurs, bento-style extreme rounded cards, soft shadows, and pill-shaped buttons.",
@@ -246,4 +251,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.1"
+export const APP_VERSION = "v1.15.2"

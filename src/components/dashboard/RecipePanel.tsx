@@ -143,17 +143,17 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
   })
 
   return (
-    <div className="bg-slate-900 rounded-2xl overflow-hidden">
+    <div className="bg-white rounded-[2rem] overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
       {/* Header toggle */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          <ChefHat size={15} className="text-amber-400" />
-          <span className="text-sm font-semibold">מתכונים שמורים</span>
+          <ChefHat size={15} className="text-amber-500" />
+          <span className="text-sm font-semibold text-gray-900">מתכונים שמורים</span>
           {recipes.length > 0 && (
-            <span className="text-[10px] bg-amber-500/20 text-amber-400 rounded-full px-1.5 py-0.5 font-medium">
+            <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-medium">
               {recipes.length}
             </span>
           )}
@@ -161,21 +161,21 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
         <ChevronLeft
           size={16}
           className={cn(
-            "text-slate-600 transition-transform duration-200",
+            "text-gray-300 transition-transform duration-200",
             open ? "rotate-90" : "rtl:-rotate-180",
           )}
         />
       </button>
 
       {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-slate-800">
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
           {/* Recipe list */}
           {recipesLoading ? (
             <div className="flex justify-center py-4">
-              <Loader2 size={16} className="animate-spin text-slate-500" />
+              <Loader2 size={16} className="animate-spin text-gray-400" />
             </div>
           ) : recipes.length === 0 ? (
-            <p className="text-xs text-slate-600 py-2 text-center" dir="rtl">
+            <p className="text-xs text-gray-300 py-2 text-center" dir="rtl">
               אין מתכונים שמורים עדיין — צור מתכון חדש למטה
             </p>
           ) : (
@@ -193,7 +193,7 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
                   <div
                     key={recipe.id}
                     className={cn(
-                      "bg-slate-800/60 rounded-xl p-3 space-y-2.5 transition-opacity",
+                      "bg-gray-50 rounded-2xl p-3 space-y-2.5 transition-opacity",
                       isDeleting && "opacity-30 pointer-events-none",
                     )}
                     dir="rtl"
@@ -201,14 +201,14 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
                     {/* Recipe header */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-200">{recipe.name}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
+                        <p className="text-sm font-semibold text-gray-900">{recipe.name}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
                           סה"כ: {recipe.totalCalories} קק"ל · {recipe.totalProtein}ג' חלב'
                         </p>
                       </div>
                       <button
                         onClick={() => handleDelete(recipe)}
-                        className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+                        className="p-1 rounded text-gray-300 hover:text-[#FF3B30] hover:bg-red-50 transition-colors shrink-0"
                         aria-label="מחק מתכון"
                       >
                         {isDeleting ? (
@@ -221,12 +221,12 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
 
                     {/* Success / error feedback */}
                     {isSuccess && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-green-400 bg-green-500/10 rounded-lg px-2.5 py-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#34C759] bg-green-50 rounded-lg px-2.5 py-1.5">
                         <Check size={11} /> נרשם בהצלחה!
                       </div>
                     )}
                     {isError && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-500/10 rounded-lg px-2.5 py-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#FF3B30] bg-red-50 rounded-lg px-2.5 py-1.5">
                         <AlertCircle size={11} /> שגיאה — נסה שוב
                       </div>
                     )}
@@ -237,15 +237,15 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
                       <button
                         onClick={() => handleLog(recipe, def)}
                         disabled={isLogging}
-                        className="flex-1 flex flex-col items-center gap-0.5 bg-amber-600/15 hover:bg-amber-600/25 disabled:opacity-40 border border-amber-600/30 rounded-xl py-2 text-[10px] font-medium text-amber-300 transition-colors"
+                        className="flex-1 flex flex-col items-center gap-0.5 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 border border-amber-200 rounded-xl py-2 text-[10px] font-medium text-amber-700 transition-colors"
                       >
                         {isLogging ? (
                           <Loader2 size={11} className="animate-spin" />
                         ) : (
                           <>
                             <span className="font-semibold">{def}%</span>
-                            <span className="text-slate-500">{defM.cal} קק"ל</span>
-                            <span className="text-[9px] text-amber-400/70">מנה סטנדרטית</span>
+                            <span className="text-gray-400">{defM.cal} קק"ל</span>
+                            <span className="text-[9px] text-amber-500/80">מנה סטנדרטית</span>
                           </>
                         )}
                       </button>
@@ -254,12 +254,12 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
                       <button
                         onClick={() => handleLog(recipe, 50)}
                         disabled={isLogging}
-                        className="flex-1 flex flex-col items-center gap-0.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 rounded-xl py-2 text-[10px] font-medium text-slate-300 transition-colors"
+                        className="flex-1 flex flex-col items-center gap-0.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 rounded-xl py-2 text-[10px] font-medium text-gray-700 transition-colors"
                       >
                         <>
                           <span className="font-semibold">50%</span>
-                          <span className="text-slate-500">{halfM.cal} קק"ל</span>
-                          <span className="text-[9px] text-slate-500">חצי מנה</span>
+                          <span className="text-gray-400">{halfM.cal} קק"ל</span>
+                          <span className="text-[9px] text-gray-400">חצי מנה</span>
                         </>
                       </button>
 
@@ -272,13 +272,13 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
                             setCustomPctMap((m) => ({ ...m, [recipe.id]: e.target.value }))
                           }
                           placeholder="% / 1/8"
-                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2 py-1.5 text-[10px] text-center focus:outline-none focus:border-amber-500/60 placeholder:text-slate-600"
+                          className="w-full bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-[10px] text-center text-gray-900 focus:outline-none focus:border-amber-400 placeholder:text-gray-300"
                           dir="ltr"
                         />
                         <button
                           onClick={() => handleCustomLog(recipe)}
                           disabled={isLogging || !parsePct(customPctMap[recipe.id] ?? "")}
-                          className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 border border-slate-700 rounded-xl py-1 text-[10px] font-medium text-slate-400 hover:text-amber-300 transition-colors"
+                          className="w-full bg-gray-100 hover:bg-gray-200 disabled:opacity-30 rounded-xl py-1 text-[10px] font-medium text-gray-500 hover:text-amber-600 transition-colors"
                         >
                           מותאם אישית
                         </button>
@@ -287,13 +287,13 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
 
                     {/* Macro preview for custom pct */}
                     {customPctMap[recipe.id] && parsePct(customPctMap[recipe.id]) && (
-                      <p className="text-[10px] text-slate-500" dir="rtl">
+                      <p className="text-[10px] text-gray-400" dir="rtl">
                         {parsePct(customPctMap[recipe.id])!.toFixed(1)}% ={" "}
-                        <span className="text-orange-400 font-semibold">
+                        <span className="text-[#FF9500] font-semibold">
                           {fracMacros(recipe, parsePct(customPctMap[recipe.id])!).cal} קק"ל
                         </span>
                         {" · "}
-                        <span className="text-indigo-400 font-semibold">
+                        <span className="text-[#007AFF] font-semibold">
                           {fracMacros(recipe, parsePct(customPctMap[recipe.id])!).prot}ג' ח'
                         </span>
                       </p>
@@ -307,7 +307,7 @@ export default function RecipePanel({ selectedMeal, onLogSuccess }: Props) {
           {/* Create recipe toggle */}
           <button
             onClick={() => setShowCreator((s) => !s)}
-            className="w-full flex items-center justify-center gap-1.5 border border-dashed border-slate-700 hover:border-amber-600/50 rounded-xl py-2 text-xs text-slate-500 hover:text-amber-300 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 border border-dashed border-gray-200 hover:border-amber-400/60 rounded-xl py-2 text-xs text-gray-400 hover:text-amber-600 transition-colors"
           >
             <Plus size={13} />
             {showCreator ? "סגור טופס מתכון" : "צור מתכון חדש"}

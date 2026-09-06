@@ -37,6 +37,9 @@ interface ProgressPhoto {
   notes: string | null
 }
 
+// Shared "bento box" card treatment — matches the dashboard page / CheckInCard.
+const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+
 // ── תצוגת תאריך מקומית ───────────────────────────────────────
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("he-IL", {
@@ -92,11 +95,11 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
   }
 
   return (
-    <div className="bg-slate-800 rounded-2xl p-4 space-y-3 border border-indigo-500/20">
-      <p className="text-sm font-semibold text-slate-200">רישום משקל חדש</p>
+    <div className={cn(CARD, "p-6 space-y-3")}>
+      <p className="text-sm font-semibold text-gray-900">רישום משקל חדש</p>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs text-slate-400">משקל (ק"ג) *</label>
+          <label className="text-xs text-gray-400">משקל (ק&quot;ג) *</label>
           <input
             type="number"
             value={weight}
@@ -106,11 +109,11 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
             min={20}
             max={300}
             step={0.1}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-center font-bold focus:outline-none focus:border-indigo-500"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-center font-bold text-gray-900 focus:outline-none focus:border-[#007AFF]"
           />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-slate-400">שומן גוף % (אופציונלי)</label>
+          <label className="text-xs text-gray-400">שומן גוף % (אופציונלי)</label>
           <input
             type="number"
             value={bodyFat}
@@ -119,12 +122,12 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
             min={3}
             max={60}
             step={0.1}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-indigo-500"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-center text-gray-900 focus:outline-none focus:border-[#007AFF]"
           />
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-slate-400">היקף מותניים (ס&quot;מ, אופציונלי)</label>
+        <label className="text-xs text-gray-400">היקף מותניים (ס&quot;מ, אופציונלי)</label>
         <input
           type="number"
           value={waist}
@@ -134,18 +137,18 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
           min={40}
           max={200}
           step={0.1}
-          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-indigo-500"
+          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-center text-gray-900 focus:outline-none focus:border-[#007AFF]"
         />
       </div>
       {error && (
-        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2">
           <AlertCircle size={13} className="shrink-0" /> {error}
         </div>
       )}
       <button
         onClick={handleSubmit}
         disabled={saving || !weight}
-        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-xl py-3 text-sm font-semibold transition-colors"
+        className="w-full flex items-center justify-center gap-2 bg-[#007AFF] disabled:opacity-40 rounded-full py-3.5 text-sm font-semibold text-white active:scale-95 transition"
       >
         {saving ? <><Loader2 size={15} className="animate-spin" /> שומר…</> : <><CheckCircle2 size={15} /> שמור משקל</>}
       </button>
@@ -234,7 +237,7 @@ export default function MetricsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64 text-slate-500">
+      <div className="flex items-center justify-center min-h-64 text-gray-400">
         <Loader2 size={20} className="animate-spin me-2" /> טוען מדדים…
       </div>
     )
@@ -269,16 +272,16 @@ export default function MetricsPage() {
   const chartData = metrics.slice(0, 14).reverse()
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
       {/* כותרת */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">מדדי גוף</h1>
-          <p className="text-sm text-slate-400 mt-0.5">מעקב התקדמות הרכב גוף</p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">מדדי גוף</h1>
+          <p className="text-sm text-gray-500 mt-0.5">מעקב התקדמות הרכב גוף</p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl px-3 py-2 text-sm font-medium transition-colors"
+          className="flex items-center gap-1.5 rounded-full bg-[#007AFF] text-white px-4 py-2.5 text-sm font-semibold active:scale-95 transition"
         >
           {showForm ? <X size={16} /> : <Plus size={16} />}
           {showForm ? "ביטול" : "רשום משקל"}
@@ -290,17 +293,17 @@ export default function MetricsPage() {
 
       {/* מצב ריק */}
       {isEmpty && !showForm && (
-        <div className="bg-slate-900 rounded-2xl p-8 flex flex-col items-center gap-4 text-center">
-          <Scale size={40} className="text-slate-700" />
+        <div className={cn(CARD, "p-8 flex flex-col items-center gap-4 text-center")}>
+          <Scale size={40} className="text-gray-300" />
           <div>
-            <p className="text-base font-semibold text-slate-300">הזן משקל ראשוני</p>
-            <p className="text-sm text-slate-500 mt-1">
-              לחץ על "רשום משקל" למעלה כדי להתחיל לעקוב אחר ההתקדמות שלך.
+            <p className="text-base font-semibold text-gray-900">הזן משקל ראשוני</p>
+            <p className="text-sm text-gray-500 mt-1">
+              לחץ על &quot;רשום משקל&quot; למעלה כדי להתחיל לעקוב אחר ההתקדמות שלך.
             </p>
           </div>
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 rounded-full bg-[#007AFF] text-white px-5 py-3 text-sm font-semibold active:scale-95 transition"
           >
             <Plus size={16} /> רשום משקל ראשוני
           </button>
@@ -309,17 +312,17 @@ export default function MetricsPage() {
 
       {/* גיבור משקל נוכחי */}
       {current && (
-        <div className="bg-gradient-to-br from-indigo-900/60 to-slate-900 border border-indigo-500/20 rounded-2xl p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-[2rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center justify-between">
           <div>
-            <p className="text-xs text-slate-400 mb-1">משקל נוכחי</p>
-            <p className="text-4xl font-black text-slate-100">
+            <p className="text-xs text-gray-500 mb-1">משקל נוכחי</p>
+            <p className="text-4xl font-black text-gray-900">
               {current.weightKg}
-              <span className="text-lg font-normal text-slate-400 ms-1">ק"ג</span>
+              <span className="text-lg font-normal text-gray-400 ms-1">ק&quot;ג</span>
             </p>
             {avg7 && (
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 ממוצע 7 ימים:{" "}
-                <span className="text-indigo-300 font-semibold">{avg7} ק"ג</span>
+                <span className="text-[#007AFF] font-semibold">{avg7} ק&quot;ג</span>
               </p>
             )}
           </div>
@@ -329,31 +332,31 @@ export default function MetricsPage() {
                 {/* Recomp: gain = green, loss = amber */}
                 <div className={cn(
                   "flex items-center justify-end gap-1",
-                  weightDelta > 0 ? "text-green-400" : "text-amber-400"
+                  weightDelta > 0 ? "text-[#34C759]" : "text-[#FF9500]"
                 )}>
                   {weightDelta > 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                   <span className="text-lg font-bold">
-                    {weightDelta > 0 ? "+" : ""}{weightDelta} ק"ג
+                    {weightDelta > 0 ? "+" : ""}{weightDelta} ק&quot;ג
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">מתחילת הדרך ({startW} ק"ג)</p>
+                <p className="text-xs text-gray-500">מתחילת הדרך ({startW} ק&quot;ג)</p>
               </>
             ) : prev ? (
               <div className={cn(
                 "flex items-center justify-end gap-1 text-sm font-bold",
-                current.weightKg > prev.weightKg ? "text-green-400"
-                  : current.weightKg < prev.weightKg ? "text-amber-400"
-                  : "text-slate-500"
+                current.weightKg > prev.weightKg ? "text-[#34C759]"
+                  : current.weightKg < prev.weightKg ? "text-[#FF9500]"
+                  : "text-gray-400"
               )}>
                 {current.weightKg >= prev.weightKg
                   ? <TrendingUp size={16} />
                   : <TrendingDown size={16} />}
-                {Math.abs(Math.round((current.weightKg - prev.weightKg) * 10) / 10)} ק"ג
+                {Math.abs(Math.round((current.weightKg - prev.weightKg) * 10) / 10)} ק&quot;ג
               </div>
             ) : null}
             {goalDiff !== null && goalDiff > 0 && (
-              <p className="text-xs text-emerald-400 mt-1 font-medium">
-                עוד {goalDiff} ק"ג ליעד
+              <p className="text-xs text-[#34C759] mt-1 font-medium">
+                עוד {goalDiff} ק&quot;ג ליעד
               </p>
             )}
           </div>
@@ -362,22 +365,22 @@ export default function MetricsPage() {
 
       {/* התקדמות יעד */}
       {progressPct !== null && (
-        <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
-          <h2 className="text-sm font-semibold">התקדמות יעד הרכב הגוף</h2>
+        <div className={cn(CARD, "p-6 space-y-3")}>
+          <h2 className="text-sm font-semibold text-gray-900">התקדמות יעד הרכב הגוף</h2>
           <div>
-            <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+            <div className="flex justify-between text-xs text-gray-500 mb-1.5">
               <span>ירידת שומן למשקל יעד</span>
-              <span className="text-green-400">{Math.round(progressPct)}%</span>
+              <span className="text-[#34C759]">{Math.round(progressPct)}%</span>
             </div>
-            <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] text-slate-600 mt-1">
-              <span>התחלה: {startW} ק"ג</span>
-              <span>יעד: {goals?.targetWeight} ק"ג</span>
+            <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+              <span>התחלה: {startW} ק&quot;ג</span>
+              <span>יעד: {goals?.targetWeight} ק&quot;ג</span>
             </div>
           </div>
         </div>
@@ -385,10 +388,10 @@ export default function MetricsPage() {
 
       {/* גרף היסטוריה — custom bar chart (no Recharts dependency) */}
       {metrics.length > 1 && (
-        <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
+        <div className={cn(CARD, "p-6 space-y-3")}>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">היסטוריית משקל</h2>
-            <span className="text-xs text-slate-500">{metrics.length} מדידות אחרונות</span>
+            <h2 className="text-sm font-semibold text-gray-900">היסטוריית משקל</h2>
+            <span className="text-xs text-gray-400">{metrics.length} מדידות אחרונות</span>
           </div>
 
           {/* bars: direct flex children so % height resolves against h-20 parent */}
@@ -398,7 +401,7 @@ export default function MetricsPage() {
               return (
                 <div
                   key={i}
-                  className="flex-1 rounded-t bg-indigo-500/60 hover:bg-indigo-400 transition-colors cursor-pointer min-w-0"
+                  className="flex-1 rounded-t bg-[#007AFF]/50 hover:bg-[#007AFF] transition-colors cursor-pointer min-w-0"
                   style={{ height: `${heightPct}%` }}
                   title={`${m.weightKg} ק"ג — ${formatDate(m.date)}`}
                 />
@@ -407,7 +410,7 @@ export default function MetricsPage() {
           </div>
           <div className="flex gap-1">
             {chartData.map((m, i) => (
-              <span key={i} className="flex-1 text-[9px] text-slate-600 text-center truncate min-w-0">
+              <span key={i} className="flex-1 text-[9px] text-gray-300 text-center truncate min-w-0">
                 {new Date(m.date).getDate()}
               </span>
             ))}
@@ -417,9 +420,9 @@ export default function MetricsPage() {
 
       {/* יומן שקילות */}
       {metrics.length > 0 && (
-        <div className="bg-slate-900 rounded-2xl p-4 space-y-2">
-          <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Scale size={15} className="text-indigo-400" /> שקילות אחרונות
+        <div className={cn(CARD, "p-6 space-y-2")}>
+          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Scale size={15} className="text-[#007AFF]" /> שקילות אחרונות
           </h2>
           {metrics.slice(0, 10).map((m, i) => {
             const nextM = metrics[i + 1]
@@ -428,24 +431,24 @@ export default function MetricsPage() {
             return (
               <div
                 key={m.id}
-                className="flex items-center justify-between text-sm py-1 border-b border-slate-800 last:border-0"
+                className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0"
               >
-                <span className="text-slate-400 text-xs w-16">{formatDate(m.date)}</span>
-                <span className="font-bold">{m.weightKg} ק"ג</span>
+                <span className="text-gray-400 text-xs w-16">{formatDate(m.date)}</span>
+                <span className="font-bold text-gray-900">{m.weightKg} ק&quot;ג</span>
                 {diff !== null ? (
                   <span
                     className={cn(
                       "text-xs font-medium flex items-center gap-0.5",
-                      diff > 0 ? "text-green-400" : diff < 0 ? "text-amber-400" : "text-slate-500"
+                      diff > 0 ? "text-[#34C759]" : diff < 0 ? "text-[#FF9500]" : "text-gray-400"
                     )}
                   >
                     {diff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
                     {diff > 0 ? "+" : ""}{diff}
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-600 w-10" />
+                  <span className="text-xs text-gray-300 w-10" />
                 )}
-                <span className="text-xs text-slate-600 w-20 text-end">
+                <span className="text-xs text-gray-400 w-20 text-end">
                   {[
                     m.bodyFatPct != null ? `${m.bodyFatPct}% שומן` : null,
                     m.waistCm != null ? `${m.waistCm} ס"מ מותן` : null,
@@ -458,9 +461,9 @@ export default function MetricsPage() {
       )}
 
       {/* תמונות התקדמות */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-semibold flex items-center gap-2">
-          <Camera size={15} className="text-indigo-400" /> תמונות התקדמות
+      <div className={cn(CARD, "p-6 space-y-4")}>
+        <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <Camera size={15} className="text-[#007AFF]" /> תמונות התקדמות
         </h2>
 
         {/* בחירת זווית */}
@@ -470,10 +473,10 @@ export default function MetricsPage() {
               key={a}
               onClick={() => setPhotoAngle(a)}
               className={cn(
-                "flex-1 text-[11px] font-medium py-1.5 rounded-lg transition-colors",
+                "flex-1 text-[11px] font-medium py-1.5 rounded-full transition-colors",
                 photoAngle === a
-                  ? "bg-indigo-600 text-white"
-                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  ? "bg-black text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
               )}
             >
               {ANGLE_LABELS[a]}
@@ -492,16 +495,16 @@ export default function MetricsPage() {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploadingPhoto}
-          className="w-full border-2 border-dashed border-slate-700 hover:border-indigo-600/60 rounded-xl py-6 text-sm text-slate-500 hover:text-slate-300 flex flex-col items-center justify-center gap-2 transition-colors disabled:opacity-50"
+          className="w-full border-2 border-dashed border-gray-200 hover:border-[#007AFF]/50 rounded-2xl py-6 text-sm text-gray-400 hover:text-gray-600 flex flex-col items-center justify-center gap-2 transition-colors disabled:opacity-50"
         >
           {uploadingPhoto
-            ? <><Loader2 size={20} className="animate-spin text-indigo-400" /><span>שומר תמונה…</span></>
-            : <><Camera size={22} className="text-slate-600" /><span>הוסף תמונה — {ANGLE_LABELS[photoAngle]}</span><span className="text-xs text-slate-600">JPG / PNG · עד 5MB</span></>
+            ? <><Loader2 size={20} className="animate-spin text-[#007AFF]" /><span>שומר תמונה…</span></>
+            : <><Camera size={22} className="text-gray-300" /><span>הוסף תמונה — {ANGLE_LABELS[photoAngle]}</span><span className="text-xs text-gray-300">JPG / PNG · עד 5MB</span></>
           }
         </button>
 
         {photoError && (
-          <p className="text-xs text-red-400 flex items-center gap-1.5">
+          <p className="text-xs text-[#FF3B30] flex items-center gap-1.5">
             <AlertCircle size={12} /> {photoError}
           </p>
         )}
@@ -510,7 +513,7 @@ export default function MetricsPage() {
         {photos.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             {photos.map((photo) => (
-              <div key={photo.id} className="relative group aspect-square rounded-xl overflow-hidden bg-slate-800">
+              <div key={photo.id} className="relative group aspect-square rounded-xl overflow-hidden bg-gray-100">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={photo.url}
@@ -519,11 +522,11 @@ export default function MetricsPage() {
                 />
                 {/* hover overlay */}
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
-                  <p className="text-[10px] text-slate-300 font-medium">{ANGLE_LABELS[photo.angle] ?? photo.angle}</p>
-                  <p className="text-[9px] text-slate-400">{formatDate(photo.date)}</p>
+                  <p className="text-[10px] text-white font-medium">{ANGLE_LABELS[photo.angle] ?? photo.angle}</p>
+                  <p className="text-[9px] text-white/70">{formatDate(photo.date)}</p>
                   <button
                     onClick={() => handleDeletePhoto(photo.id)}
-                    className="mt-1 p-1.5 bg-red-600/80 hover:bg-red-500 rounded-lg transition-colors"
+                    className="mt-1 p-1.5 bg-[#FF3B30]/90 hover:bg-[#FF3B30] rounded-lg transition-colors"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -534,7 +537,7 @@ export default function MetricsPage() {
         )}
 
         {photos.length === 0 && !uploadingPhoto && (
-          <p className="text-center text-xs text-slate-600 pb-1">
+          <p className="text-center text-xs text-gray-300 pb-1">
             לא נוספו תמונות עדיין. צלם תמונה כל שבועיים כדי לעקוב אחר השינוי.
           </p>
         )}
