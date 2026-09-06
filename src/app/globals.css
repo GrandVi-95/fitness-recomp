@@ -11,7 +11,10 @@
   --color-warning:      #f59e0b; /* amber-500  — alerts                 */
   --color-danger:       #ef4444; /* red-500    — missed targets         */
 
-  /* Surfaces (dark-first) */
+  /* Surfaces — legacy dark-theme tokens, no longer referenced anywhere
+     (superseded by the v1.15 Cupertino light redesign's literal Tailwind
+     classes). Left in place only in case a not-yet-redesigned page starts
+     consuming them; safe to delete once the whole app is converted. */
   --color-surface-0:    #020617; /* slate-950  — page background        */
   --color-surface-1:    #0f172a; /* slate-900  — card background        */
   --color-surface-2:    #1e293b; /* slate-800  — elevated card          */
@@ -24,9 +27,17 @@
 
 html { -webkit-tap-highlight-color: transparent; }
 
+/*
+ * Tailwind v4 emits its utility classes inside native CSS @layer blocks.
+ * Per the Cascade Layers spec, ANY unlayered rule beats a layered rule
+ * regardless of specificity — so a plain `body { background: ... }` here
+ * would silently override a Tailwind class like `bg-[#F9FAFB]` applied via
+ * className in layout.tsx. This rule must stay in sync with that className
+ * (or be removed) rather than fought with !important.
+ */
 body {
-  background: var(--color-surface-0);
-  color: #f1f5f9; /* slate-100 */
+  background: #F9FAFB; /* v1.15.1 Cupertino redesign — off-white page background */
+  color: #111827; /* gray-900 */
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 

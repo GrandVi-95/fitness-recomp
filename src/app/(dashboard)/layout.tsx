@@ -31,10 +31,10 @@ export default function DashboardLayout({
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Top header — light, frosted Cupertino-style chrome */}
-      <header className="sticky top-0 z-40 flex items-center justify-between px-5 py-3.5 border-b border-black/5 bg-white/75 backdrop-blur-xl">
+      {/* Top header — true Apple chrome: white/70 + blur, hairline border */}
+      <header className="sticky top-0 z-40 flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white/70 backdrop-blur-lg">
         <span className="text-lg font-semibold tracking-tight text-gray-900">
-          Recomp<span className="text-[#0071e3]">OS</span>
+          Recomp<span className="text-black">OS</span>
         </span>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400 font-medium">
@@ -46,7 +46,7 @@ export default function DashboardLayout({
           </span>
           <Link
             href="/settings"
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
             aria-label="הגדרות"
           >
             <Settings size={17} strokeWidth={1.8} />
@@ -57,8 +57,8 @@ export default function DashboardLayout({
       {/* Page content */}
       <main className="flex-1 overflow-y-auto pb-20">{children}</main>
 
-      {/* Mobile bottom navigation — light, frosted Cupertino-style chrome */}
-      <nav className="fixed bottom-0 start-0 end-0 z-40 bg-white/80 backdrop-blur-xl border-t border-black/5">
+      {/* Mobile bottom navigation — true Apple chrome: white/80 + blur, hairline border */}
+      <nav className="fixed bottom-0 start-0 end-0 z-40 bg-white/80 backdrop-blur-lg border-t border-gray-100">
         <ul className="flex items-stretch h-16">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active =
@@ -70,16 +70,16 @@ export default function DashboardLayout({
                 <Link
                   href={href}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-0.5 h-full w-full text-[10px] font-medium transition-colors",
+                    "flex flex-col items-center justify-center gap-1 h-full w-full text-[10px] font-medium transition-colors",
                     active
-                      ? "text-[#0071e3]"
+                      ? "text-black"
                       : "text-gray-400 hover:text-gray-600"
                   )}
                 >
                   <Icon
                     size={20}
                     strokeWidth={active ? 2.5 : 1.8}
-                    className={active ? "text-[#0071e3]" : ""}
+                    className={active ? "text-black" : ""}
                   />
                   {label}
                 </Link>

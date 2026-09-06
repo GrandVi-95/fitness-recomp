@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.1",
+    description:
+      "UI Overhaul: Forced true Cupertino aesthetic with backdrop-blurs, bento-style extreme rounded cards, soft shadows, and pill-shaped buttons.",
+  },
+  {
     version: "v1.15.0",
     description:
       "Feat: Complete Apple-inspired minimalist UI overhaul and introduced algorithm-pausing Vacation Mode for relaxed tracking.",
@@ -241,4 +246,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.0"
+export const APP_VERSION = "v1.15.1"

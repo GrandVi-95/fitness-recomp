@@ -16,10 +16,8 @@ interface CheckInPreview {
   offsetAfter?: number
 }
 
-const INK    = "#1d1d1f"
-const MUTED  = "#86868b"
-const ACCENT = "#0071e3"
-const GREEN  = "#34c759"
+// Shared "bento box" card treatment — matches the dashboard page's CARD constant.
+const CARD = "bg-white rounded-[2rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
 
 const WEIGHT_LABELS: Record<string, string> = {
   fast_loss: "ירידה מהירה",
@@ -30,14 +28,14 @@ const WEIGHT_LABELS: Record<string, string> = {
 const WAIST_LABELS: Record<string, string> = { down: "ירידה", stable: "יציב", up: "עלייה" }
 const PERF_LABELS: Record<string, string> = { down: "ירידה", stable: "יציב", up: "שיפור" }
 
-function TrendChip({ label, trend }: { label: string; trend: "down" | "stable" | "up" | "fast_loss" }) {
+// Read-only "pill" — the check-in engine's auto-computed weight/waist/
+// performance trend readouts, styled like modern iOS segmented pills rather
+// than a raw HTML <select>.
+function TrendPill({ label, trend }: { label: string; trend: "down" | "stable" | "up" | "fast_loss" }) {
   const Icon = trend === "up" ? TrendingUp : trend === "down" || trend === "fast_loss" ? TrendingDown : Minus
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
-      style={{ backgroundColor: "#f5f5f7", color: INK }}
-    >
-      <Icon size={11} style={{ color: MUTED }} />
+    <span className="inline-flex items-center gap-1.5 bg-gray-100 rounded-full px-4 py-2 text-sm font-medium border-none text-gray-900">
+      <Icon size={13} className="text-gray-400" />
       {label}
     </span>
   )
@@ -81,13 +79,13 @@ export default function CheckInCard() {
 
   if (applied) {
     return (
-      <div className="flex items-start gap-3 bg-white rounded-3xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]" dir="rtl">
-        <Check size={18} className="mt-0.5 shrink-0" style={{ color: GREEN }} />
+      <div className={cn(CARD, "flex items-start gap-3")} dir="rtl">
+        <Check size={18} className="mt-0.5 shrink-0 text-[#34C759]" />
         <div>
-          <p className="text-[14px] font-semibold" style={{ color: GREEN }}>הצ&apos;ק-אין הוחל</p>
-          <p className="text-[13px] mt-0.5 leading-relaxed" style={{ color: MUTED }}>{applied.reasoning}</p>
+          <p className="text-[14px] font-semibold tracking-tight text-[#34C759]">הצ&apos;ק-אין הוחל</p>
+          <p className="text-[13px] mt-0.5 leading-relaxed text-gray-500">{applied.reasoning}</p>
           {applied.offsetDelta !== 0 && (
-            <p className="text-[11px] mt-1" style={{ color: MUTED }}>
+            <p className="text-[11px] mt-1 text-gray-400">
               תיקון קלוריות מצטבר: {applied.offsetAfter! > 0 ? "+" : ""}
               {applied.offsetAfter} קק&quot;ל
             </p>
@@ -98,37 +96,36 @@ export default function CheckInCard() {
   }
 
   return (
-    <div className="bg-white rounded-3xl p-5 space-y-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.06)]" dir="rtl">
+    <div className={cn(CARD, "space-y-4")} dir="rtl">
       <div className="flex items-center justify-between">
-        <p className="text-[14px] font-semibold flex items-center gap-1.5" style={{ color: ACCENT }}>
+        <p className="text-[14px] font-semibold tracking-tight flex items-center gap-1.5 text-[#007AFF]">
           <ClipboardCheck size={16} /> צ&apos;ק-אין דו-שבועי
         </p>
         <button
           onClick={() => setDismissed(true)}
-          className="p-1 rounded-full hover:bg-[#f5f5f7] transition-colors"
-          style={{ color: MUTED }}
+          className="p-1 rounded-full hover:bg-gray-100 transition-colors text-gray-400"
           aria-label="סגור"
         >
           <X size={14} />
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {preview.weightTrendLabel && (
-          <TrendChip label={`משקל: ${WEIGHT_LABELS[preview.weightTrendLabel]}`} trend={preview.weightTrendLabel} />
+          <TrendPill label={`משקל: ${WEIGHT_LABELS[preview.weightTrendLabel]}`} trend={preview.weightTrendLabel} />
         )}
         {preview.waistTrendLabel && (
-          <TrendChip label={`היקף מותן: ${WAIST_LABELS[preview.waistTrendLabel]}`} trend={preview.waistTrendLabel} />
+          <TrendPill label={`היקף מותן: ${WAIST_LABELS[preview.waistTrendLabel]}`} trend={preview.waistTrendLabel} />
         )}
         {preview.perfTrendLabel && (
-          <TrendChip label={`ביצועים: ${PERF_LABELS[preview.perfTrendLabel]}`} trend={preview.perfTrendLabel} />
+          <TrendPill label={`ביצועים: ${PERF_LABELS[preview.perfTrendLabel]}`} trend={preview.perfTrendLabel} />
         )}
       </div>
 
-      <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>{preview.reasoning}</p>
+      <p className="text-[13px] leading-relaxed text-gray-500">{preview.reasoning}</p>
 
       {preview.offsetDelta !== 0 && (
-        <p className="text-[13px] font-semibold" style={{ color: ACCENT }}>
+        <p className="text-[13px] font-semibold text-[#007AFF]">
           {preview.decision === "increase" ? "המלצה: הוספת" : "המלצה: הפחתת"} {Math.abs(preview.offsetDelta ?? 0)} קק&quot;ל ליעד היומי
         </p>
       )}
@@ -136,10 +133,7 @@ export default function CheckInCard() {
       <button
         onClick={handleApply}
         disabled={applying}
-        className={cn(
-          "w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-semibold transition-opacity active:opacity-80 disabled:opacity-40 text-white",
-        )}
-        style={{ backgroundColor: ACCENT }}
+        className="w-full flex items-center justify-center gap-2 rounded-full py-3.5 text-[15px] font-semibold text-white bg-[#007AFF] transition active:scale-95 disabled:opacity-40"
       >
         {applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
         {applying ? "מחיל..." : preview.offsetDelta !== 0 ? "החל שינוי" : "אשר — ללא שינוי"}
