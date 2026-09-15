@@ -53,6 +53,9 @@ const ACTIVITY_LEVELS = [
   { value: 1.9,   label: "ספורטאי מקצועי (×1.9)" },
 ]
 
+// Shared "bento box" card treatment — matches the dashboard page / other pages.
+const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface SettingsData {
@@ -89,7 +92,7 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean
       onClick={() => onChange(!enabled)}
       className={cn(
         "relative w-11 h-6 rounded-full transition-colors",
-        enabled ? "bg-indigo-600" : "bg-slate-700",
+        enabled ? "bg-[#007AFF]" : "bg-gray-200",
       )}
       aria-pressed={enabled}
     >
@@ -104,7 +107,7 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="text-xs text-slate-400">{children}</label>
+  return <label className="text-xs text-gray-400">{children}</label>
 }
 
 function NumberInput({
@@ -131,10 +134,10 @@ function NumberInput({
         max={max}
         step={step}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 text-center font-semibold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+        className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 text-center font-semibold focus:outline-none focus:border-[#007AFF]"
       />
       {unit && (
-        <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-500">
+        <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">
           {unit}
         </span>
       )}
@@ -144,7 +147,7 @@ function NumberInput({
 
 function AutoBadge() {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-300 bg-indigo-500/15 border border-indigo-500/25 rounded-full px-2 py-0.5">
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#007AFF] bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
       <Zap size={9} /> מחושב אוטומטית
     </span>
   )
@@ -382,7 +385,7 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64 text-slate-500">
+      <div className="flex items-center justify-center min-h-64 text-gray-400">
         טוען הגדרות…
       </div>
     )
@@ -391,23 +394,23 @@ export default function SettingsPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
 
       {/* ── כותרת ─────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-xl bg-slate-800 text-indigo-400">
+        <div className="p-2 rounded-xl bg-blue-50 text-[#007AFF]">
           <Settings size={20} strokeWidth={2} />
         </div>
         <div>
-          <h1 className="text-xl font-bold">הגדרות</h1>
-          <p className="text-xs text-slate-500">פרופיל · גוף · תזונה · AI</p>
+          <h1 className="text-xl font-bold text-gray-900">הגדרות</h1>
+          <p className="text-xs text-gray-500">פרופיל · גוף · תזונה · AI</p>
         </div>
       </div>
 
       {/* ── פרופיל אישי ───────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <User size={15} className="text-indigo-400" /> פרופיל אישי
+      <section className={cn(CARD, "p-4 space-y-3")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <User size={15} className="text-[#007AFF]" /> פרופיל אישי
         </h2>
         <div className="space-y-1.5">
           <FieldLabel>שם</FieldLabel>
@@ -416,11 +419,11 @@ export default function SettingsPage() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="הזן את שמך..."
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-[#007AFF]"
           />
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-gray-500">
             מוצג בדשבורד:{" "}
-            <span className="text-indigo-300">שלום, {displayName.trim() || "ספורטאי"} 👋</span>
+            <span className="text-[#007AFF]">שלום, {displayName.trim() || "ספורטאי"} 👋</span>
           </p>
         </div>
 
@@ -430,25 +433,25 @@ export default function SettingsPage() {
             <select
               value={dietaryPreference}
               onChange={(e) => setDietaryPreference(e.target.value)}
-              className="w-full appearance-none bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+              className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#007AFF]"
             >
               <option value="vegetarian">צמחוני</option>
               <option value="vegan">טבעוני</option>
               <option value="pescatarian">פסקטריאני</option>
               <option value="omnivore">כל-אוכל</option>
             </select>
-            <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
-          <p className="text-[11px] text-slate-500">משמש להצעות ארוחה חכמות בדשבורד</p>
+          <p className="text-[11px] text-gray-500">משמש להצעות ארוחה חכמות בדשבורד</p>
         </div>
       </section>
 
       {/* ── פרופיל גוף ────────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <Dumbbell size={15} className="text-teal-400" /> פרופיל גוף
+      <section className={cn(CARD, "p-4 space-y-4")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <Dumbbell size={15} className="text-teal-500" /> פרופיל גוף
         </h2>
-        <p className="text-[11px] text-slate-500 -mt-1">
+        <p className="text-[11px] text-gray-500 -mt-1">
           ערכים אלו מחשבים את יעדי הקלוריות והחלבון שלך אוטומטית.
         </p>
 
@@ -464,7 +467,7 @@ export default function SettingsPage() {
               step={0.1}
               unit='ק"ג'
             />
-            <p className="text-[10px] text-slate-600">
+            <p className="text-[10px] text-gray-300">
               {data?.latestWeight ? `נמדד לאחרונה: ${data.latestWeight}` : "לא נמדד עדיין"}
             </p>
           </div>
@@ -486,12 +489,12 @@ export default function SettingsPage() {
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
-                className="w-full appearance-none bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#007AFF]"
               >
                 <option value="male">זכר</option>
                 <option value="female">נקבה</option>
               </select>
-              <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
           </div>
         </div>
@@ -503,7 +506,7 @@ export default function SettingsPage() {
             <select
               value={activityMultiplier}
               onChange={(e) => setActivityMultiplier(Number(e.target.value))}
-              className="w-full appearance-none bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+              className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#007AFF]"
             >
               {ACTIVITY_LEVELS.map((lvl) => (
                 <option key={lvl.value} value={lvl.value}>
@@ -511,7 +514,7 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
-            <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
       </section>
@@ -519,18 +522,19 @@ export default function SettingsPage() {
       {/* ── מצב חופשה — משהה את מנוע ה-Check-In לגמרי ──────── */}
       <section
         className={cn(
-          "rounded-2xl p-4 space-y-1 border transition-colors",
+          CARD,
+          "p-4 space-y-1 border transition-colors",
           vacationMode
-            ? "bg-gradient-to-br from-amber-500/10 to-sky-500/10 border-amber-400/30"
-            : "bg-slate-900 border-transparent",
+            ? "bg-gradient-to-br from-orange-50 to-blue-50 border-[#FF9500]/30"
+            : "border-transparent",
         )}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Palmtree size={17} className={vacationMode ? "text-amber-400" : "text-slate-400"} />
+            <Palmtree size={17} className={vacationMode ? "text-[#FF9500]" : "text-gray-400"} />
             <div>
-              <p className="text-sm font-semibold">מצב חופשה</p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-sm font-semibold text-gray-900">מצב חופשה</p>
+              <p className="text-[11px] text-gray-500">
                 משהה את הצ&apos;ק-אין הדו-שבועי, לא מבקש מדידות משקל/מותן, ומקפיא
                 את תיקון הקלוריות במקומו — מעקב ה-AI גם הופך לגס ורגוע יותר.
               </p>
@@ -541,32 +545,32 @@ export default function SettingsPage() {
       </section>
 
       {/* ── יעדי תזונה ────────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-5">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <Target size={15} className="text-indigo-400" /> יעדי תזונה יומיים
+      <section className={cn(CARD, "p-4 space-y-5")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <Target size={15} className="text-[#007AFF]" /> יעדי תזונה יומיים
         </h2>
 
         {/* ─── Calories ───────────────────────────────────── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">קלוריות — חישוב אוטומטי</p>
-              <p className="text-[11px] text-slate-500">Mifflin-St Jeor TDEE מהפרופיל שלמעלה</p>
+              <p className="text-sm font-medium text-gray-900">קלוריות — חישוב אוטומטי</p>
+              <p className="text-[11px] text-gray-500">Mifflin-St Jeor TDEE מהפרופיל שלמעלה</p>
             </div>
             <Toggle enabled={autoCalorieGoal} onChange={setAutoCalorieGoal} />
           </div>
 
           {autoCalorieGoal ? (
-            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/8 p-3 space-y-2">
+            <div className="rounded-xl border border-[#007AFF]/30 bg-blue-50 p-3 space-y-2">
               {/* Main value */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Flame size={16} className="text-orange-400" />
+                  <Flame size={16} className="text-[#FF9500]" />
                   <div>
-                    <p className="text-[11px] text-slate-500">יעד קלוריות מחושב (Lean Gain)</p>
-                    <p className="text-2xl font-black text-orange-300 leading-none">
+                    <p className="text-[11px] text-gray-500">יעד קלוריות מחושב (Lean Gain)</p>
+                    <p className="text-2xl font-black text-[#FF9500] leading-none">
                       {currentTarget > 0 ? currentTarget.toLocaleString() : "—"}
-                      <span className="text-sm font-normal text-slate-400"> קק&quot;ל</span>
+                      <span className="text-sm font-normal text-gray-400"> קק&quot;ל</span>
                     </p>
                   </div>
                 </div>
@@ -575,19 +579,19 @@ export default function SettingsPage() {
 
               {/* Formula breakdown */}
               {bmr > 0 && (
-                <div className="border-t border-slate-700/60 pt-2 space-y-1">
-                  <p className="text-[10px] text-slate-600 font-mono">
-                    BMR = (10×{weight}) + (6.25×{height}) − (5×{age}) {gender === "female" ? "− 161" : "+ 5"} = <span className="text-slate-400">{bmr.toLocaleString()}</span>
+                <div className="border-t border-blue-100 pt-2 space-y-1">
+                  <p className="text-[10px] text-gray-300 font-mono">
+                    BMR = (10×{weight}) + (6.25×{height}) − (5×{age}) {gender === "female" ? "− 161" : "+ 5"} = <span className="text-gray-400">{bmr.toLocaleString()}</span>
                   </p>
-                  <p className="text-[10px] text-slate-600 font-mono">
-                    TDEE = {bmr.toLocaleString()} × {activityMultiplier} = <span className="text-slate-400">{tdee.toLocaleString()}</span>
+                  <p className="text-[10px] text-gray-300 font-mono">
+                    TDEE = {bmr.toLocaleString()} × {activityMultiplier} = <span className="text-gray-400">{tdee.toLocaleString()}</span>
                   </p>
-                  <p className="text-[10px] text-slate-600 font-mono">
+                  <p className="text-[10px] text-gray-300 font-mono">
                     יעד = TDEE × 1.05{" "}
                     {calorieAdjustmentOffset !== 0
                       ? `${calorieAdjustmentOffset > 0 ? "+" : "−"} ${Math.abs(calorieAdjustmentOffset)} (תיקון בדיקה)`
                       : ""}
-                    {" "}= <span className="text-orange-400 font-semibold">{currentTarget.toLocaleString()}</span>
+                    {" "}= <span className="text-[#FF9500] font-semibold">{currentTarget.toLocaleString()}</span>
                   </p>
                 </div>
               )}
@@ -607,14 +611,14 @@ export default function SettingsPage() {
           )}
         </div>
 
-        <div className="h-px bg-slate-800" />
+        <div className="h-px bg-gray-100" />
 
         {/* ─── Protein ────────────────────────────────────── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">חלבון — חישוב אוטומטי</p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-sm font-medium text-gray-900">חלבון — חישוב אוטומטי</p>
+              <p className="text-[11px] text-gray-500">
                 משקל × 2.2{" "}
                 {weight > 0 ? `(${weight} ק"ג → ${autoProteinG} גר')` : "(הזן משקל)"}
               </p>
@@ -626,19 +630,19 @@ export default function SettingsPage() {
             className={cn(
               "flex items-center justify-between px-4 py-3 rounded-xl border",
               autoProtein
-                ? "border-violet-500/30 bg-violet-500/8"
-                : "border-slate-700 bg-slate-800",
+                ? "border-violet-200 bg-violet-50"
+                : "border-gray-200 bg-gray-50",
             )}
           >
             <div className="flex items-center gap-2">
-              <Calculator size={16} className={autoProtein ? "text-violet-400" : "text-slate-400"} />
+              <Calculator size={16} className={autoProtein ? "text-violet-500" : "text-gray-400"} />
               <div>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-gray-500">
                   {autoProtein ? "יעד חלבון מחושב" : "יעד חלבון ידני"}
                 </p>
-                <p className="text-2xl font-black text-violet-300 leading-none">
+                <p className="text-2xl font-black text-violet-600 leading-none">
                   {effectiveProtein}
-                  <span className="text-sm font-normal text-slate-400"> גר&apos;</span>
+                  <span className="text-sm font-normal text-gray-400"> גר&apos;</span>
                 </p>
               </div>
             </div>
@@ -660,9 +664,9 @@ export default function SettingsPage() {
         </div>
 
         {/* ─── Combined summary ────────────────────────────── */}
-        <div className="rounded-xl bg-slate-800 px-3 py-2.5 flex items-center justify-between text-xs">
-          <span className="text-slate-400">יעד פעיל</span>
-          <span className="font-semibold text-slate-200">
+        <div className="rounded-xl bg-gray-50 px-3 py-2.5 flex items-center justify-between text-xs">
+          <span className="text-gray-400">יעד פעיל</span>
+          <span className="font-semibold text-gray-900">
             {effectiveCalories > 0 ? `${effectiveCalories.toLocaleString()} קק"ל` : "—"}
             {" · "}
             {effectiveProtein > 0 ? `${effectiveProtein} גר' חלבון` : "—"}
@@ -671,38 +675,38 @@ export default function SettingsPage() {
 
         {/* ─── Macro breakdown ─────────────────────────────── */}
         {effectiveCalories > 0 && (
-          <div className="rounded-xl bg-slate-800 px-3 py-3 space-y-2.5">
-            <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
-              <Flame size={11} className="text-orange-400" /> פירוט מאקרו יומי
+          <div className="rounded-xl bg-gray-50 px-3 py-3 space-y-2.5">
+            <p className="text-[11px] text-gray-400 font-medium flex items-center gap-1.5">
+              <Flame size={11} className="text-[#FF9500]" /> פירוט מאקרו יומי
             </p>
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-slate-700/50 rounded-lg py-2">
-                <p className="text-[10px] text-slate-500 mb-0.5">חלבון</p>
-                <p className="text-sm font-bold text-violet-300">
+              <div className="bg-white rounded-lg py-2">
+                <p className="text-[10px] text-gray-400 mb-0.5">חלבון</p>
+                <p className="text-sm font-bold text-violet-600">
                   {effectiveProtein}
-                  <span className="text-[10px] font-normal text-slate-500"> גר&apos;</span>
+                  <span className="text-[10px] font-normal text-gray-400"> גר&apos;</span>
                 </p>
-                <p className="text-[10px] text-slate-600">{effectiveProtein * 4} קק&quot;ל</p>
+                <p className="text-[10px] text-gray-300">{effectiveProtein * 4} קק&quot;ל</p>
               </div>
-              <div className="bg-slate-700/50 rounded-lg py-2">
-                <p className="text-[10px] text-slate-500 mb-0.5">פחמימות</p>
-                <p className="text-sm font-bold text-green-300">
+              <div className="bg-white rounded-lg py-2">
+                <p className="text-[10px] text-gray-400 mb-0.5">פחמימות</p>
+                <p className="text-sm font-bold text-[#34C759]">
                   {effectiveCarbs}
-                  <span className="text-[10px] font-normal text-slate-500"> גר&apos;</span>
+                  <span className="text-[10px] font-normal text-gray-400"> גר&apos;</span>
                 </p>
-                <p className="text-[10px] text-slate-600">{effectiveCarbs * 4} קק&quot;ל</p>
+                <p className="text-[10px] text-gray-300">{effectiveCarbs * 4} קק&quot;ל</p>
               </div>
-              <div className="bg-slate-700/50 rounded-lg py-2">
-                <p className="text-[10px] text-slate-500 mb-0.5">שומן</p>
-                <p className="text-sm font-bold text-amber-300">
+              <div className="bg-white rounded-lg py-2">
+                <p className="text-[10px] text-gray-400 mb-0.5">שומן</p>
+                <p className="text-sm font-bold text-[#FF9500]">
                   {effectiveFats}
-                  <span className="text-[10px] font-normal text-slate-500"> גר&apos;</span>
+                  <span className="text-[10px] font-normal text-gray-400"> גר&apos;</span>
                 </p>
-                <p className="text-[10px] text-slate-600">{effectiveFats * 9} קק&quot;ל</p>
+                <p className="text-[10px] text-gray-300">{effectiveFats * 9} קק&quot;ל</p>
               </div>
             </div>
-            <div className="border-t border-slate-700 pt-2 text-center">
-              <p className="text-[10px] text-slate-600">
+            <div className="border-t border-gray-200 pt-2 text-center">
+              <p className="text-[10px] text-gray-300">
                 סה&quot;כ: {effectiveProtein * 4 + effectiveCarbs * 4 + effectiveFats * 9} קק&quot;ל מתוך {effectiveCalories.toLocaleString()} יעד
               </p>
             </div>
@@ -711,9 +715,9 @@ export default function SettingsPage() {
       </section>
 
       {/* ── ספק AI ────────────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <Bot size={15} className="text-indigo-400" /> ספק בינה מלאכותית
+      <section className={cn(CARD, "p-4 space-y-4")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <Bot size={15} className="text-[#007AFF]" /> ספק בינה מלאכותית
         </h2>
 
         <div className="space-y-1.5">
@@ -722,13 +726,13 @@ export default function SettingsPage() {
             <select
               value={aiProvider}
               onChange={(e) => setAiProvider(e.target.value)}
-              className="w-full appearance-none bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+              className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#007AFF]"
             >
               {AI_PROVIDERS.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <ChevronDown size={14} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
         </div>
 
@@ -737,7 +741,7 @@ export default function SettingsPage() {
             <span className="flex items-center gap-1.5">
               <Key size={11} />
               {data?.aiApiKeySet ? "החלפת מפתח API" : "מפתח API"}
-              <span className="text-slate-600">(יישמר באופן מקומי)</span>
+              <span className="text-gray-300">(יישמר באופן מקומי)</span>
             </span>
           </FieldLabel>
           <input
@@ -745,10 +749,10 @@ export default function SettingsPage() {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={data?.aiApiKeySet ? "••••••••  (שמור)" : "sk-..."}
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-[#007AFF]"
           />
           {aiProvider === "anthropic" && !data?.aiApiKeySet && (
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-gray-500">
               ברירת המחדל: מפתח ה-ANTHROPIC_API_KEY מקובץ .env
             </p>
           )}
@@ -756,25 +760,25 @@ export default function SettingsPage() {
       </section>
 
       {/* ── תצוגה והתראות ─────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <Bell size={15} className="text-indigo-400" /> תצוגה והתראות
+      <section className={cn(CARD, "p-4 space-y-4")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <Bell size={15} className="text-[#007AFF]" /> תצוגה והתראות
         </h2>
 
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium">הצג סיכום שבועי</p>
-            <p className="text-[11px] text-slate-500">כרטיס סיכום אימונים ותזונה בדשבורד</p>
+            <p className="text-sm font-medium text-gray-900">הצג סיכום שבועי</p>
+            <p className="text-[11px] text-gray-500">כרטיס סיכום אימונים ותזונה בדשבורד</p>
           </div>
           <Toggle enabled={showWeeklySummary} onChange={setShowWeeklySummary} />
         </div>
 
-        <div className="h-px bg-slate-800" />
+        <div className="h-px bg-gray-100" />
 
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium">אפשר התראות חכמות</p>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-sm font-medium text-gray-900">אפשר התראות חכמות</p>
+            <p className="text-[11px] text-gray-500">
               התראה אם התזונה נמוכה ביותר מ-20% ביומיים רצופים
             </p>
           </div>
@@ -783,30 +787,30 @@ export default function SettingsPage() {
       </section>
 
       {/* ── דוחות שבועיים ─────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <Mail size={15} className="text-teal-400" /> דוחות שבועיים
+      <section className={cn(CARD, "p-4 space-y-4")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <Mail size={15} className="text-teal-500" /> דוחות שבועיים
         </h2>
 
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium">שלח דוח אימייל שבועי</p>
-            <p className="text-[11px] text-slate-500">כל יום ראשון — ניתוח חלבון, סוכר וימי אימון</p>
+            <p className="text-sm font-medium text-gray-900">שלח דוח אימייל שבועי</p>
+            <p className="text-[11px] text-gray-500">כל יום ראשון — ניתוח חלבון, סוכר וימי אימון</p>
           </div>
           <Toggle enabled={reportEnabled} onChange={setReportEnabled} />
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs text-slate-400">כתובת אימייל לדוח</label>
+          <label className="text-xs text-gray-400">כתובת אימייל לדוח</label>
           <input
             type="email"
             value={reportEmail}
             onChange={(e) => setReportEmail(e.target.value)}
             placeholder="your@email.com"
             dir="ltr"
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/30"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-teal-500"
           />
-          <p className="text-[11px] text-slate-600">
+          <p className="text-[11px] text-gray-300">
             ריק = יוצא מה-REPORT_EMAIL ב-.env.local
           </p>
         </div>
@@ -816,12 +820,12 @@ export default function SettingsPage() {
           onClick={handleSendTestEmail}
           disabled={sendingTest}
           className={cn(
-            "w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+            "w-full flex items-center justify-center gap-2 rounded-full py-2.5 text-sm font-semibold active:scale-95 transition",
             testResult === "success"
-              ? "bg-teal-600/20 border border-teal-500/40 text-teal-300"
+              ? "bg-teal-50 border border-teal-200 text-teal-600"
               : testResult === "error"
-              ? "bg-red-500/10 border border-red-500/30 text-red-400"
-              : "bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 disabled:opacity-50",
+              ? "bg-red-50 border border-red-100 text-[#FF3B30]"
+              : "bg-gray-100 hover:bg-gray-200 text-gray-500 disabled:opacity-50",
           )}
         >
           {sendingTest ? (
@@ -834,22 +838,22 @@ export default function SettingsPage() {
             <><Send size={14} /> שלח אימייל בדיקה עכשיו</>
           )}
         </button>
-        <p className="text-[11px] text-slate-600 text-center -mt-1">
+        <p className="text-[11px] text-gray-300 text-center -mt-1">
           שולח את ניתוח השבוע הנוכחי מיידית
         </p>
       </section>
 
       {/* ── אבטחה ─────────────────────────────────────────── */}
-      <section className="bg-slate-900 rounded-2xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-          <Lock size={15} className="text-indigo-400" /> אבטחה
+      <section className={cn(CARD, "p-4 space-y-3")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-gray-900">
+          <Lock size={15} className="text-[#007AFF]" /> אבטחה
         </h2>
 
-        <div className="bg-slate-800 rounded-xl px-4 py-3 space-y-1.5">
-          <p className="text-sm font-medium">שינוי סיסמת כניסה</p>
-          <p className="text-xs text-slate-400 leading-relaxed">
+        <div className="bg-gray-50 rounded-2xl px-4 py-3 space-y-1.5">
+          <p className="text-sm font-medium text-gray-900">שינוי סיסמת כניסה</p>
+          <p className="text-xs text-gray-400 leading-relaxed">
             הסיסמה מנוהלת דרך משתנה הסביבה{" "}
-            <code className="bg-slate-700 text-indigo-300 px-1 py-0.5 rounded text-[11px]">
+            <code className="bg-gray-100 text-[#007AFF] px-1 py-0.5 rounded text-[11px]">
               APP_MASTER_PASSWORD
             </code>{" "}
             בהגדרות Vercel. לשינוי — עדכן את הערך שם ופרוס מחדש.
@@ -858,7 +862,7 @@ export default function SettingsPage() {
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 text-slate-400 hover:text-slate-200 text-sm transition-colors py-1"
+          className="flex items-center gap-2 text-gray-400 hover:text-gray-900 text-sm transition-colors py-1"
         >
           <LogOut size={15} /> התנתק
         </button>
@@ -866,14 +870,14 @@ export default function SettingsPage() {
 
       {/* ── Error ─────────────────────────────────────────── */}
       {error && (
-        <div className="flex items-center gap-2 text-red-400 bg-red-500/10 rounded-xl px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 text-[#FF3B30] bg-red-50 rounded-2xl px-4 py-3 text-sm">
           <AlertCircle size={16} /> {error}
         </div>
       )}
 
       {/* ── Success toast ──────────────────────────────────── */}
       {saved && (
-        <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 text-green-400 rounded-xl px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 bg-green-50 border border-green-100 text-[#34C759] rounded-2xl px-4 py-3 text-sm">
           <CheckCircle2 size={16} /> ההגדרות נשמרו בהצלחה ✓
         </div>
       )}
@@ -883,10 +887,10 @@ export default function SettingsPage() {
         onClick={handleSave}
         disabled={saving}
         className={cn(
-          "w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-colors",
+          "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold text-white active:scale-95 transition",
           saved
-            ? "bg-green-600 hover:bg-green-500"
-            : "bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50",
+            ? "bg-[#34C759]"
+            : "bg-[#007AFF] disabled:opacity-50",
         )}
       >
         {saving ? (
@@ -899,22 +903,22 @@ export default function SettingsPage() {
       </button>
 
       {/* ── אזור מסוכן ────────────────────────────────────── */}
-      <section className="border border-red-500/30 rounded-2xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold flex items-center gap-2 text-red-400">
+      <section className={cn(CARD, "border border-red-100 p-4 space-y-3")}>
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-[#FF3B30]">
           <ShieldAlert size={15} /> אזור מסוכן
         </h2>
-        <p className="text-xs text-slate-500 leading-relaxed">
-          <span className="text-red-400/80">נמחק:</span> סשנים, סטים, יומני תזונה, מדדי גוף ותמונות.{" "}
-          <span className="text-green-400/80">נשמר:</span> תוכניות אימון, ספריית תרגילים, מסד מזון והגדרות AI.
+        <p className="text-xs text-gray-500 leading-relaxed">
+          <span className="text-[#FF3B30]/80">נמחק:</span> סשנים, סטים, יומני תזונה, מדדי גוף ותמונות.{" "}
+          <span className="text-[#34C759]/80">נשמר:</span> תוכניות אימון, ספריית תרגילים, מסד מזון והגדרות AI.
         </p>
         {resetDone && (
-          <p className="text-xs text-green-400 flex items-center gap-1.5">
+          <p className="text-xs text-[#34C759] flex items-center gap-1.5">
             <CheckCircle2 size={13} /> הנתונים אופסו בהצלחה.
           </p>
         )}
         <button
           onClick={() => { setShowResetModal(true); setResetConfirmText("") }}
-          className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors"
+          className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-[#FF3B30] rounded-full px-4 py-2.5 text-sm font-semibold active:scale-95 transition"
         >
           <Trash2 size={15} /> איפוס נתוני מערכת
         </button>
@@ -927,26 +931,26 @@ export default function SettingsPage() {
           onClick={() => setShowResetModal(false)}
         >
           <div
-            className="bg-slate-900 border border-red-500/40 rounded-2xl p-6 w-full max-w-sm space-y-4"
+            className={cn(CARD, "border border-red-100 p-6 w-full max-w-sm space-y-4")}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 text-red-400">
+            <div className="flex items-center gap-2 text-[#FF3B30]">
               <ShieldAlert size={20} />
               <h3 className="text-base font-bold">אישור איפוס</h3>
             </div>
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="text-sm text-gray-900 leading-relaxed">
               פעולה זו תמחק לצמיתות את כל נתוני האימון, התזונה, ומדדי הגוף שלך.
             </p>
             <div className="space-y-2">
-              <label className="text-xs text-slate-400">
-                הקלד <span className="font-bold text-red-400">איפוס</span> לאישור:
+              <label className="text-xs text-gray-400">
+                הקלד <span className="font-bold text-[#FF3B30]">איפוס</span> לאישור:
               </label>
               <input
                 type="text"
                 value={resetConfirmText}
                 onChange={(e) => setResetConfirmText(e.target.value)}
                 placeholder="הקלד 'איפוס' לאישור..."
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-[#FF3B30]"
                 autoFocus
                 dir="rtl"
               />
@@ -954,7 +958,7 @@ export default function SettingsPage() {
             <button
               onClick={handleReset}
               disabled={resetConfirmText !== "איפוס" || resetting}
-              className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl py-3 text-sm font-bold text-white transition-colors"
+              className="w-full flex items-center justify-center gap-2 bg-[#FF3B30] disabled:opacity-40 rounded-full py-3 text-sm font-bold text-white active:scale-95 transition"
             >
               {resetting ? (
                 <><span className="animate-spin">◌</span> מאפס…</>
@@ -964,7 +968,7 @@ export default function SettingsPage() {
             </button>
             <button
               onClick={() => setShowResetModal(false)}
-              className="w-full bg-slate-800 hover:bg-slate-700 rounded-xl py-2.5 text-sm font-semibold text-slate-300 transition-colors"
+              className="w-full bg-gray-100 hover:bg-gray-200 rounded-full py-2.5 text-sm font-semibold text-gray-500 active:scale-95 transition"
             >
               ביטול
             </button>

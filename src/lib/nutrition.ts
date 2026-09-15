@@ -54,6 +54,43 @@ export const MILK_PRESETS: Record<string, MilkPreset> = {
 export const DEFAULT_MILK_PRESET_ID = "tnuva_oat_barista"
 export const DEFAULT_MILK_VOLUME_ML = 125
 
+// ─── Protein shake liquid bases (values per fixed 250 ml serving) ────────────
+// Distinct from the coffee MILK_PRESETS above (those are per-100ml "barista"
+// creamers dosed in small splashes) — a shake liquid is a full glass, so
+// these are pre-computed per the standard 250 ml serving used by the Shake
+// Builder rather than needing a separate volume input.
+
+export interface LiquidPreset {
+  id:       string
+  name:     string
+  calories: number
+  protein:  number
+  carbs:    number
+  fat:      number
+}
+
+export const LIQUID_PRESETS: Record<string, LiquidPreset> = {
+  water: {
+    id: "water", name: "מים",
+    calories: 0, protein: 0, carbs: 0, fat: 0,
+  },
+  oat_milk: {
+    id: "oat_milk", name: "חלב שיבולת שועל",
+    calories: 120, protein: 2, carbs: 16, fat: 5,
+  },
+  soy_milk: {
+    id: "soy_milk", name: "חלב סויה",
+    calories: 90, protein: 7, carbs: 4, fat: 4,
+  },
+  cow_milk: {
+    id: "cow_milk", name: "חלב פרה",
+    calories: 122, protein: 8, carbs: 12, fat: 4.5,
+  },
+}
+
+export const DEFAULT_LIQUID_ID = "water"
+export const LIQUID_SERVING_ML = 250
+
 // ─── Macro target calculator — single source of truth ────────────────────────
 
 /**

@@ -178,9 +178,9 @@ function StepperInput({
   }
 
   return (
-    <div className={cn("flex-1 bg-slate-900 rounded-2xl flex flex-col gap-2.5", compact ? "p-2" : "p-3")}>
+    <div className={cn("flex-1 bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)] flex flex-col gap-2.5", compact ? "p-2" : "p-3")}>
       <p className={cn(
-        "text-slate-500 font-semibold uppercase tracking-wider px-1 truncate",
+        "text-gray-400 font-semibold uppercase tracking-wider px-1 truncate",
         compact ? "text-[9px]" : "text-[11px]"
       )}>
         {label}
@@ -189,17 +189,17 @@ function StepperInput({
         <button
           onPointerDown={(e) => handleAdjust(e, -step)}
           className={cn(
-            "rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none",
+            "rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-[#007AFF] flex items-center justify-center shrink-0 transition-colors select-none",
             compact ? "w-9 h-9" : "w-12 h-12"
           )}
         >
-          <Minus size={compact ? 15 : 20} className="text-slate-300" strokeWidth={2.5} />
+          <Minus size={compact ? 15 : 20} className="text-gray-500" strokeWidth={2.5} />
         </button>
 
         <button
           onClick={openEdit}
           className={cn(
-            "flex-1 flex items-center justify-center rounded-xl bg-slate-800/60 border border-slate-700/60 hover:border-indigo-500/60 focus-within:border-indigo-500 transition-colors overflow-hidden",
+            "flex-1 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200 hover:border-[#007AFF]/60 focus-within:border-[#007AFF] transition-colors overflow-hidden",
             compact ? "h-9" : "h-12"
           )}
         >
@@ -216,12 +216,12 @@ function StepperInput({
                 if (e.key === "Escape") setEditing(false)
               }}
               className={cn(
-                "w-full text-center font-black bg-transparent focus:outline-none px-1",
+                "w-full text-center font-black bg-transparent focus:outline-none px-1 text-gray-900",
                 compact ? "text-base" : "text-xl"
               )}
             />
           ) : (
-            <span className={cn("font-black tabular-nums select-none", compact ? "text-base" : "text-xl")}>
+            <span className={cn("font-black tabular-nums select-none text-gray-900", compact ? "text-base" : "text-xl")}>
               {isDecimal ? value.toFixed(1) : value}
             </span>
           )}
@@ -230,11 +230,11 @@ function StepperInput({
         <button
           onPointerDown={(e) => handleAdjust(e, step)}
           className={cn(
-            "rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 flex items-center justify-center shrink-0 transition-colors select-none",
+            "rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-[#007AFF] flex items-center justify-center shrink-0 transition-colors select-none",
             compact ? "w-9 h-9" : "w-12 h-12"
           )}
         >
-          <Plus size={compact ? 15 : 20} className="text-slate-300" strokeWidth={2.5} />
+          <Plus size={compact ? 15 : 20} className="text-gray-500" strokeWidth={2.5} />
         </button>
       </div>
     </div>
@@ -282,17 +282,17 @@ function ExerciseTimer({ onLogTime }: { onLogTime?: (secs: number) => void }) {
   }, [])
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 flex items-center gap-3">
-      <Timer size={14} className="text-teal-400 shrink-0" />
-      <span className="font-mono text-lg font-black tabular-nums text-teal-300 w-14 select-none">
+    <div className="bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)] px-4 py-3 flex items-center gap-3">
+      <Timer size={14} className="text-teal-500 shrink-0" />
+      <span className="font-mono text-lg font-black tabular-nums text-teal-600 w-14 select-none">
         {formatElapsed(elapsed)}
       </span>
-      <p className="text-[11px] text-slate-600 flex-1">טיימר תרגיל</p>
+      <p className="text-[11px] text-gray-400 flex-1">טיימר תרגיל</p>
       <div className="flex gap-1.5">
         {elapsed > 0 && onLogTime && (
           <button
             onClick={logTime}
-            className="h-8 px-2.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-indigo-100 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+            className="h-8 px-2.5 rounded-lg bg-[#007AFF] hover:opacity-90 text-white text-[11px] font-semibold flex items-center gap-1 transition-colors"
             aria-label="שמור זמן"
           >
             <CheckCircle2 size={11} /> שמור
@@ -300,7 +300,7 @@ function ExerciseTimer({ onLogTime }: { onLogTime?: (secs: number) => void }) {
         )}
         <button
           onClick={running ? pause : start}
-          className="w-8 h-8 rounded-lg bg-teal-600/20 hover:bg-teal-600/40 text-teal-400 flex items-center justify-center transition-colors"
+          className="w-8 h-8 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-600 flex items-center justify-center transition-colors"
           aria-label={running ? "השהה" : "התחל"}
         >
           {running
@@ -310,7 +310,7 @@ function ExerciseTimer({ onLogTime }: { onLogTime?: (secs: number) => void }) {
         <button
           onClick={reset}
           disabled={elapsed === 0 && !running}
-          className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center transition-colors disabled:opacity-30"
+          className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-400 flex items-center justify-center transition-colors disabled:opacity-30"
           aria-label="אפס"
         >
           <RotateCcw size={13} />
@@ -325,17 +325,17 @@ function ExerciseTimer({ onLogTime }: { onLogTime?: (secs: number) => void }) {
 // ─────────────────────────────────────────────────────────────
 
 const MG_COLORS: Record<string, string> = {
-  chest:      "bg-red-500/20 text-red-300",
-  back:       "bg-blue-500/20 text-blue-300",
-  shoulders:  "bg-purple-500/20 text-purple-300",
-  biceps:     "bg-green-500/20 text-green-300",
-  triceps:    "bg-yellow-500/20 text-yellow-300",
-  legs:       "bg-orange-500/20 text-orange-300",
-  quads:      "bg-orange-500/20 text-orange-300",
-  hamstrings: "bg-amber-500/20 text-amber-300",
-  glutes:     "bg-pink-500/20 text-pink-300",
-  calves:     "bg-teal-500/20 text-teal-300",
-  core:       "bg-indigo-500/20 text-indigo-300",
+  chest:      "bg-red-50 text-red-600",
+  back:       "bg-blue-50 text-blue-600",
+  shoulders:  "bg-purple-50 text-purple-600",
+  biceps:     "bg-green-50 text-green-600",
+  triceps:    "bg-yellow-50 text-yellow-700",
+  legs:       "bg-orange-50 text-orange-600",
+  quads:      "bg-orange-50 text-orange-600",
+  hamstrings: "bg-amber-50 text-amber-700",
+  glutes:     "bg-pink-50 text-pink-600",
+  calves:     "bg-teal-50 text-teal-600",
+  core:       "bg-indigo-50 text-indigo-600",
 }
 
 const MG_HE: Record<string, string> = {
@@ -375,8 +375,8 @@ export default function GymPage() {
 
   if (!mounted) {
     return (
-      <div className="flex items-center justify-center min-h-[70vh]">
-        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+      <div className="flex items-center justify-center min-h-[70vh] bg-[#F9FAFB]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#007AFF] border-t-transparent animate-spin" />
       </div>
     )
   }
@@ -460,26 +460,26 @@ function WorkoutPicker() {
   }
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Dumbbell size={22} className="text-indigo-400" />
+        <h1 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
+          <Dumbbell size={22} className="text-[#007AFF]" />
           {environment === "gym" ? "מצב חדר כושר" : "מצב אימון ביתי"}
         </h1>
         {planName && (
-          <p className="text-sm text-slate-400 mt-0.5">{planName}</p>
+          <p className="text-sm text-gray-500 mt-0.5">{planName}</p>
         )}
       </div>
 
       {/* ── Toggle: חדר כושר / אימון ביתי ──────────────────── */}
-      <div className="flex items-center gap-2 bg-slate-900/60 rounded-2xl p-1.5" dir="rtl">
+      <div className="flex items-center gap-2 bg-gray-100 rounded-2xl p-1.5" dir="rtl">
         <button
           onClick={() => handleSetEnvironment("gym")}
           className={cn(
             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
             environment === "gym"
-              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
-              : "text-slate-400 hover:text-slate-200",
+              ? "bg-[#007AFF] text-white shadow-lg shadow-blue-500/25"
+              : "text-gray-500 hover:text-gray-700",
           )}
         >
           <span>🏋️</span> חדר כושר
@@ -489,21 +489,21 @@ function WorkoutPicker() {
           className={cn(
             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
             environment === "home"
-              ? "bg-teal-600 text-white shadow-lg shadow-teal-500/25"
-              : "text-slate-400 hover:text-slate-200",
+              ? "bg-teal-500 text-white shadow-lg shadow-teal-500/25"
+              : "text-gray-500 hover:text-gray-700",
           )}
         >
           <span>🏡</span> אימון ביתי
         </button>
       </div>
       {environment === "home" && (
-        <p className="text-[11px] text-slate-500 text-center -mt-3" dir="rtl">
+        <p className="text-[11px] text-gray-400 text-center -mt-3" dir="rtl">
           מעקב ביתי נפרד לחלוטין — לא משפיע על היסטוריית חדר הכושר
         </p>
       )}
 
       {fetchError && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-3 flex items-center gap-2 text-sm text-red-400">
+        <div className="bg-red-50 border border-red-100 rounded-2xl p-3 flex items-center gap-2 text-sm text-[#FF3B30]">
           <Info size={16} /> לא ניתן לטעון אימונים. בדוק את החיבור שלך.
         </div>
       )}
@@ -513,18 +513,18 @@ function WorkoutPicker() {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="h-32 bg-slate-900 rounded-2xl animate-pulse"
+              className="h-32 bg-gray-100 rounded-2xl animate-pulse"
             />
           ))}
         </div>
       ) : visibleWorkouts?.length === 0 ? (
-        <div className="bg-slate-900 rounded-2xl p-6 text-center">
-          <p className="text-slate-400">
+        <div className="bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)] p-6 text-center">
+          <p className="text-gray-500">
             {environment === "home"
               ? "לא נמצאו אימונים ביתיים."
               : "לא נמצאו תוכניות אימון."}
           </p>
-          <p className="text-xs text-slate-600 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             צור תוכנית תחילה בלשונית האימונים.
           </p>
         </div>
@@ -533,24 +533,24 @@ function WorkoutPicker() {
           {visibleWorkouts?.map((w) => (
             <div
               key={w.id}
-              className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3"
+              className="bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)] p-4 space-y-3"
             >
               <div>
-                <h3 className="font-bold text-xl leading-tight">{w.name}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <h3 className="font-bold text-xl leading-tight text-gray-900">{w.name}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
                   {w.exerciseCount} תרגילים
                   {w.lastSession ? (
                     <>
                       {" · "}אחרון:{" "}
-                      <span className="text-slate-400">{w.lastSession.date}</span>
+                      <span className="text-gray-700">{w.lastSession.date}</span>
                       {w.lastSession.durationMins != null && (
-                        <span className="text-slate-600">
+                        <span className="text-gray-400">
                           {" "}({w.lastSession.durationMins} דקות)
                         </span>
                       )}
                     </>
                   ) : (
-                    <span className="text-amber-400"> · אימון ראשון!</span>
+                    <span className="text-[#FF9500]"> · אימון ראשון!</span>
                   )}
                 </p>
               </div>
@@ -561,7 +561,7 @@ function WorkoutPicker() {
                     key={m}
                     className={cn(
                       "text-[11px] font-medium px-2 py-0.5 rounded-full",
-                      MG_COLORS[m] ?? "bg-slate-700 text-slate-300"
+                      MG_COLORS[m] ?? "bg-gray-100 text-gray-600"
                     )}
                   >
                     {MG_HE[m] ?? m}
@@ -575,10 +575,10 @@ function WorkoutPicker() {
                 className={cn(
                   "w-full rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors",
                   starting === w.id
-                    ? "bg-indigo-700 opacity-70 cursor-wait"
+                    ? "bg-[#007AFF] text-white opacity-70 cursor-wait"
                     : starting != null
-                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                    : "bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700"
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-[#007AFF] text-white hover:opacity-90 active:opacity-80"
                 )}
               >
                 {starting === w.id ? (
@@ -800,21 +800,21 @@ function ActiveSession() {
   }, [handleLogRound, allSetsComplete])
 
   return (
-    <div className="px-4 py-4 max-w-lg mx-auto space-y-4">
+    <div className="bg-[#F9FAFB] px-4 py-4 max-w-lg mx-auto space-y-4">
 
       {/* ── כותרת אימון ─────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-500 truncate max-w-[55%]">
-          <span className="text-slate-400 font-medium">{workoutName}</span>
+        <p className="text-xs text-gray-500 truncate max-w-[55%]">
+          <span className="text-gray-600 font-medium">{workoutName}</span>
           {" · "}תרגיל {currentItemPos + 1}/{totalItems}
         </p>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="font-mono text-xs text-slate-400 bg-slate-900 px-2.5 py-1 rounded-lg">
+          <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg">
             {formatElapsed(elapsed)}
           </span>
           <button
             onClick={handleFinish}
-            className="text-xs text-slate-600 hover:text-red-400 transition-colors font-medium px-2"
+            className="text-xs text-gray-400 hover:text-[#FF3B30] transition-colors font-medium px-2"
           >
             סיים
           </button>
@@ -822,9 +822,9 @@ function ActiveSession() {
       </div>
 
       {/* ── סרגל התקדמות ──────────────────────────────────────── */}
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div
-          className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+          className="h-full bg-[#007AFF] rounded-full transition-all duration-500"
           style={{
             width: `${((currentItemPos + roundFraction) / totalItems) * 100}%`,
           }}
@@ -838,7 +838,7 @@ function ActiveSession() {
           <button
             onClick={() => moveItemAt(currentExIdx, -1)}
             disabled={currentItemPos === 0}
-            className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 flex items-center justify-center text-slate-500 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+            className="w-7 h-7 rounded-lg bg-white border border-gray-200 hover:border-gray-300 shadow-[0_2px_8px_rgb(0,0,0,0.04)] flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
             aria-label="הזז פריט זה למעלה"
             title="הזז למעלה"
           >
@@ -847,7 +847,7 @@ function ActiveSession() {
           <button
             onClick={() => moveItemAt(currentExIdx, 1)}
             disabled={currentItemPos === totalItems - 1}
-            className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 flex items-center justify-center text-slate-500 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+            className="w-7 h-7 rounded-lg bg-white border border-gray-200 hover:border-gray-300 shadow-[0_2px_8px_rgb(0,0,0,0.04)] flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
             aria-label="הזז פריט זה למטה"
             title="הזז למטה — למשל אם המכונה תפוסה"
           >
@@ -857,38 +857,38 @@ function ActiveSession() {
 
         {isSuperSet ? (
           <div className="flex-1 min-w-0">
-            <h1 className="text-[1.6rem] font-black leading-tight tracking-tight">
+            <h1 className="text-[1.6rem] font-black leading-tight tracking-tight text-gray-900">
               {activeExercises[0].name}
-              <span className="text-indigo-400 mx-1.5">🔗</span>
+              <span className="text-[#007AFF] mx-1.5">🔗</span>
               {activeExercises[1].name}
             </h1>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-slate-500">
-              <span className="inline-flex items-center gap-1.5 bg-indigo-500/10 text-indigo-300 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-gray-500">
+              <span className="inline-flex items-center gap-1.5 bg-blue-50 text-[#007AFF] rounded-full px-2.5 py-0.5 text-xs font-semibold">
                 🔗 סופר-סט
               </span>
               <span className="flex items-center gap-1">
-                <Clock size={12} className="text-slate-600" />
+                <Clock size={12} className="text-gray-400" />
                 {Math.max(activeExercises[0].restSeconds, activeExercises[1].restSeconds)} שנ' מנוחה משותפת
               </span>
             </div>
           </div>
         ) : (
           <div className="flex-1 min-w-0">
-            <h1 className="text-[2rem] font-black leading-none tracking-tight">
+            <h1 className="text-[2rem] font-black leading-none tracking-tight text-gray-900">
               {currentEx.name}
             </h1>
-            <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
-              <span className="font-medium text-slate-400">
+            <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
+              <span className="font-medium text-gray-600">
                 {currentEx.targetSets} × {currentEx.targetReps}
                 {isDuration && " שנ'"}
               </span>
-              <span className="text-slate-700">·</span>
+              <span className="text-gray-300">·</span>
               <span className="flex items-center gap-1">
-                <Clock size={12} className="text-slate-600" />
+                <Clock size={12} className="text-gray-400" />
                 {currentEx.restSeconds} שנ' מנוחה
               </span>
-              <span className="text-slate-700">·</span>
-              <span className="capitalize text-slate-600">
+              <span className="text-gray-300">·</span>
+              <span className="capitalize text-gray-400">
                 {EQUIPMENT_HE[currentEx.equipment] ?? currentEx.equipment}
               </span>
             </div>
@@ -907,17 +907,17 @@ function ActiveSession() {
               className={cn(
                 "rounded-xl p-3",
                 ex.previousPerformance
-                  ? "bg-amber-950/40 border border-amber-500/40"
-                  : "bg-slate-900 border border-slate-800"
+                  ? "bg-amber-50 border border-amber-200"
+                  : "bg-white shadow-[0_4px_16px_rgb(0,0,0,0.04)]"
               )}
             >
-              <p className="text-[11px] font-bold text-slate-400 truncate mb-1.5">
+              <p className="text-[11px] font-bold text-gray-500 truncate mb-1.5">
                 {ex.name}
               </p>
               {ex.previousPerformance ? (
                 <div className="flex items-center gap-1.5">
-                  <Trophy size={12} className="text-amber-400 shrink-0" strokeWidth={2.5} />
-                  <span className="text-sm font-black text-amber-100">
+                  <Trophy size={12} className="text-[#FF9500] shrink-0" strokeWidth={2.5} />
+                  <span className="text-sm font-black text-amber-900">
                     {(ex.previousPerformance.topDurationSecs ?? 0) > 0
                       ? `${ex.previousPerformance.topDurationSecs} שנ'`
                       : ex.previousPerformance.topSetWeightKg > 0
@@ -925,30 +925,30 @@ function ActiveSession() {
                       : "BW"}
                   </span>
                   {ex.previousPerformance.sets[0] != null && (ex.previousPerformance.topDurationSecs ?? 0) === 0 && (
-                    <span className="text-xs text-amber-400/80">
+                    <span className="text-xs text-amber-600">
                       × {ex.previousPerformance.sets[0].reps}
                     </span>
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                  <Flame size={12} className="text-indigo-400 shrink-0" /> שיא ראשון
+                <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <Flame size={12} className="text-[#007AFF] shrink-0" /> שיא ראשון
                 </p>
               )}
-              <p className="text-[11px] text-slate-600 mt-1">{runtimes[i].setsCompleted}/{ex.targetSets} סטים</p>
+              <p className="text-[11px] text-gray-400 mt-1">{runtimes[i].setsCompleted}/{ex.targetSets} סטים</p>
             </div>
           ))}
         </div>
       ) : currentEx.previousPerformance ? (
-        <div className="bg-amber-950/40 border-2 border-amber-500/50 rounded-2xl p-4">
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Trophy size={17} className="text-amber-400" strokeWidth={2.5} />
-              <span className="text-sm font-bold text-amber-400 tracking-wide">
+              <Trophy size={17} className="text-[#FF9500]" strokeWidth={2.5} />
+              <span className="text-sm font-bold text-amber-700 tracking-wide">
                 קודם — {currentEx.previousPerformance.sessionDate}
               </span>
             </div>
-            <span className="text-[11px] text-amber-700">
+            <span className="text-[11px] text-amber-600">
               {(currentEx.previousPerformance.topDurationSecs ?? 0) > 0
                 ? `שיא: ${currentEx.previousPerformance.topDurationSecs} שנ'`
                 : `${currentEx.previousPerformance.totalVolume.toLocaleString()} ק"ג סה"כ`}
@@ -959,28 +959,28 @@ function ActiveSession() {
             {currentEx.previousPerformance.sets.map((s, i) => (
               <div
                 key={i}
-                className="flex items-baseline gap-1 bg-amber-900/50 border border-amber-700/50 rounded-xl px-3 py-2"
+                className="flex items-baseline gap-1 bg-amber-100 border border-amber-200 rounded-xl px-3 py-2"
               >
-                <span className="text-[10px] text-amber-700 font-semibold me-0.5">
+                <span className="text-[10px] text-amber-500 font-semibold me-0.5">
                   {i + 1}
                 </span>
                 {(s.durationSecs ?? 0) > 0 ? (
-                  <span className="text-sm font-black text-amber-100">
+                  <span className="text-sm font-black text-amber-900">
                     {s.durationSecs} שנ'
                   </span>
                 ) : (
                   <>
-                    <span className="text-sm font-black text-amber-100">
+                    <span className="text-sm font-black text-amber-900">
                       {s.weightKg > 0 ? `${s.weightKg}ק"ג` : "BW"}
                     </span>
-                    <span className="text-amber-700 text-xs mx-0.5">×</span>
-                    <span className="text-sm font-black text-amber-100">
+                    <span className="text-amber-400 text-xs mx-0.5">×</span>
+                    <span className="text-sm font-black text-amber-900">
                       {s.reps}
                     </span>
                   </>
                 )}
                 {s.rpe != null && (
-                  <span className="text-[10px] text-amber-700 ms-0.5">
+                  <span className="text-[10px] text-amber-500 ms-0.5">
                     @{s.rpe}
                   </span>
                 )}
@@ -989,17 +989,17 @@ function ActiveSession() {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="h-px flex-1 bg-amber-800/30" />
+            <div className="h-px flex-1 bg-amber-200" />
             <p className="text-[11px] text-amber-600 font-semibold">
               ↑ התאם או שפר מספרים אלה להתקדמות
             </p>
-            <div className="h-px flex-1 bg-amber-800/30" />
+            <div className="h-px flex-1 bg-amber-200" />
           </div>
         </div>
       ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
-          <Flame size={16} className="text-indigo-400 shrink-0" />
-          <p className="text-sm text-slate-400">
+        <div className="bg-white shadow-[0_4px_16px_rgb(0,0,0,0.04)] rounded-2xl p-3 flex items-center gap-3">
+          <Flame size={16} className="text-[#007AFF] shrink-0" />
+          <p className="text-sm text-gray-500">
             אין נתונים קודמים — כל משקל הוא שיא!
           </p>
         </div>
@@ -1010,11 +1010,11 @@ function ActiveSession() {
         <div className="space-y-1.5">
           {activeExercises.map((ex, i) => (
             <div key={ex.exerciseId} className="flex items-center gap-2 px-1">
-              <span className="text-[11px] text-slate-500 w-24 truncate shrink-0">{ex.name}</span>
+              <span className="text-[11px] text-gray-400 w-24 truncate shrink-0">{ex.name}</span>
               {runtimes[i].warmupSets.map((_, wi) => (
                 <div
                   key={`w${wi}`}
-                  className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-500 shrink-0"
+                  className="w-2.5 h-2.5 rounded-full bg-gray-200 border border-gray-300 shrink-0"
                   title={`חימום ${wi + 1}`}
                 />
               ))}
@@ -1024,14 +1024,14 @@ function ActiveSession() {
                   className={cn(
                     "h-2.5 rounded-full transition-all duration-300 shrink-0",
                     si < runtimes[i].setsCompleted
-                      ? "w-4 bg-indigo-500"
+                      ? "w-4 bg-[#007AFF]"
                       : si === runtimes[i].setsCompleted && !runtimes[i].allSetsComplete
-                      ? "w-2.5 bg-slate-700 border-2 border-indigo-500 animate-pulse"
-                      : "w-2.5 bg-slate-800"
+                      ? "w-2.5 bg-gray-200 border-2 border-[#007AFF] animate-pulse"
+                      : "w-2.5 bg-gray-200"
                   )}
                 />
               ))}
-              <span className="text-xs text-slate-400 ms-1">
+              <span className="text-xs text-gray-500 ms-1">
                 {runtimes[i].setsCompleted}/{ex.targetSets}
               </span>
             </div>
@@ -1039,11 +1039,11 @@ function ActiveSession() {
         </div>
       ) : (
         <div className="flex items-center gap-2 px-1">
-          <span className="text-[11px] text-slate-500 me-1">סטים</span>
+          <span className="text-[11px] text-gray-400 me-1">סטים</span>
           {warmupSets.map((_, i) => (
             <div
               key={`w${i}`}
-              className="w-3 h-3 rounded-full bg-slate-700 border border-slate-500 shrink-0"
+              className="w-3 h-3 rounded-full bg-gray-200 border border-gray-300 shrink-0"
               title={`חימום ${i + 1}`}
             />
           ))}
@@ -1053,17 +1053,17 @@ function ActiveSession() {
               className={cn(
                 "h-3 rounded-full transition-all duration-300 shrink-0",
                 i < setsCompleted
-                  ? "w-5 bg-indigo-500"
+                  ? "w-5 bg-[#007AFF]"
                   : i === setsCompleted && !allSetsComplete
-                  ? "w-3 bg-slate-700 border-2 border-indigo-500 animate-pulse"
-                  : "w-3 bg-slate-800"
+                  ? "w-3 bg-gray-200 border-2 border-[#007AFF] animate-pulse"
+                  : "w-3 bg-gray-200"
               )}
             />
           ))}
-          <span className="text-xs text-slate-400 ms-1">
+          <span className="text-xs text-gray-500 ms-1">
             {setsCompleted}/{currentEx.targetSets}
             {warmupSets.length > 0 && (
-              <span className="text-slate-600 ms-1">
+              <span className="text-gray-400 ms-1">
                 +{warmupSets.length}ח
               </span>
             )}
@@ -1073,10 +1073,10 @@ function ActiveSession() {
 
       {/* ── תיעוד סט ─────────────────────────────────────────── */}
       {allSetsComplete ? (
-        <div className="bg-green-950/30 border border-green-500/30 rounded-2xl p-5 flex flex-col items-center gap-2">
-          <CheckCircle2 size={30} className="text-green-400" />
-          <p className="font-bold text-green-400 text-lg">כל הסטים הושלמו!</p>
-          <p className="text-xs text-slate-500">
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex flex-col items-center gap-2">
+          <CheckCircle2 size={30} className="text-[#34C759]" />
+          <p className="font-bold text-[#34C759] text-lg">כל הסטים הושלמו!</p>
+          <p className="text-xs text-gray-500">
             {currentItemPos < totalItems - 1
               ? `לחץ "תרגיל הבא" להמשך`
               : `לחץ "סיים אימון" כשמוכן`}
@@ -1091,16 +1091,16 @@ function ActiveSession() {
               className={cn(
                 "flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors",
                 isWarmup
-                  ? "bg-slate-700 border-slate-500 text-slate-200"
-                  : "bg-transparent border-slate-800 text-slate-500 hover:border-slate-600"
+                  ? "bg-gray-100 border-gray-300 text-gray-700"
+                  : "bg-transparent border-gray-200 text-gray-400 hover:border-gray-300"
               )}
             >
               <span
                 className={cn(
                   "w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0",
                   isWarmup
-                    ? "bg-indigo-500 border-indigo-400"
-                    : "border-slate-600"
+                    ? "bg-[#007AFF] border-[#007AFF]"
+                    : "border-gray-300"
                 )}
               >
                 {isWarmup && (
@@ -1119,7 +1119,7 @@ function ActiveSession() {
 
             <button
               onClick={() => setShowRpe((v) => !v)}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
             >
               RPE {showRpe ? "▴" : "▾"}
             </button>
@@ -1133,7 +1133,7 @@ function ActiveSession() {
                 const rt = runtimes[i]
                 return (
                   <div key={ex.exerciseId} className="space-y-2">
-                    <p className="text-[11px] font-bold text-slate-400 truncate px-1">
+                    <p className="text-[11px] font-bold text-gray-500 truncate px-1">
                       {ex.name}
                     </p>
                     {rt.isDuration ? (
@@ -1225,7 +1225,7 @@ function ActiveSession() {
           {/* Previous performance hint near inputs (single-exercise view only —
               the super-set view already shows this in its mini cards above) */}
           {!isSuperSet && currentEx.previousPerformance && (
-            <p className="text-[11px] text-amber-600/80 text-center -mt-1">
+            <p className="text-[11px] text-amber-600 text-center -mt-1">
               פעם קודמת:{" "}
               {isDuration && (currentEx.previousPerformance.topDurationSecs ?? 0) > 0 ? (
                 `${currentEx.previousPerformance.topDurationSecs} שניות החזקה`
@@ -1244,7 +1244,7 @@ function ActiveSession() {
           {/* RPE (מתקפל) — סט משותף, אז דירוג אחד חל על שני התרגילים בסופר-סט */}
           {showRpe && (
             <div className="flex items-center gap-2 px-1">
-              <span className="text-[11px] text-slate-500 w-10 shrink-0">
+              <span className="text-[11px] text-gray-400 w-10 shrink-0">
                 RPE
               </span>
               <div className="flex gap-1.5 flex-1">
@@ -1256,11 +1256,11 @@ function ActiveSession() {
                       "flex-1 h-9 rounded-lg text-xs font-bold transition-colors",
                       rpe === r
                         ? r <= 7
-                          ? "bg-green-600 text-white"
+                          ? "bg-[#34C759] text-white"
                           : r <= 9
-                          ? "bg-amber-600 text-white"
-                          : "bg-red-600 text-white"
-                        : "bg-slate-800 text-slate-500 hover:bg-slate-700"
+                          ? "bg-[#FF9500] text-white"
+                          : "bg-[#FF3B30] text-white"
+                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
                     )}
                   >
                     {r}
@@ -1278,8 +1278,8 @@ function ActiveSession() {
             className={cn(
               "w-full h-16 rounded-2xl font-black text-[1.05rem] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg",
               isWarmup
-                ? "bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 shadow-none"
-                : "bg-green-600 hover:bg-green-500 active:bg-green-700 text-white shadow-green-900/40"
+                ? "bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-600 shadow-none"
+                : "bg-[#34C759] hover:opacity-90 active:opacity-80 text-white shadow-green-500/30"
             )}
           >
             <CheckCircle2 size={22} strokeWidth={2.5} />
@@ -1300,7 +1300,7 @@ function ActiveSession() {
       {/* ── תרגילים קרובים + סידור מחדש ────────────────────────── */}
       {items.slice(currentItemPos + 1).length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[11px] text-slate-600 font-semibold uppercase tracking-wider px-1">
+          <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider px-1">
             קרובים
           </p>
           {items.slice(currentItemPos + 1).map((item, relIdx) => {
@@ -1317,8 +1317,8 @@ function ActiveSession() {
                 className={cn(
                   "border rounded-2xl px-3 py-2.5 flex items-center gap-2",
                   item.type === "superset"
-                    ? "bg-indigo-500/5 border-indigo-500/20"
-                    : "bg-slate-900/70 border-slate-800"
+                    ? "bg-blue-50 border-blue-100"
+                    : "bg-white border-gray-100 shadow-[0_2px_10px_rgb(0,0,0,0.03)]"
                 )}
               >
                 {/* ↑ / ↓ reorder buttons — the first upcoming item can always move
@@ -1327,7 +1327,7 @@ function ActiveSession() {
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <button
                     onClick={() => moveItemAt(startIdx, -1)}
-                    className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                    className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 disabled:pointer-events-none transition-colors"
                     aria-label="הזז למעלה"
                   >
                     <ArrowUp size={11} strokeWidth={2.5} />
@@ -1335,7 +1335,7 @@ function ActiveSession() {
                   <button
                     onClick={() => moveItemAt(startIdx, 1)}
                     disabled={isLast}
-                    className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                    className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 disabled:pointer-events-none transition-colors"
                     aria-label="הזז למטה"
                   >
                     <ArrowDown size={11} strokeWidth={2.5} />
@@ -1343,12 +1343,12 @@ function ActiveSession() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{meta}</p>
+                  <p className="text-sm font-semibold truncate text-gray-900">{name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{meta}</p>
                 </div>
 
                 {firstPrev ? (
-                  <p className="text-xs text-indigo-400 font-medium shrink-0">
+                  <p className="text-xs text-[#007AFF] font-medium shrink-0">
                     {(firstPrev.topDurationSecs ?? 0) > 0
                       ? `${firstPrev.topDurationSecs} שנ'`
                       : firstPrev.topSetWeightKg > 0
@@ -1356,7 +1356,7 @@ function ActiveSession() {
                       : "BW"}
                   </p>
                 ) : (
-                  <p className="text-xs text-amber-400 shrink-0">פעם ראשונה</p>
+                  <p className="text-xs text-[#FF9500] shrink-0">פעם ראשונה</p>
                 )}
               </div>
             )
@@ -1369,7 +1369,7 @@ function ActiveSession() {
         <button
           onClick={prevExercise}
           disabled={currentItemPos === 0}
-          className="flex items-center gap-1 border border-slate-800 hover:border-slate-600 rounded-2xl px-4 py-3 text-sm font-medium text-slate-400 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+          className="flex items-center gap-1 bg-white border border-gray-200 hover:border-gray-300 rounded-2xl px-4 py-3 text-sm font-medium text-gray-500 disabled:opacity-25 disabled:pointer-events-none transition-colors"
         >
           <ChevronRight size={16} /> הקודם
         </button>
@@ -1380,14 +1380,14 @@ function ActiveSession() {
           (currentItemPos < totalItems - 1 ? (
             <button
               onClick={nextExercise}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
+              className="flex items-center gap-2 bg-[#007AFF] hover:opacity-90 active:opacity-80 text-white rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
             >
               תרגיל הבא <ArrowLeft size={16} />
             </button>
           ) : (
             <button
               onClick={handleFinish}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-500 rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
+              className="flex items-center gap-2 bg-[#34C759] hover:opacity-90 text-white rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
             >
               <CheckCircle2 size={16} /> סיים אימון
             </button>

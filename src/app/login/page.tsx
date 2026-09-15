@@ -39,18 +39,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/30">
-            <Lock size={28} className="text-indigo-400" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100">
+            <Lock size={28} className="text-[#007AFF]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-100">
-              Recomp<span className="text-indigo-400">OS</span>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Recomp<span className="text-[#007AFF]">OS</span>
             </h1>
-            <p className="text-sm text-slate-500 mt-1">הזן סיסמה להמשך</p>
+            <p className="text-sm text-gray-500 mt-1">הזן סיסמה להמשך</p>
           </div>
         </div>
 
@@ -64,13 +64,13 @@ export default function LoginPage() {
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
               placeholder="סיסמה..."
               dir="ltr"
-              className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-4 text-base text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 pe-12"
+              className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-4 text-base text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-[#007AFF] pe-12"
               autoFocus
             />
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 end-3 flex items-center px-2 text-slate-500 hover:text-slate-300 transition-colors"
+              className="absolute inset-y-0 end-3 flex items-center px-2 text-gray-400 hover:text-gray-600 transition-colors"
               tabIndex={-1}
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -78,7 +78,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 text-center bg-red-500/10 rounded-xl py-2.5 px-4">
+            <p className="text-sm text-[#FF3B30] text-center bg-red-50 rounded-xl py-2.5 px-4">
               {error}
             </p>
           )}
@@ -86,7 +86,7 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={loading || !password.trim()}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl py-4 text-base font-bold transition-colors"
+            className="w-full bg-[#007AFF] hover:bg-[#007AFF]/90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed rounded-full py-4 text-base font-bold text-white transition"
           >
             {loading ? (
               <span className="animate-spin inline-block">◌</span>

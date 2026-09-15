@@ -34,7 +34,7 @@ export function WipButton({
       <Tag onClick={handleClick} className={cn("cursor-pointer relative", className)}>
         {children}
         {/* "בקרוב" badge — always visible so WIP items are clearly marked */}
-        <span className="absolute top-1.5 end-1.5 bg-slate-700 text-slate-300 text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none pointer-events-none">
+        <span className="absolute top-1.5 end-1.5 bg-gray-200 text-gray-500 text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none pointer-events-none">
           בקרוב
         </span>
       </Tag>
@@ -44,7 +44,7 @@ export function WipButton({
         aria-live="polite"
         className={cn(
           "fixed bottom-24 start-1/2 -translate-x-1/2 z-[100]",
-          "px-4 py-2 rounded-xl bg-slate-700 text-sm font-medium text-slate-100 shadow-lg",
+          "px-4 py-2 rounded-xl bg-white border border-gray-100 text-sm font-medium text-gray-900 shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
           "pointer-events-none transition-all duration-300",
           visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
         )}

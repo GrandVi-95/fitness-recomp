@@ -19,6 +19,9 @@ const DEMO_USER_ID = "demo-user"
 
 const DAY_LABELS_HE = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שב'"]
 
+// Shared "bento box" card treatment — matches the dashboard page / metrics page.
+const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+
 /** Returns "YYYY-MM-DD" using the **local** calendar date, never UTC. */
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -276,14 +279,14 @@ async function getWeeklyData() {
 function SectionHeader({
   icon: Icon,
   title,
-  iconColor = "text-indigo-400",
+  iconColor = "text-[#007AFF]",
 }: {
   icon: React.ElementType
   title: string
   iconColor?: string
 }) {
   return (
-    <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+    <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
       <Icon size={16} className={iconColor} />
       {title}
     </h2>
@@ -293,7 +296,7 @@ function SectionHeader({
 function ProgressBar({
   value,
   max,
-  color = "bg-indigo-400",
+  color = "bg-[#007AFF]",
 }: {
   value: number
   max: number
@@ -301,7 +304,7 @@ function ProgressBar({
 }) {
   const pct = Math.min((value / max) * 100, 100)
   return (
-    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
       <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
     </div>
   )
@@ -332,109 +335,109 @@ export default async function WeeklyPage() {
   const caloriePct = Math.min((avgCalories / targetCalories) * 100, 100)
 
   return (
-    <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
+    <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
 
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">דו&quot;ח שבועי</h1>
-          <p className="text-sm text-slate-400">מ-{weekLabel} עד היום</p>
+          <h1 className="text-2xl font-bold text-gray-900">דו&quot;ח שבועי</h1>
+          <p className="text-sm text-gray-500">מ-{weekLabel} עד היום</p>
         </div>
-        <CalendarDays size={28} className="text-violet-400" />
+        <CalendarDays size={28} className="text-[#007AFF]" />
       </div>
 
       {/* ── KPI Grid — Workouts + Protein Days ─────────────── */}
       <div className="grid grid-cols-2 gap-3">
 
         {/* Workouts */}
-        <div className="bg-slate-900 rounded-2xl p-4 space-y-2">
+        <div className={cn(CARD, "p-4 space-y-2")}>
           <div className="flex items-center gap-2">
-            <Dumbbell size={15} className="text-indigo-400" />
-            <p className="text-xs text-slate-400">אימונים</p>
+            <Dumbbell size={15} className="text-[#007AFF]" />
+            <p className="text-xs text-gray-500">אימונים</p>
           </div>
-          <p className="text-3xl font-bold leading-none">
+          <p className="text-3xl font-bold leading-none text-gray-900">
             {workoutsCompleted}
-            <span className="text-slate-500 text-lg font-normal">/{workoutGoal}</span>
+            <span className="text-gray-400 text-lg font-normal">/{workoutGoal}</span>
           </p>
           <ProgressBar
             value={workoutsCompleted}
             max={workoutGoal}
-            color={workoutsCompleted >= workoutGoal ? "bg-green-400" : "bg-indigo-400"}
+            color={workoutsCompleted >= workoutGoal ? "bg-[#34C759]" : "bg-[#007AFF]"}
           />
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-gray-400">
             {workoutsCompleted >= workoutGoal ? "יעד הושג! 🎉" : `נותרו ${workoutGoal - workoutsCompleted}`}
           </p>
         </div>
 
         {/* Protein days */}
-        <div className="bg-slate-900 rounded-2xl p-4 space-y-2">
+        <div className={cn(CARD, "p-4 space-y-2")}>
           <div className="flex items-center gap-2">
-            <Target size={15} className="text-violet-400" />
-            <p className="text-xs text-slate-400">ימי חלבון</p>
+            <Target size={15} className="text-[#007AFF]" />
+            <p className="text-xs text-gray-500">ימי חלבון</p>
           </div>
-          <p className="text-3xl font-bold leading-none">
+          <p className="text-3xl font-bold leading-none text-gray-900">
             {proteinDaysHit}
-            <span className="text-slate-500 text-lg font-normal">/7</span>
+            <span className="text-gray-400 text-lg font-normal">/7</span>
           </p>
           <ProgressBar
             value={proteinDaysHit}
             max={7}
             color={
               proteinDaysHit >= 6
-                ? "bg-green-400"
+                ? "bg-[#34C759]"
                 : proteinDaysHit >= 4
-                ? "bg-yellow-400"
-                : "bg-red-400"
+                ? "bg-[#FF9500]"
+                : "bg-[#FF3B30]"
             }
           />
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-gray-400">
             {proteinDaysHit >= 6 ? "עמידה מצוינת!" : `יעד: ${targetProtein} גר'`}
           </p>
         </div>
       </div>
 
       {/* ── Nutrition adherence ─────────────────────────────── */}
-      <div className="bg-slate-900 rounded-2xl p-4 space-y-4">
-        <SectionHeader icon={Flame} title="תזונה שבועית" iconColor="text-orange-400" />
+      <div className={cn(CARD, "p-4 space-y-4")}>
+        <SectionHeader icon={Flame} title="תזונה שבועית" iconColor="text-[#FF9500]" />
 
         {/* Avg Calories */}
         <div>
           <div className="flex justify-between text-xs mb-1.5">
-            <span className="text-slate-400">ממוצע קלוריות</span>
+            <span className="text-gray-500">ממוצע קלוריות</span>
             <span
               className={cn(
-                "font-semibold",
+                "font-semibold text-gray-900",
                 avgCalories >= targetCalories * 0.9 && avgCalories <= targetCalories * 1.1
-                  ? "text-green-400"
+                  ? "text-[#34C759]"
                   : "",
               )}
             >
               {avgCalories}
-              <span className="text-slate-500 font-normal"> / {targetCalories} קק&quot;ל</span>
+              <span className="text-gray-400 font-normal"> / {targetCalories} קק&quot;ל</span>
             </span>
           </div>
-          <ProgressBar value={caloriePct} max={100} color="bg-orange-400" />
+          <ProgressBar value={caloriePct} max={100} color="bg-[#FF9500]" />
         </div>
 
         {/* Avg Protein */}
         <div>
           <div className="flex justify-between text-xs mb-1.5">
-            <span className="text-slate-400">ממוצע חלבון</span>
-            <span className={cn("font-semibold", avgProtein >= targetProtein ? "text-green-400" : "")}>
+            <span className="text-gray-500">ממוצע חלבון</span>
+            <span className={cn("font-semibold text-gray-900", avgProtein >= targetProtein ? "text-[#34C759]" : "")}>
               {avgProtein}
-              <span className="text-slate-500 font-normal"> / {targetProtein} גר&apos;</span>
+              <span className="text-gray-400 font-normal"> / {targetProtein} גר&apos;</span>
             </span>
           </div>
           <ProgressBar
             value={proteinPct}
             max={100}
-            color={avgProtein >= targetProtein ? "bg-green-400" : "bg-violet-400"}
+            color={avgProtein >= targetProtein ? "bg-[#34C759]" : "bg-[#007AFF]"}
           />
         </div>
 
         {/* Protein day dots */}
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl px-3 py-2.5">
-          <p className="text-[11px] text-slate-400 mb-2">עמידה ביעד חלבון — יום לפי יום</p>
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-gray-400 mb-2">עמידה ביעד חלבון — יום לפי יום</p>
           <div className="flex gap-1.5 justify-between">
             {dailyNutrition.map((day, i) => {
               const hit = day.hasData && day.protein >= targetProtein
@@ -451,18 +454,18 @@ export default async function WeeklyPage() {
                     className={cn(
                       "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold",
                       hit
-                        ? "bg-green-500 text-white"
+                        ? "bg-[#34C759] text-white"
                         : missed
-                        ? "bg-red-500/30 text-red-300 border border-red-500/30"
+                        ? "bg-red-50 text-[#FF3B30] border border-red-100"
                         : future
-                        ? "bg-slate-800/50 text-slate-700"
-                        : "bg-slate-800 text-slate-600",
+                        ? "bg-gray-50 text-gray-300"
+                        : "bg-gray-100 text-gray-400",
                     )}
                   >
                     {day.label}
                   </div>
                   {day.hasData && (
-                    <p className="text-[9px] text-slate-600 text-center leading-none">
+                    <p className="text-[9px] text-gray-400 text-center leading-none">
                       {day.protein}
                     </p>
                   )}
@@ -475,19 +478,19 @@ export default async function WeeklyPage() {
 
       {/* ── Body weight trend ───────────────────────────────── */}
       {(thisWeekAvgWeight !== null || lastWeekAvgWeight !== null) && (
-        <div className="bg-slate-900 rounded-2xl p-4">
-          <SectionHeader icon={Scale} title="מגמת משקל גוף" iconColor="text-teal-400" />
+        <div className={cn(CARD, "p-4")}>
+          <SectionHeader icon={Scale} title="מגמת משקל גוף" iconColor="text-[#007AFF]" />
 
           <div className="mt-4 grid grid-cols-3 gap-2 items-center">
             {/* Last week avg */}
             <div className="text-center">
-              <p className="text-[11px] text-slate-500 mb-1">שבוע קודם</p>
-              <p className="text-xl font-bold">
+              <p className="text-[11px] text-gray-400 mb-1">שבוע קודם</p>
+              <p className="text-xl font-bold text-gray-900">
                 {lastWeekAvgWeight ?? "—"}
-                <span className="text-xs text-slate-500 font-normal"> ק&quot;ג</span>
+                <span className="text-xs text-gray-400 font-normal"> ק&quot;ג</span>
               </p>
               {lastWeekAvgWeight && (
-                <p className="text-[10px] text-slate-600">ממוצע 7י'</p>
+                <p className="text-[10px] text-gray-300">ממוצע 7י'</p>
               )}
             </div>
 
@@ -499,10 +502,10 @@ export default async function WeeklyPage() {
                     className={cn(
                       "flex items-center gap-1 text-base font-bold",
                       weightDelta > 0
-                        ? "text-amber-400"
+                        ? "text-[#FF9500]"
                         : weightDelta < 0
-                        ? "text-teal-400"
-                        : "text-slate-400",
+                        ? "text-[#34C759]"
+                        : "text-gray-400",
                     )}
                   >
                     {weightDelta > 0 ? (
@@ -515,22 +518,22 @@ export default async function WeeklyPage() {
                     {weightDelta > 0 ? "+" : ""}
                     {weightDelta} ק&quot;ג
                   </div>
-                  <p className="text-[10px] text-slate-500">שינוי</p>
+                  <p className="text-[10px] text-gray-400">שינוי</p>
                 </>
               ) : (
-                <p className="text-xs text-slate-600 text-center">אין נתוני השוואה</p>
+                <p className="text-xs text-gray-300 text-center">אין נתוני השוואה</p>
               )}
             </div>
 
             {/* This week avg */}
             <div className="text-center">
-              <p className="text-[11px] text-slate-500 mb-1">השבוע</p>
-              <p className="text-xl font-bold">
+              <p className="text-[11px] text-gray-400 mb-1">השבוע</p>
+              <p className="text-xl font-bold text-gray-900">
                 {thisWeekAvgWeight ?? "—"}
-                <span className="text-xs text-slate-500 font-normal"> ק&quot;ג</span>
+                <span className="text-xs text-gray-400 font-normal"> ק&quot;ג</span>
               </p>
               {thisWeekAvgWeight && (
-                <p className="text-[10px] text-slate-600">ממוצע {thisWeekAvgWeight && lastWeekAvgWeight ? "7י'" : "חלקי"}</p>
+                <p className="text-[10px] text-gray-300">ממוצע {thisWeekAvgWeight && lastWeekAvgWeight ? "7י'" : "חלקי"}</p>
               )}
             </div>
           </div>
@@ -538,8 +541,8 @@ export default async function WeeklyPage() {
       )}
 
       {/* ── 7-day nutrition charts ──────────────────────────── */}
-      <div className="bg-slate-900 rounded-2xl p-4">
-        <SectionHeader icon={Flame} title="תזונה — 7 ימים" iconColor="text-orange-400" />
+      <div className={cn(CARD, "p-4")}>
+        <SectionHeader icon={Flame} title="תזונה — 7 ימים" iconColor="text-[#FF9500]" />
         <div className="mt-4">
           <WeeklyCharts
             dailyNutrition={dailyNutrition}
@@ -547,25 +550,25 @@ export default async function WeeklyPage() {
             targetProtein={targetProtein}
           />
         </div>
-        <p className="text-[10px] text-slate-600 mt-2 text-center">
+        <p className="text-[10px] text-gray-400 mt-2 text-center">
           קו מקווקו = יעד · ירוק = בטווח היעד
         </p>
       </div>
 
       {/* ── Progressive overload ────────────────────────────── */}
-      <div className="bg-slate-900 rounded-2xl p-4">
-        <SectionHeader icon={TrendingUp} title="עומס פרוגרסיבי" iconColor="text-green-400" />
+      <div className={cn(CARD, "p-4")}>
+        <SectionHeader icon={TrendingUp} title="עומס פרוגרסיבי" iconColor="text-[#34C759]" />
 
         {progressionList.length === 0 ? (
           <div className="mt-4 text-center py-4">
-            <TrendingUp size={32} className="text-slate-800 mx-auto mb-2" />
-            <p className="text-sm text-slate-500">אין נתוני אימון השבוע עדיין</p>
-            <p className="text-xs text-slate-600 mt-1">לאחר האימון הראשון, תראה כאן ניתוח עומס</p>
+            <TrendingUp size={32} className="text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">אין נתוני אימון השבוע עדיין</p>
+            <p className="text-xs text-gray-400 mt-1">לאחר האימון הראשון, תראה כאן ניתוח עומס</p>
           </div>
         ) : (
           <div className="mt-3 space-y-0">
             {/* Header row */}
-            <div className="flex items-center justify-between text-[10px] text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-800">
+            <div className="flex items-center justify-between text-[10px] text-gray-400 uppercase tracking-wide pb-1 border-b border-gray-100">
               <span>תרגיל</span>
               <div className="flex gap-4 text-end">
                 <span className="w-16">נפח</span>
@@ -576,24 +579,24 @@ export default async function WeeklyPage() {
             {progressionList.map((ex, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between py-2.5 border-b border-slate-800/60 last:border-0"
+                className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0"
               >
                 {/* Exercise name */}
                 <div className="flex-1 min-w-0 me-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-sm font-semibold leading-tight">{ex.name}</p>
+                    <p className="text-sm font-semibold leading-tight text-gray-900">{ex.name}</p>
                     {ex.isPR && (
-                      <span className="text-[10px] font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-full px-1.5 py-0.5 flex items-center gap-0.5 shrink-0">
+                      <span className="text-[10px] font-bold text-[#FF9500] bg-orange-50 border border-orange-100 rounded-full px-1.5 py-0.5 flex items-center gap-0.5 shrink-0">
                         <Trophy size={9} /> שיא!
                       </span>
                     )}
                     {ex.isNew && (
-                      <span className="text-[10px] font-bold text-indigo-400 bg-indigo-400/10 border border-indigo-400/20 rounded-full px-1.5 py-0.5 shrink-0">
+                      <span className="text-[10px] font-bold text-[#007AFF] bg-blue-50 border border-blue-100 rounded-full px-1.5 py-0.5 shrink-0">
                         חדש
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-gray-400">
                     {MUSCLE_HE[ex.primaryMuscle] ?? ex.primaryMuscle}
                   </p>
                 </div>
@@ -606,16 +609,16 @@ export default async function WeeklyPage() {
                       className={cn(
                         "text-xs font-semibold",
                         ex.volumeDelta > 0
-                          ? "text-green-400"
+                          ? "text-[#34C759]"
                           : ex.volumeDelta < 0
-                          ? "text-red-400"
-                          : "text-slate-400",
+                          ? "text-[#FF3B30]"
+                          : "text-gray-400",
                       )}
                     >
                       {ex.volumeDelta > 0 ? "+" : ""}
                       {ex.volumeDelta} ק&quot;ג
                     </p>
-                    <p className="text-[10px] text-slate-600">
+                    <p className="text-[10px] text-gray-400">
                       {ex.volumeDeltaPct !== null
                         ? `${ex.volumeDeltaPct > 0 ? "+" : ""}${ex.volumeDeltaPct}%`
                         : "—"}
@@ -628,16 +631,16 @@ export default async function WeeklyPage() {
                       className={cn(
                         "text-xs font-semibold",
                         ex.weightDelta > 0
-                          ? "text-green-400"
+                          ? "text-[#34C759]"
                           : ex.weightDelta < 0
-                          ? "text-red-400"
-                          : "text-slate-400",
+                          ? "text-[#FF3B30]"
+                          : "text-gray-400",
                       )}
                     >
                       {ex.weightDelta > 0 ? "+" : ""}
                       {ex.weightDelta} ק&quot;ג
                     </p>
-                    <p className="text-[10px] text-slate-600">{ex.thisMaxWeight} מקס&apos;</p>
+                    <p className="text-[10px] text-gray-400">{ex.thisMaxWeight} מקס&apos;</p>
                   </div>
                 </div>
               </div>

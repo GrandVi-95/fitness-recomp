@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import MealSuggester from "@/components/dashboard/MealSuggester"
 import RecipePanel   from "@/components/dashboard/RecipePanel"
+import ShakeModal    from "@/components/dashboard/ShakeModal"
 import {
   SUGAR_TARGET,
   REST_DAY_SUGAR_TARGET,
@@ -562,6 +563,11 @@ export default function NutritionPage() {
   const [labelPortion,     setLabelPortion]     = useState("50")
   const [labelSaveProduct, setLabelSaveProduct] = useState(true)
   const [labelLogging,     setLabelLogging]     = useState(false)
+  const [powderSaving,     setPowderSaving]     = useState(false)
+  const [powderSaved,      setPowderSaved]      = useState(false)
+
+  // Smart Protein Shake Builder
+  const [shakeModalOpen, setShakeModalOpen] = useState(false)
 
   // Voice recording state
   const [voiceState,   setVoiceState]   = useState<"idle" | "recording" | "processing">("idle")
@@ -1030,6 +1036,48 @@ export default function NutritionPage() {
     }
   }
 
+  // A scanned label reads as a protein powder either by name (common brand/
+  // category words) or by density — whole foods essentially never reach 40g
+  // protein per 100g, so a high reading is a strong tell even with no name.
+  const isLikelyProteinPowder = (scan: LabelScan): boolean => {
+    const name = scan.productName.toLowerCase()
+    const keywords = ["חלבון", "protein", "whey", "איזופרו", "iso", "מבודד", "gainer", "מסה"]
+    if (keywords.some((k) => name.includes(k))) return true
+    return scan.per100g.protein >= 40
+  }
+
+  // Saves the CURRENTLY SELECTED portion (whatever the user set via the
+  // units/grams/% picker above — e.g. "1 unit = 30g") as this powder's
+  // per-scoop macros, so the Shake Builder can reuse it later.
+  const handleSaveToPowders = async () => {
+    if (!labelScan || powderSaving) return
+    const grams = labelPortionGrams()
+    if (!grams) return
+    setPowderSaving(true)
+    const factor = grams / 100
+    try {
+      const res = await fetch("/api/proteins", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          name:             labelScan.productName.trim() || "אבקת חלבון",
+          caloriesPerScoop: Math.round(labelScan.per100g.calories * factor * 10) / 10,
+          proteinPerScoop:  Math.round(labelScan.per100g.protein  * factor * 10) / 10,
+          carbsPerScoop:    Math.round(labelScan.per100g.carbs    * factor * 10) / 10,
+          fatPerScoop:      Math.round(labelScan.per100g.fat      * factor * 10) / 10,
+        }),
+      })
+      if (res.ok) {
+        setPowderSaved(true)
+        setTimeout(() => setPowderSaved(false), 2500)
+      }
+    } catch {
+      // Silent — this is a secondary convenience action, not the primary log flow.
+    } finally {
+      setPowderSaving(false)
+    }
+  }
+
   // ── Voice recording ──────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -1205,6 +1253,13 @@ export default function NutritionPage() {
 
         {/* ── Coffee quick-log cluster ─────────────────────── */}
         <div className="relative flex items-center gap-1.5 mt-1">
+          <button
+            onClick={() => setShakeModalOpen(true)}
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-100 text-violet-500 hover:bg-gray-200 active:scale-95 transition-all duration-200"
+            title="שייק מהיר"
+          >
+            🥤
+          </button>
           <button
             onClick={handleLogCoffee}
             disabled={coffeeLogging}
@@ -1575,6 +1630,18 @@ export default function NutritionPage() {
             />
           )}
 
+          {shakeModalOpen && (
+            <ShakeModal
+              mealType={selectedMeal}
+              onClose={() => setShakeModalOpen(false)}
+              onLogged={async () => {
+                setShakeModalOpen(false)
+                await fetchToday()
+              }}
+              onScanLabel={() => setLabelModalOpen(true)}
+            />
+          )}
+
           {/* ── כרטיס מנה ממוצר סרוק ─────────────────────────── */}
           {labelScan && (
             <div className="bg-cyan-50 border border-cyan-100 rounded-xl p-3 space-y-2.5" dir="rtl">
@@ -1717,6 +1784,26 @@ export default function NutritionPage() {
                   <span className="text-[10px] text-gray-400">(נדרש משקל אריזה לשמירה)</span>
                 )}
               </div>
+
+              {isLikelyProteinPowder(labelScan) && (
+                <button
+                  onClick={handleSaveToPowders}
+                  disabled={powderSaving || !labelPortionGrams()}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition-colors disabled:opacity-40",
+                    powderSaved ? "bg-emerald-50 text-emerald-600" : "bg-violet-50 text-violet-600 hover:bg-violet-100",
+                  )}
+                >
+                  {powderSaving ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : powderSaved ? (
+                    <Check size={12} />
+                  ) : (
+                    <span>💪</span>
+                  )}
+                  {powderSaved ? "נשמר לאבקות שלי!" : "שמור לאבקות שלי"}
+                </button>
+              )}
 
               <button
                 onClick={handleLogLabelPortion}

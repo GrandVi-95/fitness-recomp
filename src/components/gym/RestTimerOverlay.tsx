@@ -54,12 +54,12 @@ export default function RestTimerOverlay() {
 
   // צבע משתנה לפי זמן שנותר
   const ringColor = isFinished
-    ? "#22c55e"
+    ? "#34C759"
     : secondsRemaining > 45
-    ? "#6366f1"
+    ? "#007AFF"
     : secondsRemaining > 20
-    ? "#f59e0b"
-    : "#ef4444"
+    ? "#FF9500"
+    : "#FF3B30"
 
   const strokeDashoffset = CIRCUMFERENCE * (1 - percentRemaining)
 
@@ -78,14 +78,14 @@ export default function RestTimerOverlay() {
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/98 backdrop-blur-sm px-6">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#F9FAFB] px-6">
       {/* באנר אישור סט */}
       <div
         className={cn(
           "flex items-center gap-2 mb-3 px-4 py-2 rounded-full",
           isFinished
-            ? "bg-green-500/20 text-green-400"
-            : "bg-indigo-500/10 text-indigo-400"
+            ? "bg-green-50 text-[#34C759]"
+            : "bg-blue-50 text-[#007AFF]"
         )}
       >
         <CheckCircle2 size={16} strokeWidth={2.5} />
@@ -98,22 +98,22 @@ export default function RestTimerOverlay() {
 
       {/* פרטי הסט האחרון */}
       {lastLoggedSetInfo && (
-        <p className="text-slate-400 text-sm mb-8 text-center">
+        <p className="text-gray-500 text-sm mb-8 text-center">
           {lastLoggedSetInfo.exerciseName}
           {" · "}
           {lastLoggedSetInfo.durationSecs ? (
-            <span className="text-slate-200 font-semibold">
+            <span className="text-gray-900 font-semibold">
               {lastLoggedSetInfo.durationSecs} שניות החזקה
             </span>
           ) : (
             <>
-              <span className="text-slate-200 font-semibold">
+              <span className="text-gray-900 font-semibold">
                 {lastLoggedSetInfo.weightKg > 0
                   ? `${lastLoggedSetInfo.weightKg} ק"ג`
                   : "BW"}
               </span>
               {" × "}
-              <span className="text-slate-200 font-semibold">
+              <span className="text-gray-900 font-semibold">
                 {lastLoggedSetInfo.reps} חזרות
               </span>
             </>
@@ -135,7 +135,7 @@ export default function RestTimerOverlay() {
             cy="64"
             r={R}
             fill="none"
-            stroke="#1e293b"
+            stroke="#F3F4F6"
             strokeWidth="10"
           />
           {/* טבעת התקדמות */}
@@ -160,8 +160,8 @@ export default function RestTimerOverlay() {
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {isFinished ? (
             <>
-              <Zap size={28} className="text-green-400 mb-1" fill="currentColor" />
-              <span className="text-sm font-bold text-green-400">קדימה!</span>
+              <Zap size={28} className="text-[#34C759] mb-1" fill="currentColor" />
+              <span className="text-sm font-bold text-[#34C759]">קדימה!</span>
             </>
           ) : (
             <>
@@ -171,7 +171,7 @@ export default function RestTimerOverlay() {
               >
                 {formatTime(secondsRemaining)}
               </span>
-              <span className="text-xs text-slate-500 mt-1 tracking-widest uppercase">
+              <span className="text-xs text-gray-400 mt-1 tracking-widest uppercase">
                 מנוחה
               </span>
             </>
@@ -183,7 +183,7 @@ export default function RestTimerOverlay() {
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => adjustRestDuration(-15)}
-          className="flex items-center gap-1 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-sm font-medium text-slate-300 transition-colors"
+          className="flex items-center gap-1 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-sm font-medium text-gray-600 transition-colors"
         >
           <Minus size={14} /> 15 שנ'
         </button>
@@ -193,8 +193,8 @@ export default function RestTimerOverlay() {
           className={cn(
             "flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-colors",
             isFinished
-              ? "bg-green-600 hover:bg-green-500 text-white"
-              : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+              ? "bg-[#34C759] hover:opacity-90 text-white"
+              : "bg-gray-200 hover:bg-gray-300 text-gray-700"
           )}
         >
           <SkipForward size={16} />
@@ -203,7 +203,7 @@ export default function RestTimerOverlay() {
 
         <button
           onClick={() => adjustRestDuration(30)}
-          className="flex items-center gap-1 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-sm font-medium text-slate-300 transition-colors"
+          className="flex items-center gap-1 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-sm font-medium text-gray-600 transition-colors"
         >
           <Plus size={14} /> 30 שנ'
         </button>
@@ -212,19 +212,19 @@ export default function RestTimerOverlay() {
       {/* רמז הקשרי — מה הבא */}
       <div className="text-center space-y-1">
         {setsRemaining > 0 ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-gray-400">
             נותרו {setsRemaining} {setsRemaining === 1 ? "סט" : "סטים"} עבור{" "}
-            <span className="text-slate-300">{currentItemName}</span>
+            <span className="text-gray-700">{currentItemName}</span>
           </p>
         ) : nextItem ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-gray-400">
             הבא:{" "}
-            <span className="text-slate-300 font-medium">{nextName}</span>
+            <span className="text-gray-700 font-medium">{nextName}</span>
             {" · "}
             {nextMeta}
           </p>
         ) : (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-gray-400">
             תרגיל אחרון — סיים בכוח!
           </p>
         )}

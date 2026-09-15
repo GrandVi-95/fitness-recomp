@@ -25,11 +25,12 @@ interface Props {
 }
 
 const TOOLTIP_STYLE = {
-  background: "#0f172a",
-  border: "1px solid #1e293b",
+  background: "#FFFFFF",
+  border: "1px solid #E5E7EB",
   borderRadius: 8,
   fontSize: 12,
-  color: "#e2e8f0",
+  color: "#111827",
+  boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
 }
 
 export default function WeeklyCharts({ dailyNutrition, targetCalories, targetProtein }: Props) {
@@ -38,33 +39,33 @@ export default function WeeklyCharts({ dailyNutrition, targetCalories, targetPro
       {/* ── Calories ─────────────────────────────────────── */}
       <div>
         <div className="flex justify-between items-center mb-2">
-          <p className="text-xs text-slate-400">קלוריות יומיות</p>
-          <p className="text-[11px] text-orange-400/70">יעד: {targetCalories} קק&quot;ל</p>
+          <p className="text-xs text-gray-500">קלוריות יומיות</p>
+          <p className="text-[11px] text-[#FF9500]/70">יעד: {targetCalories} קק&quot;ל</p>
         </div>
         <ResponsiveContainer width="100%" height={110}>
           <BarChart data={dailyNutrition} barSize={22} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
             <XAxis
               dataKey="label"
-              tick={{ fill: "#64748b", fontSize: 11 }}
+              tick={{ fill: "#9CA3AF", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
-              cursor={{ fill: "rgba(255,255,255,0.03)" }}
+              cursor={{ fill: "rgba(0,0,0,0.04)" }}
               formatter={(val) => [`${Number(val)} קק"ל`, "קלוריות"]}
             />
-            <ReferenceLine y={targetCalories} stroke="#f97316" strokeDasharray="4 3" strokeOpacity={0.5} />
+            <ReferenceLine y={targetCalories} stroke="#FF9500" strokeDasharray="4 3" strokeOpacity={0.5} />
             <Bar dataKey="calories" radius={[4, 4, 0, 0]}>
               {dailyNutrition.map((entry, i) => (
                 <Cell
                   key={i}
                   fill={
                     !entry.hasData
-                      ? "#1e293b"
+                      ? "#F3F4F6"
                       : entry.calories >= targetCalories * 0.9 && entry.calories <= targetCalories * 1.1
-                      ? "#22c55e"
-                      : "#f97316"
+                      ? "#34C759"
+                      : "#FF9500"
                   }
                 />
               ))}
@@ -76,33 +77,33 @@ export default function WeeklyCharts({ dailyNutrition, targetCalories, targetPro
       {/* ── Protein ──────────────────────────────────────── */}
       <div>
         <div className="flex justify-between items-center mb-2">
-          <p className="text-xs text-slate-400">חלבון יומי (גר&apos;)</p>
-          <p className="text-[11px] text-violet-400/70">יעד: {targetProtein} גר&apos;</p>
+          <p className="text-xs text-gray-500">חלבון יומי (גר&apos;)</p>
+          <p className="text-[11px] text-[#007AFF]/70">יעד: {targetProtein} גר&apos;</p>
         </div>
         <ResponsiveContainer width="100%" height={110}>
           <BarChart data={dailyNutrition} barSize={22} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
             <XAxis
               dataKey="label"
-              tick={{ fill: "#64748b", fontSize: 11 }}
+              tick={{ fill: "#9CA3AF", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
-              cursor={{ fill: "rgba(255,255,255,0.03)" }}
+              cursor={{ fill: "rgba(0,0,0,0.04)" }}
               formatter={(val) => [`${Number(val)} גר'`, "חלבון"]}
             />
-            <ReferenceLine y={targetProtein} stroke="#8b5cf6" strokeDasharray="4 3" strokeOpacity={0.5} />
+            <ReferenceLine y={targetProtein} stroke="#007AFF" strokeDasharray="4 3" strokeOpacity={0.5} />
             <Bar dataKey="protein" radius={[4, 4, 0, 0]}>
               {dailyNutrition.map((entry, i) => (
                 <Cell
                   key={i}
                   fill={
                     !entry.hasData
-                      ? "#1e293b"
+                      ? "#F3F4F6"
                       : entry.protein >= targetProtein
-                      ? "#22c55e"
-                      : "#8b5cf6"
+                      ? "#34C759"
+                      : "#007AFF"
                   }
                 />
               ))}

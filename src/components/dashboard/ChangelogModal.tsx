@@ -11,7 +11,7 @@ export default function VersionBadge() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors font-mono"
+        className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors font-mono"
       >
         {APP_VERSION}
       </button>
@@ -23,19 +23,19 @@ export default function VersionBadge() {
           aria-modal="true"
         >
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
 
-          <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl">
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-800">
-              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <BookOpen size={16} className="text-indigo-400" />
+          <div className="relative w-full max-w-sm bg-white border border-gray-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <BookOpen size={16} className="text-[#007AFF]" />
                 יומן שינויים
               </h2>
               <button
                 onClick={() => setOpen(false)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                 aria-label="סגור"
               >
                 <X size={16} />
@@ -46,16 +46,16 @@ export default function VersionBadge() {
               {CHANGELOG.map((entry, i) => (
                 <div key={entry.version} className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-indigo-400 font-mono">
+                    <span className="text-xs font-bold text-[#007AFF] font-mono">
                       {entry.version}
                     </span>
                     {i === 0 && (
-                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full font-medium">
+                      <span className="text-[10px] bg-blue-50 text-[#007AFF] px-1.5 py-0.5 rounded-full font-medium">
                         עכשווי
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 leading-relaxed" dir="rtl">
+                  <p className="text-xs text-gray-500 leading-relaxed" dir="rtl">
                     {entry.description}
                   </p>
                 </div>

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.3",
+    description:
+      "UI/Feat: Enforced global Cupertino light-theme sweep across all remaining pages. Introduced Smart Protein Shake Builder with label saving and liquid mixing.",
+  },
+  {
     version: "v1.15.2",
     description:
       "UI Fix: Swept the app to remove leftover dark mode components (specifically on the Workouts page) and aligned all cards and buttons with the new light Cupertino aesthetic.",
@@ -251,4 +256,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.2"
+export const APP_VERSION = "v1.15.3"

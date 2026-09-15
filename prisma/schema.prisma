@@ -43,6 +43,7 @@ model User {
   progressPhotos  ProgressPhoto[]
   userSettings    UserSettings?
   checkIns        CheckIn[]
+  savedProteins   SavedProtein[]
 }
 
 model UserSettings {
@@ -246,6 +247,27 @@ model NutritionFoodItem {
 
   log  NutritionLog @relation(fields: [logId], references: [id], onDelete: Cascade)
   food Food?        @relation(fields: [foodId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// SMART PROTEIN SHAKE BUILDER
+// ─────────────────────────────────────────────
+
+// A protein powder the user has scanned or entered, saved so future shakes
+// can be logged in a few taps instead of re-scanning the tub each time.
+// Macros are stored PER SCOOP (whatever the user defined "one scoop" as when
+// saving — see the Label Scanner's "שמור לאבקות שלי" action), not per 100g.
+model SavedProtein {
+  id               String   @id @default(cuid())
+  userId           String
+  name             String
+  proteinPerScoop  Float
+  carbsPerScoop    Float
+  fatPerScoop      Float
+  caloriesPerScoop Float
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─────────────────────────────────────────────
