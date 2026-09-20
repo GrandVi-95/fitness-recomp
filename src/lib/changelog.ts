@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.8",
+    description:
+      "Performance: Added a Cupertino-style loading.tsx skeleton and Suspense boundaries to fix blocked/delayed client-side routing to the Dashboard.",
+  },
+  {
     version: "v1.15.7",
     description:
       "Fix: Pushed Bottom Nav buttons inward (anti-bezel padding) to bypass iOS physical edge gesture interception, and expanded their vertical hit targets.",
@@ -271,4 +276,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.7"
+export const APP_VERSION = "v1.15.8"

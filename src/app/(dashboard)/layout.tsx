@@ -84,6 +84,7 @@ export default function DashboardLayout({
                     not just the icon/label glyphs inside it. */}
                 <Link
                   href={href}
+                  prefetch={true}
                   className={cn(
                     "flex flex-col items-center justify-center flex-1 h-full min-h-[4rem] gap-1 text-[10px] font-medium transition-colors pointer-events-auto",
                     active
