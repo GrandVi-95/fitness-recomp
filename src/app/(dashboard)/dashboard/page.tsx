@@ -110,6 +110,7 @@ async function getDashboardData() {
   // ── Targets ──────────────────────────────────────────────────────────────────
   const settings     = user?.userSettings
   const latestWeight = latestMetric?.weightKg ?? null
+  const calorieAdjustmentOffset = settings?.calorieAdjustmentOffset ?? 0
   const { calories: targetCalories, protein: targetProtein, fat: targetFats, carbs: targetCarbs } = computeTargets({
     targetCalories:  user?.targetCalories,
     targetProtein:   user?.targetProtein,
@@ -202,6 +203,7 @@ async function getDashboardData() {
     targetCarbs,
     todayNutrition,
     latestWeight,
+    calorieAdjustmentOffset,
     nextWorkout,
     showSmartAlert,
     weekDays,
@@ -366,6 +368,7 @@ export default async function DashboardPage() {
     targetCarbs,
     todayNutrition,
     latestWeight,
+    calorieAdjustmentOffset,
     nextWorkout,
     showSmartAlert,
     weekDays,
@@ -515,6 +518,17 @@ export default async function DashboardPage() {
               — העדיפו ארוחות עשירות בחלבון.
             </p>
           )}
+
+          {/* שקיפות המנוע — איזה משתנים מניעים את היעדים היום */}
+          <p className="text-xs text-gray-400 font-medium text-center pt-3 border-t border-gray-100">
+            {latestWeight != null
+              ? `מחושב לפי ${latestWeight.toFixed(1)} ק״ג${
+                  calorieAdjustmentOffset
+                    ? ` • התאמת אלגוריתם: ${calorieAdjustmentOffset > 0 ? "+" : ""}${calorieAdjustmentOffset} קל׳`
+                    : ""
+                }`
+              : "ללא התאמת אלגוריתם"}
+          </p>
         </div>
       )}
 

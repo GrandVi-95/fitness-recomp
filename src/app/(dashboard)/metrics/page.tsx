@@ -6,6 +6,7 @@ import {
   CheckCircle2, AlertCircle, X, Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/components/ui/Toast"
 
 // ── Types ─────────────────────────────────────────────────────
 interface BodyMetric {
@@ -55,6 +56,31 @@ const ANGLE_LABELS: Record<string, string> = {
   side_right: "צד ימין",
 }
 
+// Daily macro targets as returned by /api/nutrition/today — used only to
+// detect whether logging a new weight shifted the weight-driven targets
+// (protein/fat, per the Lean Gain Engine's formulas in src/lib/nutrition.ts).
+interface DailyTargets {
+  calories: number
+  protein:  number
+  carbs:    number
+  fat:      number
+}
+
+async function fetchDailyTargets(): Promise<DailyTargets | null> {
+  try {
+    const res = await fetch("/api/nutrition/today")
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.targets ?? null
+  } catch {
+    return null
+  }
+}
+
+function targetsDiffer(a: DailyTargets, b: DailyTargets): boolean {
+  return a.calories !== b.calories || a.protein !== b.protein || a.carbs !== b.carbs || a.fat !== b.fat
+}
+
 // ── טופס הוספת משקל ──────────────────────────────────────────
 function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
   const [weight, setWeight] = useState("")
@@ -62,6 +88,7 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
   const [waist, setWaist] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { showToast } = useToast()
 
   const handleSubmit = async () => {
     const kg = parseFloat(weight)
@@ -72,6 +99,11 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
     setSaving(true)
     setError(null)
     try {
+      // Captured BEFORE saving so we have a true before/after comparison —
+      // the Lean Gain Engine recomputes protein/fat targets from the latest
+      // logged weight (see /api/nutrition/today), so a new weight can shift
+      // them even though nothing else about the user's settings changed.
+      const prevTargets = await fetchDailyTargets()
       const res = await fetch("/api/metrics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,6 +118,13 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
       setWeight("")
       setBodyFat("")
       setWaist("")
+      const newTargets = await fetchDailyTargets()
+      if (prevTargets && newTargets && targetsDiffer(prevTargets, newTargets)) {
+        showToast({
+          title: "היעדים שלך עודכנו!",
+          subtitle: "הקלוריות והמאקרו הותאמו אוטומטית למשקל החדש שלך.",
+        })
+      }
       onSaved(kg)
     } catch {
       setError("שגיאת חיבור — נסה שוב")

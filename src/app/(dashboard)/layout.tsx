@@ -12,6 +12,7 @@ import {
   Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ToastProvider } from "@/components/ui/Toast"
 
 const NAV_ITEMS = [
   { href: "/dashboard",   label: "בית",      icon: LayoutDashboard },
@@ -30,6 +31,7 @@ export default function DashboardLayout({
   const pathname = usePathname()
 
   return (
+    <ToastProvider>
     <div className="flex flex-col min-h-screen">
       {/* Top header — true Apple chrome: white/70 + blur, hairline border */}
       <header className="sticky top-0 z-40 flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white/70 backdrop-blur-lg">
@@ -89,5 +91,6 @@ export default function DashboardLayout({
         </ul>
       </nav>
     </div>
+    </ToastProvider>
   )
 }

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.5",
+    description:
+      "Feat: Added transparent engine indicators to the Dashboard and reactive toast notifications for automatic macro recalculations.",
+  },
+  {
     version: "v1.15.3",
     description:
       "UI/Feat: Enforced global Cupertino light-theme sweep across all remaining pages. Introduced Smart Protein Shake Builder with label saving and liquid mixing.",
@@ -256,4 +261,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.3"
+export const APP_VERSION = "v1.15.5"

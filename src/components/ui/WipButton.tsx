@@ -43,7 +43,11 @@ export function WipButton({
       <div
         aria-live="polite"
         className={cn(
-          "fixed bottom-24 start-1/2 -translate-x-1/2 z-[100]",
+          // left-1/2 (physical), not start-1/2 (logical) — centering has no
+          // direction, and pairing a logical inset with a physical transform
+          // doubles the offset under dir="rtl", pushing this almost entirely
+          // off-screen.
+          "fixed bottom-24 left-1/2 -translate-x-1/2 z-[100]",
           "px-4 py-2 rounded-xl bg-white border border-gray-100 text-sm font-medium text-gray-900 shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
           "pointer-events-none transition-all duration-300",
           visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
