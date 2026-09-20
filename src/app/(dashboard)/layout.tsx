@@ -64,20 +64,28 @@ export default function DashboardLayout({
           modal still correctly covers it. pb-safe-area pushes the touch
           targets up out of iOS's home-indicator gesture band — without it
           (and without viewport-fit=cover in the root layout) the two outer
-          buttons sit inside that dead zone and never receive taps. */}
+          buttons sit inside that dead zone and never receive taps.
+          The bar's own background still spans full width (visual chrome),
+          but px-4 on the row below insets the actual tap targets from the
+          physical bezel — on a real device, iOS's edge-swipe/palm-rejection
+          zones can eat touches within a few px of the true screen edge even
+          when nothing in our own DOM is technically blocking them, which is
+          invisible to any in-browser hit-testing (elementFromPoint, etc.). */}
       <nav className="fixed bottom-0 start-0 end-0 z-[45] bg-white/80 backdrop-blur-lg border-t border-gray-100 pointer-events-auto pb-[env(safe-area-inset-bottom)]">
-        <ul className="flex items-stretch justify-evenly h-16">
+        <ul className="flex items-stretch h-16 px-4">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(href)
             return (
-              <li key={href} className="flex">
+              <li key={href} className="flex-1 flex">
+                {/* flex-1 + min-h-[4rem]: the whole column is the tap target,
+                    not just the icon/label glyphs inside it. */}
                 <Link
                   href={href}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 h-full px-4 py-2 text-[10px] font-medium transition-colors pointer-events-auto",
+                    "flex flex-col items-center justify-center flex-1 h-full min-h-[4rem] gap-1 text-[10px] font-medium transition-colors pointer-events-auto",
                     active
                       ? "text-black"
                       : "text-gray-400 hover:text-gray-600"

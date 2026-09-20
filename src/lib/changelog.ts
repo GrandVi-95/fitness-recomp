@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.7",
+    description:
+      "Fix: Pushed Bottom Nav buttons inward (anti-bezel padding) to bypass iOS physical edge gesture interception, and expanded their vertical hit targets.",
+  },
+  {
     version: "v1.15.6",
     description:
       "Fix: Resolved unclickable outer buttons on the mobile bottom navigation by adjusting safe-area padding and z-index. Removed the Recovery tab for a cleaner, 5-button layout.",
@@ -266,4 +271,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.6"
+export const APP_VERSION = "v1.15.7"
