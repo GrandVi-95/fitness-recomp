@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.6",
+    description:
+      "Fix: Resolved unclickable outer buttons on the mobile bottom navigation by adjusting safe-area padding and z-index. Removed the Recovery tab for a cleaner, 5-button layout.",
+  },
+  {
     version: "v1.15.5",
     description:
       "Feat: Added transparent engine indicators to the Dashboard and reactive toast notifications for automatic macro recalculations.",
@@ -261,4 +266,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.5"
+export const APP_VERSION = "v1.15.6"

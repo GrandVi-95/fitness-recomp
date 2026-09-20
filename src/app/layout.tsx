@@ -17,6 +17,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // Required for env(safe-area-inset-*) to resolve to anything but 0 on iOS —
+  // without it, the bottom nav has no way to know about the home-indicator
+  // gesture band and its outer buttons sit inside that dead zone.
+  viewportFit: "cover",
 }
 
 export default function RootLayout({

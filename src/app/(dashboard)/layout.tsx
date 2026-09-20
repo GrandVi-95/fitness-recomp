@@ -8,7 +8,6 @@ import {
   UtensilsCrossed,
   LineChart,
   Zap,
-  HeartPulse,
   Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -20,7 +19,6 @@ const NAV_ITEMS = [
   { href: "/gym",         label: "כושר",     icon: Zap             },
   { href: "/nutrition",   label: "תזונה",     icon: UtensilsCrossed },
   { href: "/metrics",     label: "מדדים",     icon: LineChart        },
-  { href: "/recovery",    label: "התאוששות", icon: HeartPulse      },
 ] as const
 
 export default function DashboardLayout({
@@ -56,23 +54,30 @@ export default function DashboardLayout({
         </div>
       </header>
 
-      {/* Page content */}
-      <main className="flex-1 overflow-y-auto pb-20">{children}</main>
+      {/* Page content — bottom padding clears the fixed nav's own height
+          (h-16) plus whatever safe-area inset it added on top of that. */}
+      <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom)+0.5rem)]">{children}</main>
 
-      {/* Mobile bottom navigation — true Apple chrome: white/80 + blur, hairline border */}
-      <nav className="fixed bottom-0 start-0 end-0 z-40 bg-white/80 backdrop-blur-lg border-t border-gray-100">
-        <ul className="flex items-stretch h-16">
+      {/* Mobile bottom navigation — true Apple chrome: white/80 + blur, hairline border.
+          z-[45] sits above ordinary page content but below full-screen modals
+          (z-50, e.g. WorkoutEditor/LabelScannerModal/ShakeModal) so an open
+          modal still correctly covers it. pb-safe-area pushes the touch
+          targets up out of iOS's home-indicator gesture band — without it
+          (and without viewport-fit=cover in the root layout) the two outer
+          buttons sit inside that dead zone and never receive taps. */}
+      <nav className="fixed bottom-0 start-0 end-0 z-[45] bg-white/80 backdrop-blur-lg border-t border-gray-100 pointer-events-auto pb-[env(safe-area-inset-bottom)]">
+        <ul className="flex items-stretch justify-evenly h-16">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(href)
             return (
-              <li key={href} className="flex-1">
+              <li key={href} className="flex">
                 <Link
                   href={href}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 h-full w-full text-[10px] font-medium transition-colors",
+                    "flex flex-col items-center justify-center gap-1 h-full px-4 py-2 text-[10px] font-medium transition-colors pointer-events-auto",
                     active
                       ? "text-black"
                       : "text-gray-400 hover:text-gray-600"
