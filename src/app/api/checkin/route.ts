@@ -78,8 +78,14 @@ async function computeSignals(): Promise<CheckInSignals> {
     sessions.reduce((sum, s) => sum + s.sets.reduce((a, set) => a + set.weightKg * set.reps, 0), 0)
   const perfTrendLabel = classifyPerfTrend(volumeOf(recentSessions), volumeOf(priorSessions))
 
+  // Clean slate: a check-in recorded during Creatine Calibration BREAKS the
+  // consecutive chain rather than being skipped over — skipping would let an
+  // older, pre-creatine weight↑/waist↑ check-in pair with the next one and
+  // trigger an immediate cut right after the toggle is turned off.
   const previousWasWeightUpWaistUp =
-    lastCheckIn?.weightTrendLabel === "up" && lastCheckIn?.waistTrendLabel === "up"
+    !lastCheckIn?.creatineCalibrationActive &&
+    lastCheckIn?.weightTrendLabel === "up" &&
+    lastCheckIn?.waistTrendLabel === "up"
 
   const anchorDate = firstMetric?.date ?? now
   const due = isCheckInDue(lastCheckIn?.date ?? null, anchorDate, now)
@@ -180,6 +186,7 @@ export async function POST() {
         offsetDelta: decision.offsetDelta,
         offsetAfter,
         reasoning: decision.reasoning,
+        creatineCalibrationActive: settings?.creatineCalibrationActive ?? false,
       },
     })
     await db.userSettings.upsert({

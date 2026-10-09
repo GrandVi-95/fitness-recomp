@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.10",
+    description:
+      "Fix: Implemented 'Clean Slate' logic for Creatine Calibration to prevent retroactive calorie cuts when the calibration toggle is turned off.",
+  },
+  {
     version: "v1.15.9",
     description:
       "Feat: Added Creatine Calibration toggle in settings to protect macro targets from false-positive algorithmic cuts during water retention phases.",
@@ -281,4 +286,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.9"
+export const APP_VERSION = "v1.15.10"

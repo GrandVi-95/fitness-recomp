@@ -323,6 +323,9 @@ model CheckIn {
   // Noise-filtered trend inputs at the time of this check-in
   weightTrendPct   Float    // 7-day-avg vs prior-7-day-avg, % change per week (signed)
   weightTrendLabel String   // "fast_loss" | "down" | "stable" | "up"
+  // Recorded during Creatine Calibration — its weight/waist labels reflect
+  // water retention, so it never counts toward the "2 consecutive" cut rule.
+  creatineCalibrationActive Boolean @default(false)
   waistCm          Float?   // waist reading used for this check-in, if any
   waistDeltaCm     Float?   // signed change vs the previous check-in's waistCm
   waistTrendLabel  String   // "down" | "stable" | "up"
