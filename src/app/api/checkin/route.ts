@@ -118,6 +118,7 @@ export async function GET() {
       waistTrend: signals.waistTrendLabel,
       perfTrend: signals.perfTrendLabel,
       previousWasWeightUpWaistUp: signals.previousWasWeightUpWaistUp,
+      creatineCalibrationActive: settings?.creatineCalibrationActive ?? false,
     })
     const currentOffset = settings?.calorieAdjustmentOffset ?? 0
 
@@ -161,6 +162,7 @@ export async function POST() {
       waistTrend: signals.waistTrendLabel,
       perfTrend: signals.perfTrendLabel,
       previousWasWeightUpWaistUp: signals.previousWasWeightUpWaistUp,
+      creatineCalibrationActive: settings?.creatineCalibrationActive ?? false,
     })
     const currentOffset = settings?.calorieAdjustmentOffset ?? 0
     const offsetAfter = currentOffset + decision.offsetDelta

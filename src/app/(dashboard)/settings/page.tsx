@@ -24,6 +24,7 @@ import {
   Send,
   XCircle,
   Palmtree,
+  FlaskConical,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -82,6 +83,7 @@ interface SettingsData {
   reportEmail: string
   calorieAdjustmentOffset: number
   vacationMode: boolean
+  creatineCalibrationActive: boolean
 }
 
 // ── Small shared components ──────────────────────────────────────────────────
@@ -207,6 +209,9 @@ export default function SettingsPage() {
   // Vacation Mode — pauses the Lean Gain check-in engine entirely
   const [vacationMode, setVacationMode] = useState(false)
 
+  // Creatine Calibration — check-in engine keeps running but can't cut calories
+  const [creatineCalibration, setCreatineCalibration] = useState(false)
+
   // Weekly report
   const [reportEnabled, setReportEnabled] = useState(true)
   const [reportEmail, setReportEmail]     = useState("")
@@ -239,6 +244,7 @@ export default function SettingsPage() {
         setReportEmail(d.reportEmail ?? "")
         setCalorieAdjustmentOffset(d.calorieAdjustmentOffset ?? 0)
         setVacationMode(d.vacationMode ?? false)
+        setCreatineCalibration(d.creatineCalibrationActive ?? false)
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -286,6 +292,19 @@ export default function SettingsPage() {
     }
   }
 
+  const handleToggleCreatine = async (value: boolean) => {
+    setCreatineCalibration(value)
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creatineCalibrationActive: value }),
+      })
+    } catch {
+      // Best-effort — the next full form save will still pick this up.
+    }
+  }
+
   // ── Save ────────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
@@ -300,6 +319,7 @@ export default function SettingsPage() {
         smartAlertsEnabled,
         showWeeklySummary,
         vacationMode,
+        creatineCalibrationActive: creatineCalibration,
         dietaryPreference,
         reportEnabled,
         reportEmail: reportEmail.trim(),
@@ -541,6 +561,31 @@ export default function SettingsPage() {
             </div>
           </div>
           <Toggle enabled={vacationMode} onChange={handleToggleVacation} />
+        </div>
+      </section>
+
+      {/* ── כיול קריאטין — מנוע ה-Check-In ממשיך, אך ללא קיצוצים ── */}
+      <section
+        className={cn(
+          CARD,
+          "p-4 space-y-1 border transition-colors",
+          creatineCalibration
+            ? "bg-gradient-to-br from-violet-50 to-blue-50 border-violet-300/40"
+            : "border-transparent",
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FlaskConical size={17} className={creatineCalibration ? "text-violet-500" : "text-gray-400"} />
+            <div>
+              <p className="text-sm font-semibold text-gray-900">כיול קריאטין</p>
+              <p className="text-[11px] text-gray-500">
+                משעה את קיצוץ הקלוריות באלגוריתם ה-Check-In כדי למנוע ירידה שגויה ביעדים
+                עקב צבירת נוזלים תוך-שריריים מקריאטין.
+              </p>
+            </div>
+          </div>
+          <Toggle enabled={creatineCalibration} onChange={handleToggleCreatine} />
         </div>
       </section>
 

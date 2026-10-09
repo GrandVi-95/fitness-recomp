@@ -202,6 +202,9 @@ export interface CheckInDecisionInput {
   // for the "2 consecutive check-ins" rule — a single occurrence never
   // triggers the cut on its own.
   previousWasWeightUpWaistUp: boolean
+  // Creatine Calibration: the matrix still runs, but a "decrease" is
+  // overridden to no_change — creatine water weight must never trigger a cut.
+  creatineCalibrationActive?: boolean
 }
 
 export interface CheckInDecisionResult {
@@ -218,6 +221,18 @@ export interface CheckInDecisionResult {
  * oscillates on a combination of signals the PRD didn't anticipate.
  */
 export function decideCheckIn(input: CheckInDecisionInput): CheckInDecisionResult {
+  const result = decideCheckInRaw(input)
+  if (input.creatineCalibrationActive && result.offsetDelta < 0) {
+    return {
+      decision: "no_change",
+      offsetDelta: 0,
+      reasoning: "כיול קריאטין פעיל — מתעלמים מהעלייה במשקל/בהיקף (צבירת נוזלים תוך-שרירית), ללא קיצוץ קלוריות.",
+    }
+  }
+  return result
+}
+
+function decideCheckInRaw(input: CheckInDecisionInput): CheckInDecisionResult {
   const { weightTrend, waistTrend, perfTrend, previousWasWeightUpWaistUp } = input
 
   const waistNotUp = waistTrend === "down" || waistTrend === "stable"

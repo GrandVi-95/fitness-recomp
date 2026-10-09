@@ -79,6 +79,10 @@ model UserSettings {
   // never touches calorieAdjustmentOffset, and relaxes AI meal-logging prompts
   // to rough, judgment-free estimates.
   vacationMode            Boolean @default(false)
+  // Creatine Calibration — the check-in engine keeps running, but may never
+  // apply a NEGATIVE offset: creatine loading adds intramuscular water that
+  // reads as a weight spike, not fat gain. Increases are still allowed.
+  creatineCalibrationActive Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

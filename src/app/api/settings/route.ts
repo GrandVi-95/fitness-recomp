@@ -72,6 +72,7 @@ export async function GET() {
       reportEmail:         s?.reportEmail        ?? "",
       calorieAdjustmentOffset,
       vacationMode:        s?.vacationMode       ?? false,
+      creatineCalibrationActive: s?.creatineCalibrationActive ?? false,
     })
   } catch (err) {
     console.error("[GET /api/settings]", err)
@@ -102,6 +103,7 @@ interface SettingsBody {
   reportEnabled?: boolean
   reportEmail?: string
   vacationMode?: boolean
+  creatineCalibrationActive?: boolean
 }
 
 /** PUT /api/settings */
@@ -127,6 +129,7 @@ export async function PUT(request: Request) {
       reportEnabled,
       reportEmail,
       vacationMode,
+      creatineCalibrationActive,
     } = body
 
     // ── 1. Validate manual ranges ────────────────────────────────────────────
@@ -238,6 +241,7 @@ export async function PUT(request: Request) {
       ...(reportEnabled          !== undefined ? { reportEnabled }                      : {}),
       ...(reportEmail            !== undefined ? { reportEmail: reportEmail.trim() || null } : {}),
       ...(vacationMode           !== undefined ? { vacationMode }                       : {}),
+      ...(creatineCalibrationActive !== undefined ? { creatineCalibrationActive }       : {}),
     }
 
     if (Object.keys(settingsData).length > 0) {

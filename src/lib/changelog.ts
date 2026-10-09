@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.15.9",
+    description:
+      "Feat: Added Creatine Calibration toggle in settings to protect macro targets from false-positive algorithmic cuts during water retention phases.",
+  },
+  {
     version: "v1.15.8",
     description:
       "Performance: Added a Cupertino-style loading.tsx skeleton and Suspense boundaries to fix blocked/delayed client-side routing to the Dashboard.",
@@ -276,4 +281,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.8"
+export const APP_VERSION = "v1.15.9"
