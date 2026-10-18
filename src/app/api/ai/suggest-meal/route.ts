@@ -65,12 +65,25 @@ const SYSTEM_PROMPT =
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
+// A previously suggested meal, sent back when the user removes ingredients
+// so the model can revise it instead of inventing a brand-new dish.
+interface PreviousMeal {
+  name: string
+  ingredients: Array<{ quantity: string; name: string }>
+}
+
+function mealSchema(n: 1 | 2): string {
+  return `"meal${n}_name":"...","meal${n}_ingredients":"150 גר' מרכיב א, 2 יח' מרכיב ב","meal${n}_prep_time":"15 דק'","meal${n}_steps":"שלב ראשון | שלב שני | שלב שלישי","meal${n}_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0"`
+}
+
 function buildPrompt(
   remaining: { calories: number; protein: number; carbs: number; fats: number },
   dietLabel: string,
   ingredients: string,
   mealType: string,
   flavorProfile: string,
+  excluded: string[],
+  previous: PreviousMeal[] | null,
 ): string {
   const mealTypeLabel  = MEAL_TYPE_LABELS[mealType]   ?? "ארוחה כלשהי"
   const flavorLabel    = FLAVOR_LABELS[flavorProfile]  ?? "כל פרופיל טעם"
@@ -83,17 +96,31 @@ function buildPrompt(
     ? "השתמש במרכיבים המצוינים לעיל ככל האפשר."
     : "הצע מרכיבים מעשיים ונפוצים שקל להשיג."
 
-  const needsSplit = remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
+  const excludedPart = excluded.length
+    ? `\n- **מרכיבים שאינם זמינים (אסור להשתמש בהם או בכל צורה שלהם):** ${excluded.join(", ")}`
+    : ""
+
+  // Revising keeps the meal count of the original suggestion so the UI
+  // doesn't jump from one meal to two just because an ingredient was removed.
+  const needsSplit = previous
+    ? previous.length > 1
+    : remaining.calories > SPLIT_CAL || remaining.protein > SPLIT_PROTEIN
 
   const splitRule = needsSplit
     ? `\n\n**כלל חלוקת ארוחות (חובה):** הכמות הנותרת (${remaining.calories} קק"ל / ${remaining.protein} גר' חלבון) גדולה מדי לארוחה אחת סבירה. עליך לחלק את ההצעה בדיוק לשתי ארוחות נפרדות (לדוגמה: ארוחה עיקרית + חטיף לילה). השתמש בפורמט הכפול המפורט למטה.`
     : ""
 
+  const revisionPart = previous
+    ? `\n\n**עדכון הצעה קיימת (חובה):** זו ההצעה הקודמת:\n${previous
+        .map((m, i) => `ארוחה ${i + 1}: ${m.name} — ${m.ingredients.map((x) => `${x.quantity} ${x.name}`.trim()).join(", ")}`)
+        .join("\n")}\nהסר ממנה את המרכיבים שאינם זמינים. שמור על אותה מנה ככל האפשר: הגדל כמויות של המרכיבים הקיימים או הוסף תחליף נפוץ אחד כדי לחזור ליעדי המאקרו, עדכן את שם המנה אם צריך, וכתוב מחדש את המתכון.`
+    : ""
+
   const maxCalories = remaining.calories
 
   const jsonSchema = needsSplit
-    ? `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0","meal2_name":"...","meal2_ingredients":"מרכיב א, מרכיב ב","meal2_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0","warning":""}`
-    : `{"meal1_name":"...","meal1_ingredients":"מרכיב א, מרכיב ב","meal1_macros":"calories:0,protein:0,carbs:0,fat:0,sugar:0","warning":""}`
+    ? `{${mealSchema(1)},${mealSchema(2)},"warning":""}`
+    : `{${mealSchema(1)},"warning":""}`
 
   return `תפקידך: להציע ${needsSplit ? "שתי ארוחות" : "ארוחה אחת"} שמשלימות את יעדי המאקרו שנותרו להיום עבור ספורטאי עם תזונה ${dietLabel}ית.
 
@@ -103,7 +130,7 @@ function buildPrompt(
 - פחמימות: ${remaining.carbs} גר'
 - שומן: ${remaining.fats} גר'
 - סוג ארוחה: ${mealTypeLabel}
-- פרופיל טעם: ${flavorLabel}${ingredientsPart}${splitRule}
+- פרופיל טעם: ${flavorLabel}${ingredientsPart}${excludedPart}${splitRule}${revisionPart}
 
 כללים מחייבים:
 1. סך הקלוריות ≤ ${maxCalories}. אם יש קונפליקט, קצץ פחמימות — לא קלוריות.
@@ -113,6 +140,8 @@ function buildPrompt(
 5. תבלינים/שמנים/ממרחים: עד 20 גר' לכל מרכיב. אבקת חלבון: עד סקופ אחד (~30 גר').
 6. כל התוכן חייב להיות בעברית.
 7. אם המאקרו המבוקש בלתי-אפשרי: קרב לקלוריות וחלבון ככל האפשר ועצור — אסור ללולאת מרכיבים.
+8. כל מרכיב ב-ingredients חייב להתחיל בכמות מדויקת (גרם / יחידות / כפות), מופרד בפסיק.
+9. מתכון מלא: ב-steps כתוב 3–8 שלבי הכנה ברורים ומעשיים (חיתוך, טמפרטורה, זמני בישול, הגשה), מופרדים בתו "|". ב-prep_time כתוב את זמן ההכנה הכולל.
 
 החזר JSON בדיוק לפי הסכמה הבאה — ללא מפתחות נוספים, ללא מערכים, ללא קינון:
 ${jsonSchema}`
@@ -123,9 +152,13 @@ ${jsonSchema}`
 interface FlatMeal {
   meal1_name?: string
   meal1_ingredients?: string
+  meal1_prep_time?: string
+  meal1_steps?: string
   meal1_macros?: string
   meal2_name?: string
   meal2_ingredients?: string
+  meal2_prep_time?: string
+  meal2_steps?: string
   meal2_macros?: string
   warning?: string
 }
@@ -138,28 +171,30 @@ function parseMacroString(s: string = "") {
   return { calories: num("calories"), protein: num("protein"), carbs: num("carbs"), fat: num("fat"), sugar: num("sugar") }
 }
 
+// "200 גר' טופו" → { quantity: "200 גר'", name: "טופו" }. Items without a
+// leading number keep the whole text as the name.
 function parseIngredientString(s: string = "") {
-  return s.split(",").map((i) => i.trim()).filter(Boolean).map((name) => ({ quantity: "", name }))
+  return s.split(",").map((i) => i.trim()).filter(Boolean).map((item) => {
+    const m = item.match(/^([\d.,/½¼¾-]+\s*\S+)\s+(.+)$/)
+    return m ? { quantity: m[1], name: m[2] } : { quantity: "", name: item }
+  })
+}
+
+function parseSteps(s: string = "") {
+  return s.split("|").map((step) => step.trim()).filter(Boolean)
 }
 
 function flatToNestedSuggestion(flat: FlatMeal): string {
-  const meals = []
-  if (flat.meal1_name) {
-    meals.push({
-      name: flat.meal1_name,
-      ingredients: parseIngredientString(flat.meal1_ingredients),
+  const meals = ([1, 2] as const)
+    .filter((n) => flat[`meal${n}_name`])
+    .map((n) => ({
+      name: flat[`meal${n}_name`],
+      ingredients: parseIngredientString(flat[`meal${n}_ingredients`]),
       preparation: "",
-      macros: parseMacroString(flat.meal1_macros),
-    })
-  }
-  if (flat.meal2_name) {
-    meals.push({
-      name: flat.meal2_name,
-      ingredients: parseIngredientString(flat.meal2_ingredients),
-      preparation: "",
-      macros: parseMacroString(flat.meal2_macros),
-    })
-  }
+      prepTime: flat[`meal${n}_prep_time`] ?? "",
+      steps: parseSteps(flat[`meal${n}_steps`]),
+      macros: parseMacroString(flat[`meal${n}_macros`]),
+    }))
   return JSON.stringify({ meals, warning: flat.warning ?? "" })
 }
 
@@ -214,6 +249,12 @@ export async function POST(request: NextRequest) {
       carbs: number
       fats: number
     }
+    const excluded = Array.isArray(body.excluded)
+      ? (body.excluded as unknown[]).filter((x): x is string => typeof x === "string" && x.trim() !== "")
+      : []
+    const previous = Array.isArray(body.previous) && body.previous.length
+      ? (body.previous as PreviousMeal[])
+      : null
 
     const settings = await db.userSettings.findUnique({
       where: { userId: DEMO_USER_ID },
@@ -234,7 +275,7 @@ export async function POST(request: NextRequest) {
 
     const dietaryPreference = settings?.dietaryPreference ?? "vegetarian"
     const dietLabel = DIET_LABELS[dietaryPreference] ?? "צמחוני"
-    const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile)
+    const prompt    = buildPrompt(remaining, dietLabel, ingredients, mealType, flavorProfile, excluded, previous)
 
     let suggestion: string
     if (provider === "openai") {

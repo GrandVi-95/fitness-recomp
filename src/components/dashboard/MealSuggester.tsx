@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste } from "lucide-react"
+import { Sparkles, Loader2, RefreshCw, ChefHat, ClipboardPaste, X, Undo2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const MEAL_TYPES = [
@@ -32,6 +32,8 @@ interface MealData {
   name:        string
   ingredients: Array<{ quantity: string; name: string }>
   preparation: string
+  prepTime?:   string
+  steps?:      string[]
   macros:      MealMacros
 }
 
@@ -51,11 +53,11 @@ interface Props {
   onUseSuggestion?: (ingredientsText: string) => void
 }
 
-function extractIngredients(suggestion: string): string {
+function extractIngredients(suggestion: string, excluded: string[]): string {
   try {
     const data = JSON.parse(suggestion) as SuggestionData
     return data.meals
-      .flatMap((m) => m.ingredients.map((i) => `${i.quantity} ${i.name}`))
+      .flatMap((m) => m.ingredients.filter((i) => !excluded.includes(i.name)).map((i) => `${i.quantity} ${i.name}`))
       .join(", ")
   } catch {
     return suggestion
@@ -69,6 +71,10 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
   const [ingredients, setIngredients]     = useState("")
   const [mealType, setMealType]           = useState<MealTypeValue>("dinner")
   const [flavorProfile, setFlavorProfile] = useState<FlavorValue>("savory")
+  // Ingredients the user marked as unavailable. Kept across suggestions so
+  // "suggest another" won't bring the banana straight back.
+  const [excluded, setExcluded]           = useState<string[]>([])
+  const [lastIngredients, setLastIngredients] = useState("")
 
   const parsedSuggestion = useMemo<SuggestionData | null>(() => {
     if (!suggestion) return null
@@ -79,18 +85,31 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
     }
   }, [suggestion])
 
-  const suggest = async (withIngredients?: string) => {
+  // Removed ingredients still shown (struck through) in the current suggestion
+  // — non-empty means the macros/recipe are stale until recalculated.
+  const pendingRemovals = useMemo(
+    () => parsedSuggestion?.meals.some((m) => m.ingredients.some((i) => excluded.includes(i.name))) ?? false,
+    [parsedSuggestion, excluded],
+  )
+
+  const toggleExcluded = (name: string) =>
+    setExcluded((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]))
+
+  const suggest = async (withIngredients?: string, previous?: MealData[]) => {
     setLoading(true)
     setError(null)
+    const ingredientsText = withIngredients ?? ""
     try {
       const res = await fetch("/api/ai/suggest-meal", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ingredients: withIngredients ?? "",
+          ingredients: ingredientsText,
           remaining,
           mealType,
           flavorProfile,
+          excluded,
+          previous: previous?.map((m) => ({ name: m.name, ingredients: m.ingredients })),
         }),
       })
       const data = await res.json()
@@ -99,6 +118,7 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
         return
       }
       setSuggestion(data.suggestion)
+      setLastIngredients(ingredientsText)
     } catch {
       setError("שגיאת רשת — בדוק את החיבור שלך")
     } finally {
@@ -135,20 +155,60 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
               )}
               <p className="text-sm font-bold text-gray-900 mb-2">{meal.name}</p>
 
-              <ul className="space-y-0.5 mb-2">
-                {meal.ingredients.map((ing, j) => (
-                  <li key={j} className="text-xs text-gray-500">
-                    <span className="text-gray-300 ml-1">—</span>
-                    {ing.quantity} {ing.name}
-                  </li>
-                ))}
+              <p className="text-[11px] text-violet-600 font-semibold mb-1">מרכיבים</p>
+              <ul className="space-y-0.5 mb-3">
+                {meal.ingredients.map((ing, j) => {
+                  const removed = excluded.includes(ing.name)
+                  return (
+                    <li key={j} className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                      <span className={cn(removed && "line-through text-gray-300")}>
+                        <span className="text-gray-300 ml-1">—</span>
+                        {ing.quantity} {ing.name}
+                      </span>
+                      <button
+                        onClick={() => toggleExcluded(ing.name)}
+                        disabled={loading}
+                        aria-label={removed ? `החזר ${ing.name}` : `הסר ${ing.name}`}
+                        className={cn(
+                          "shrink-0 rounded-full p-1.5 -m-1 transition-colors disabled:opacity-40",
+                          removed ? "text-violet-500 hover:bg-violet-100" : "text-gray-300 hover:text-[#FF3B30] hover:bg-red-50",
+                        )}
+                      >
+                        {removed ? <Undo2 size={13} /> : <X size={13} />}
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
 
               {meal.preparation && (
                 <p className="text-xs text-gray-500 leading-relaxed mb-2.5">{meal.preparation}</p>
               )}
 
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
+              {meal.steps && meal.steps.length > 0 && (
+                <div className={cn("mb-3 transition-opacity", pendingRemovals && "opacity-40")}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] text-violet-600 font-semibold">אופן ההכנה</p>
+                    {meal.prepTime && (
+                      <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                        <Clock size={11} /> {meal.prepTime}
+                      </span>
+                    )}
+                  </div>
+                  <ol className="space-y-1.5">
+                    {meal.steps.map((step, k) => (
+                      <li key={k} className="flex gap-2 text-xs text-gray-600 leading-relaxed">
+                        <span className="shrink-0 w-4 h-4 rounded-full bg-violet-100 text-violet-600 text-[10px] font-bold flex items-center justify-center mt-0.5">
+                          {k + 1}
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              <div className={cn("flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold transition-opacity", pendingRemovals && "opacity-40")}>
                 <span className="text-[#FF9500]">{meal.macros.calories} קק"ל</span>
                 <span className="text-[#007AFF]">{meal.macros.protein}ג' חלב'</span>
                 <span className="text-[#34C759]">{meal.macros.carbs}ג' פחמ'</span>
@@ -164,9 +224,20 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
             </p>
           )}
 
-          {onUseSuggestion && (
+          {pendingRemovals && (
             <button
-              onClick={() => onUseSuggestion(extractIngredients(suggestion!))}
+              onClick={() => suggest(lastIngredients, parsedSuggestion.meals)}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-40 rounded-full py-2.5 text-xs font-semibold text-white active:scale-95 transition"
+            >
+              {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              {loading ? "מחשב מחדש..." : "חשב מחדש בלי המרכיבים שהוסרו"}
+            </button>
+          )}
+
+          {onUseSuggestion && !pendingRemovals && (
+            <button
+              onClick={() => onUseSuggestion(extractIngredients(suggestion!, excluded))}
               className="w-full flex items-center justify-center gap-2 bg-[#34C759] hover:opacity-90 rounded-full py-2.5 text-xs font-semibold text-white active:scale-95 transition"
             >
               <ClipboardPaste size={13} />
@@ -217,6 +288,25 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
           ))}
         </div>
       </div>
+
+      {/* Unavailable ingredients — excluded from every suggestion until restored */}
+      {excluded.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] text-gray-400 font-medium">לא זמין אצלי</p>
+          <div className="flex gap-1.5 flex-wrap" dir="rtl">
+            {excluded.map((name) => (
+              <button
+                key={name}
+                onClick={() => toggleExcluded(name)}
+                disabled={loading}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-[#FF3B30] hover:bg-red-100 transition-colors disabled:opacity-40"
+              >
+                {name} <X size={11} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Primary CTA */}
       <button

@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.16.0",
+    description:
+      "Feat: Smart Meal suggestions now include a full recipe (prep time + step-by-step guide), and any ingredient can be removed as unavailable — the meal, macros and recipe are recalculated without it.",
+  },
+  {
     version: "v1.15.10",
     description:
       "Fix: Implemented 'Clean Slate' logic for Creatine Calibration to prevent retroactive calorie cuts when the calibration toggle is turned off.",
@@ -286,4 +291,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.15.10"
+export const APP_VERSION = "v1.16.0"
