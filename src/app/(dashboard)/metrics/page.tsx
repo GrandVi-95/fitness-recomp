@@ -14,15 +14,17 @@ interface BodyMetric {
   date: string
   weightKg: number
   bodyFatPct: number | null
-  muscleMassKg: number | null
+  // Fat-free mass = weight × (1 − BF%) — includes water, bone and organs, so
+  // it is NOT a direct measure of muscle (creatine water shows up here too).
+  fatFreeMassKg: number | null
   waistCm: number | null
 }
 
 interface Goals {
   startWeight: number | null
   targetWeight: number | null
-  startMuscleMass: number | null
-  muscleMassGoal: number
+  startFatFreeMass: number | null
+  fatFreeMassGoal: number
 }
 
 interface MetricsData {
@@ -40,6 +42,18 @@ interface ProgressPhoto {
 
 // Shared "bento box" card treatment — matches the dashboard page / CheckInCard.
 const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+
+// Downscale to max 1280px JPEG before upload — keeps stored photos small.
+async function resizeImage(file: File, maxDim = 1280, quality = 0.82): Promise<string> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return canvas.toDataURL("image/jpeg", quality)
+}
 
 // ── תצוגת תאריך מקומית ───────────────────────────────────────
 function formatDate(iso: string): string {
@@ -92,8 +106,8 @@ function WeightLogForm({ onSaved }: { onSaved: (weightKg: number) => void }) {
 
   const handleSubmit = async () => {
     const kg = parseFloat(weight)
-    if (!kg || kg < 20 || kg > 300) {
-      setError("הזן משקל תקין בין 20 ל-300 ק\"ג")
+    if (!kg || kg < 30 || kg > 300) {
+      setError("הזן משקל תקין בין 30 ל-300 ק\"ג")
       return
     }
     setSaving(true)
@@ -206,6 +220,7 @@ export default function MetricsPage() {
   const [photoAngle, setPhotoAngle]     = useState<"front" | "back" | "side_left" | "side_right">("front")
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoError, setPhotoError]     = useState<string | null>(null)
+  const [photoCursor, setPhotoCursor]   = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchMetrics = useCallback(async () => {
@@ -217,12 +232,13 @@ export default function MetricsPage() {
     }
   }, [])
 
-  const fetchPhotos = useCallback(async () => {
+  const fetchPhotos = useCallback(async (cursor?: string) => {
     try {
-      const res = await fetch("/api/photos")
+      const res = await fetch(cursor ? `/api/photos?cursor=${encodeURIComponent(cursor)}` : "/api/photos")
       if (res.ok) {
         const d = await res.json()
-        setPhotos(d.photos ?? [])
+        setPhotos((prev) => (cursor ? [...prev, ...(d.photos ?? [])] : d.photos ?? []))
+        setPhotoCursor(d.nextCursor ?? null)
       }
     } catch { /* silent */ }
   }, [])
@@ -241,32 +257,28 @@ export default function MetricsPage() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoError("התמונה גדולה מדי — מקסימום 5MB")
+    if (file.size > 20 * 1024 * 1024) {
+      setPhotoError("התמונה גדולה מדי — מקסימום 20MB")
       return
     }
     setPhotoError(null)
     setUploadingPhoto(true)
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      try {
-        const base64 = ev.target?.result as string
-        const res = await fetch("/api/photos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageBase64: base64, angle: photoAngle }),
-        })
-        if (!res.ok) { setPhotoError("שגיאה בשמירת התמונה"); return }
-        await fetchPhotos()
-      } catch {
-        setPhotoError("שגיאת חיבור")
-      } finally {
-        setUploadingPhoto(false)
-        // Reset file input so same file can be re-selected
-        if (fileInputRef.current) fileInputRef.current.value = ""
-      }
+    try {
+      const base64 = await resizeImage(file)
+      const res = await fetch("/api/photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, angle: photoAngle }),
+      })
+      if (!res.ok) { setPhotoError("שגיאה בשמירת התמונה"); return }
+      await fetchPhotos()
+    } catch {
+      setPhotoError("לא ניתן לקרוא או לשמור את התמונה")
+    } finally {
+      setUploadingPhoto(false)
+      // Reset file input so same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ""
     }
-    reader.readAsDataURL(file)
   }
 
   const handleDeletePhoto = async (id: string) => {
@@ -487,9 +499,12 @@ export default function MetricsPage() {
                 ) : (
                   <span className="text-xs text-gray-300 w-10" />
                 )}
-                <span className="text-xs text-gray-400 w-20 text-end">
+                <span className="text-xs text-gray-400 max-w-[45%] text-end leading-tight">
                   {[
                     m.bodyFatPct != null ? `${m.bodyFatPct}% שומן` : null,
+                    m.bodyFatPct != null
+                      ? `${Math.round(m.weightKg * m.bodyFatPct) / 100} ק"ג שומן · ${m.fatFreeMassKg ?? Math.round(m.weightKg * (100 - m.bodyFatPct)) / 100} ק"ג מסה רזה`
+                      : null,
                     m.waistCm != null ? `${m.waistCm} ס"מ מותן` : null,
                   ].filter(Boolean).join(" · ") || "—"}
                 </span>
@@ -538,7 +553,7 @@ export default function MetricsPage() {
         >
           {uploadingPhoto
             ? <><Loader2 size={20} className="animate-spin text-[#007AFF]" /><span>שומר תמונה…</span></>
-            : <><Camera size={22} className="text-gray-300" /><span>הוסף תמונה — {ANGLE_LABELS[photoAngle]}</span><span className="text-xs text-gray-300">JPG / PNG · עד 5MB</span></>
+            : <><Camera size={22} className="text-gray-300" /><span>הוסף תמונה — {ANGLE_LABELS[photoAngle]}</span><span className="text-xs text-gray-300">JPG / PNG · מוקטנת אוטומטית</span></>
           }
         </button>
 
@@ -557,6 +572,7 @@ export default function MetricsPage() {
                 <img
                   src={photo.url}
                   alt={ANGLE_LABELS[photo.angle] ?? photo.angle}
+                  loading="lazy"
                   className="w-full h-full object-cover"
                 />
                 {/* hover overlay */}
@@ -573,6 +589,15 @@ export default function MetricsPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {photoCursor && (
+          <button
+            onClick={() => fetchPhotos(photoCursor)}
+            className="w-full text-xs font-medium text-[#007AFF] py-2"
+          >
+            טען תמונות נוספות
+          </button>
         )}
 
         {photos.length === 0 && !uploadingPhoto && (

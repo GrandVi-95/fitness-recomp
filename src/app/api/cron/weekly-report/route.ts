@@ -3,6 +3,9 @@ import { Resend } from "resend"
 import { db } from "@/lib/db"
 import { getWeeklyReport } from "@/lib/weeklyReport"
 import type { WeeklyReport, WeeklyReportDay } from "@/lib/weeklyReport"
+import { isValidCronRequest } from "@/lib/auth"
+import { takeRateLimit } from "@/lib/rateLimit"
+import { dayOfWeekStr } from "@/lib/time"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -10,8 +13,20 @@ const DEMO_USER_ID = "demo-user"
 // Set RESEND_API_KEY in your .env.local / Vercel env vars.
 // Use your verified sending domain in production; "onboarding@resend.dev" works
 // for testing on the free tier (recipient must be the account's email).
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Created lazily: constructing it at module load throws when RESEND_API_KEY
+// is unset, which breaks the build and every cold start of this route.
+let resendClient: Resend | null = null
+function getResend(): Resend {
+  resendClient ??= new Resend(process.env.RESEND_API_KEY)
+  return resendClient
+}
 const FROM_ADDRESS = process.env.REPORT_FROM_EMAIL ?? "RecompOS <onboarding@resend.dev>"
+
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c])
+}
 
 // ── Coaching insights ─────────────────────────────────────────────────────────
 
@@ -19,36 +34,36 @@ function buildInsights(report: WeeklyReport): string[] {
   const { summary, user } = report
   const insights: string[] = []
 
-  if (summary.workoutDaysCount > 0) {
-    const hitRate = summary.proteinGoalHitOnWorkoutDays / summary.workoutDaysCount
+  // Protein is judged with the same Green-Zone rule as the dashboard
+  // (>= 1.6 g/kg), and only on days that were actually logged.
+  if (summary.loggedWorkoutDaysCount > 0) {
+    const hitRate = summary.proteinGoalHitOnWorkoutDays / summary.loggedWorkoutDaysCount
     if (hitRate < 0.5) {
       insights.push(
-        `חלבון על ימי אימון: פגעת ביעד (${user.targetProtein}גר') רק ${summary.proteinGoalHitOnWorkoutDays}/${summary.workoutDaysCount} ימים. שקול שייק חלבון לפני שינה בימי אימון.`,
+        `חלבון בימי אימון: הגעת לאזור הירוק (≥1.6 גר' לק"ג) רק ב-${summary.proteinGoalHitOnWorkoutDays}/${summary.loggedWorkoutDaysCount} ימים מתועדים. ארוחה עם 25–40 גר' חלבון אחרי האימון תעזור.`,
       )
     } else if (hitRate === 1) {
       insights.push(
-        `מצוין! פגעת ביעד החלבון (${user.targetProtein}גר') בכל ימי האימון השבוע.`,
+        `מצוין! הגעת לאזור החלבון הירוק בכל ימי האימון המתועדים (יעד מלא: ${user.targetProtein}גר').`,
       )
     } else {
       insights.push(
-        `חלבון על ימי אימון: פגעת ביעד ${summary.proteinGoalHitOnWorkoutDays}/${summary.workoutDaysCount} ימים — שמור על עקביות.`,
+        `חלבון בימי אימון: אזור ירוק ב-${summary.proteinGoalHitOnWorkoutDays}/${summary.loggedWorkoutDaysCount} ימים מתועדים — שמור על עקביות.`,
       )
     }
   }
 
-  if (summary.workoutDaysCount > 0 && summary.avgSugarOnWorkoutDays > summary.sugarLimitG) {
+  // Total sugar (natural + added) vs a calorie-scaled reference — informative,
+  // not a hard limit: fruit and dairy sugars are not a problem in themselves.
+  if (summary.loggedWorkoutDaysCount > 0 && summary.avgSugarOnWorkoutDays > summary.sugarLimitG) {
     insights.push(
-      `ממוצע סוכר בימי אימון: ${summary.avgSugarOnWorkoutDays}גר' — מעל המגבלה של ${summary.sugarLimitG}גר'. העדף פחמימות מורכבות (שיבולת שועל, אורז מלא, בטטה).`,
-    )
-  } else if (summary.workoutDaysCount > 0) {
-    insights.push(
-      `צריכת הסוכר בימי אימון מצוינת — ממוצע ${summary.avgSugarOnWorkoutDays}גר' (מגבלה: ${summary.sugarLimitG}גר').`,
+      `סוכר כולל בימי אימון: ממוצע ${summary.avgSugarOnWorkoutDays}גר' — מעל הייחוס (~${summary.sugarLimitG}גר'). אם רובו ממשקאות/ממתקים, כדאי להחליף חלק בפחמימות מורכבות; סוכר מפירות ומוצרי חלב פחות מדאיג.`,
     )
   }
 
   if (summary.loggedDaysCount < 5) {
     insights.push(
-      `תיעדת תזונה ב-${summary.loggedDaysCount}/7 ימים בלבד. תיעוד עקבי הוא הגורם המנבא הטוב ביותר להצלחה.`,
+      `תיעדת תזונה ב-${summary.loggedDaysCount}/7 ימים בלבד — הממוצעים כאן משקפים רק ימים מתועדים. בלי תיעוד עקבי, הצ'ק-אין לא ישנה יעדים.`,
     )
   }
 
@@ -67,13 +82,13 @@ function dayRow(day: WeeklyReportDay): string {
   const dayNames: Record<string, string> = {
     "0": "א", "1": "ב", "2": "ג", "3": "ד", "4": "ה", "5": "ו", "6": "ש",
   }
-  const d = new Date(day.date + "T00:00:00")
-  const dow = dayNames[String(d.getDay())] ?? ""
-  const dateLabel = `${dow}' ${d.getDate()}/${d.getMonth() + 1}`
-  const proteinColor = day.calories > 0 ? (day.proteinTargetHit ? "#22c55e" : "#f97316") : "#94a3b8"
-  const sugarColor = day.sugarOverLimit ? "#ef4444" : "#22c55e"
+  const [, month, dom] = day.date.split("-").map(Number)
+  const dow = dayNames[String(dayOfWeekStr(day.date))] ?? ""
+  const dateLabel = `${dow}' ${dom}/${month}`
+  const proteinColor = day.isLogged ? (day.proteinTargetHit ? "#22c55e" : "#f97316") : "#94a3b8"
+  const sugarColor = day.sugarOverLimit ? "#f59e0b" : "#22c55e"
   const gymBadge = day.isWorkoutDay
-    ? `<span style="background:#4f46e5;color:#e0e7ff;padding:1px 7px;border-radius:9999px;font-size:11px;">💪 ${day.workoutName ?? "אימון"}</span>`
+    ? `<span style="background:#4f46e5;color:#e0e7ff;padding:1px 7px;border-radius:9999px;font-size:11px;">💪 ${escapeHtml(day.workoutName ?? "אימון")}</span>`
     : `<span style="color:#64748b;font-size:11px;">מנוחה</span>`
 
   return `
@@ -91,7 +106,7 @@ function buildEmailHtml(report: WeeklyReport, insights: string[]): string {
   const insightRows = insights
     .map(
       (i) =>
-        `<li style="margin-bottom:8px;color:#cbd5e1;font-size:14px;line-height:1.5;">${i}</li>`,
+        `<li style="margin-bottom:8px;color:#cbd5e1;font-size:14px;line-height:1.5;">${escapeHtml(i)}</li>`,
     )
     .join("")
 
@@ -124,7 +139,7 @@ function buildEmailHtml(report: WeeklyReport, insights: string[]): string {
               </td>
               <td style="text-align:center;padding:0 8px;border-right:1px solid #334155;border-left:1px solid #334155;">
                 <p style="margin:0;font-size:28px;font-weight:800;color:#34d399;">${summary.avgCalories > 0 ? summary.avgCalories.toLocaleString() : "—"}</p>
-                <p style="margin:4px 0 0;font-size:11px;color:#64748b;">קק&quot;ל ממוצע</p>
+                <p style="margin:4px 0 0;font-size:11px;color:#64748b;">קק&quot;ל ממוצע (ימים מתועדים)</p>
               </td>
               <td style="text-align:center;padding:0 8px;">
                 <p style="margin:0;font-size:28px;font-weight:800;color:#a78bfa;">${summary.avgProtein > 0 ? summary.avgProtein + "גר'" : "—"}</p>
@@ -151,7 +166,7 @@ function buildEmailHtml(report: WeeklyReport, insights: string[]): string {
             <tbody>${report.days.map(dayRow).join("")}</tbody>
           </table>
           <p style="margin:6px 0 0;font-size:10px;color:#475569;text-align:center;">
-            יעד חלבון: ${user.targetProtein}גר' · ירוק = בסדר · כתום/אדום = מתחת ליעד / מעל גבול
+            יעד חלבון: ${user.targetProtein}גר' · ירוק = אזור ירוק (≥1.6 גר'/ק"ג) · כתום = מתחת · סוכר: ייחוס לסוכר כולל, לא גבול קשיח
           </p>
         </td>
       </tr>
@@ -206,21 +221,59 @@ async function runReport(isTest: boolean): Promise<NextResponse> {
 
     const weeksAgo = isTest ? 0 : 1
     const report   = await getWeeklyReport(DEMO_USER_ID, weeksAgo)
+
+    // Dedupe scheduled sends: atomically claim this week before sending, so a
+    // cron retry (or a duplicate invocation) can't email the same report twice.
+    let previousClaim: string | null = null
+    if (!isTest) {
+      const existing = await db.userSettings.findUnique({
+        where: { userId: DEMO_USER_ID },
+        select: { lastReportWeekStart: true },
+      })
+      previousClaim = existing?.lastReportWeekStart ?? null
+      const { count } = await db.userSettings.updateMany({
+        where: {
+          userId: DEMO_USER_ID,
+          OR: [{ lastReportWeekStart: null }, { lastReportWeekStart: { not: report.weekStart } }],
+        },
+        data: { lastReportWeekStart: report.weekStart },
+      })
+      if (count === 0) {
+        return NextResponse.json({ skipped: true, reason: "already sent for this week" })
+      }
+    }
     const insights = buildInsights(report)
     const subject  = isTest
       ? `[בדיקה] דוח שבועי — ${report.weekStart} עד ${report.weekEnd}`
       : `דוח שבועי — ${report.weekStart} עד ${report.weekEnd}`
 
-    const { data, error } = await resend.emails.send({
+    const releaseClaim = async () => {
+      if (isTest) return
+      await db.userSettings.updateMany({
+        where: { userId: DEMO_USER_ID, lastReportWeekStart: report.weekStart },
+        data: { lastReportWeekStart: previousClaim },
+      })
+    }
+
+    let sendResult: Awaited<ReturnType<Resend["emails"]["send"]>>
+    try {
+      sendResult = await getResend().emails.send({
       from:    FROM_ADDRESS,
       to:      recipientEmail,
       subject,
       html:    buildEmailHtml(report, insights),
     })
+    } catch (err) {
+      await releaseClaim()
+      throw err
+    }
+    const { data, error } = sendResult
 
     if (error) {
-      console.error("[weekly-report] Resend error:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error("[weekly-report] Resend error:", error.name)
+      // Release the claim so the next run can retry.
+      await releaseClaim()
+      return NextResponse.json({ error: "שליחת המייל נכשלה" }, { status: 502 })
     }
 
     return NextResponse.json({
@@ -237,22 +290,21 @@ async function runReport(isTest: boolean): Promise<NextResponse> {
   }
 }
 
-function checkCronAuth(request: Request): boolean {
-  if (!process.env.CRON_SECRET) return true
-  return request.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`
-}
-
 // ── Route handlers ────────────────────────────────────────────────────────────
+// Proxy lets /api/cron/* through with a valid CRON_SECRET bearer, otherwise it
+// requires the logged-in cookie. Scheduled (non-test) sends always require the
+// bearer secret — fails closed when CRON_SECRET is unset.
 
-// GET — invoked by Vercel Cron (Vercel sends GET, not POST, for cron jobs)
+// GET — invoked by Vercel Cron (Vercel sends GET with "Authorization: Bearer <CRON_SECRET>")
 export async function GET(request: Request) {
-  if (!checkCronAuth(request)) {
+  if (!isValidCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   return runReport(false)
 }
 
-// POST — manual trigger from the Settings page (supports { test: true } body)
+// POST — manual trigger from the Settings page ({ test: true }); the user is
+// already authenticated by the proxy. Test sends are rate-limited.
 export async function POST(request: Request) {
   let isTest = false
   try {
@@ -262,8 +314,17 @@ export async function POST(request: Request) {
     // empty body is fine
   }
 
-  if (!isTest && !checkCronAuth(request)) {
+  if (!isTest && !isValidCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  if (isTest) {
+    const retryAfter = takeRateLimit("report-test", 3, 10 * 60 * 1000)
+    if (retryAfter > 0) {
+      return NextResponse.json(
+        { error: "יותר מדי שליחות בדיקה — נסה שוב מאוחר יותר" },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      )
+    }
   }
 
   return runReport(isTest)

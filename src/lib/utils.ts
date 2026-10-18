@@ -1,6 +1,8 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { MacroTotals, WeeklyWeightAverage, BodyMetric } from "./types"
+import { addDaysStr, dayOfWeekStr, localDateStr } from "./time"
+import { estimateOneRepMax as e1rm } from "@/utils/nutrition-math"
 
 // ── Tailwind class merging ────────────────────────────────────
 
@@ -55,44 +57,42 @@ export function isProteinBehindPace(
 // ── Body weight analysis ──────────────────────────────────────
 
 /**
- * Computes 7-day rolling averages from a sorted list of body metrics.
+ * Weekly (Sunday-start, Israel local) averages of body weight. Several
+ * weigh-ins on one day count once (per-day mean first).
  */
 export function computeWeeklyAverages(
   metrics: BodyMetric[]
 ): WeeklyWeightAverage[] {
-  if (metrics.length === 0) return []
-
-  const sorted = [...metrics].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  )
-
-  const weeks: WeeklyWeightAverage[] = []
-
-  for (let i = 0; i < sorted.length; i += 7) {
-    const slice = sorted.slice(i, i + 7)
-    const weights = slice.map((m) => m.weightKg)
-    const avg = weights.reduce((a, b) => a + b, 0) / weights.length
-
-    weeks.push({
-      weekStart: toDateString(new Date(slice[0].date)),
-      averageWeight: Math.round(avg * 10) / 10,
-      minWeight: Math.min(...weights),
-      maxWeight: Math.max(...weights),
-      dataPointCount: slice.length,
-    })
+  const byDay = new Map<string, number[]>()
+  for (const m of metrics) {
+    const day = localDateStr(new Date(m.date))
+    byDay.set(day, [...(byDay.get(day) ?? []), m.weightKg])
   }
-
-  return weeks
+  const byWeek = new Map<string, number[]>()
+  for (const [day, weights] of byDay) {
+    const weekStart = addDaysStr(day, -dayOfWeekStr(day))
+    const dayMean = weights.reduce((a, b) => a + b, 0) / weights.length
+    byWeek.set(weekStart, [...(byWeek.get(weekStart) ?? []), dayMean])
+  }
+  return [...byWeek.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([weekStart, dayMeans]) => ({
+      weekStart,
+      averageWeight: Math.round((dayMeans.reduce((a, b) => a + b, 0) / dayMeans.length) * 10) / 10,
+      minWeight: Math.min(...dayMeans),
+      maxWeight: Math.max(...dayMeans),
+      dataPointCount: dayMeans.length,
+    }))
 }
 
-// ── Date helpers ──────────────────────────────────────────────
+// ── Date helpers (Israel local time) ──────────────────────────
 
 export function toDateString(date: Date): string {
-  return date.toISOString().split("T")[0]
+  return localDateStr(date)
 }
 
 export function todayString(): string {
-  return toDateString(new Date())
+  return localDateStr()
 }
 
 export function formatDate(date: Date | string): string {
@@ -111,10 +111,9 @@ export function daysBetween(a: Date, b: Date): number {
 
 // ── Volume helpers ────────────────────────────────────────────
 
-/** One-rep max estimate (Epley formula) */
+/** One-rep max estimate (Epley, capped at 12 reps), rounded to 1 kg. */
 export function estimateOneRepMax(weightKg: number, reps: number): number {
-  if (reps === 1) return weightKg
-  return Math.round(weightKg * (1 + reps / 30))
+  return Math.round(e1rm(weightKg, reps))
 }
 
 /** Total volume for a set of logs */

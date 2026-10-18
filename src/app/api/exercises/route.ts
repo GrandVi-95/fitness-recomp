@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { optBool, optOneOf, readJsonBody, str, ValidationError } from "@/lib/validate"
+
+const MUSCLES = [
+  "chest", "back", "shoulders", "biceps", "triceps",
+  "quads", "hamstrings", "glutes", "calves", "core", "legs", "other",
+] as const
+const EQUIPMENT = [
+  "barbell", "dumbbell", "cable", "machine", "bodyweight", "kettlebell", "household",
+] as const
 
 /** POST /api/exercises
  * Body: { name, primaryMuscle?, equipment?, isCompound? }
@@ -7,14 +16,28 @@ import { db } from "@/lib/db"
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as {
-      name?: string
+    let body: {
+      name: string
       primaryMuscle?: string
       equipment?: string
       isCompound?: boolean
     }
+    try {
+      const raw = await readJsonBody<Record<string, unknown>>(request, 2_000)
+      body = {
+        name: str(raw?.name ?? "", "name", 100),
+        primaryMuscle: optOneOf(raw?.primaryMuscle, "primaryMuscle", MUSCLES),
+        equipment: optOneOf(raw?.equipment, "equipment", EQUIPMENT),
+        isCompound: optBool(raw?.isCompound, "isCompound"),
+      }
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
+      }
+      throw err
+    }
 
-    if (!body.name?.trim()) {
+    if (!body.name.trim()) {
       return NextResponse.json({ error: "שם תרגיל הוא שדה חובה" }, { status: 400 })
     }
 
@@ -51,14 +74,14 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const q = searchParams.get("q")?.trim() ?? ""
+    const q = (searchParams.get("q") ?? "").trim().slice(0, 100)
 
     const exercises = await db.exercise.findMany({
       where: q
         ? {
             OR: [
-              { name: { contains: q } },
-              { primaryMuscle: { contains: q } },
+              { name: { contains: q, mode: "insensitive" } },
+              { primaryMuscle: { contains: q, mode: "insensitive" } },
             ],
           }
         : undefined,

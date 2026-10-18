@@ -82,7 +82,9 @@ export default function WorkoutsPage() {
   useEffect(() => { fetchPlans() }, [fetchPlans])
 
   const handleDelete = async (planId: string) => {
-    if (!confirm("למחוק את תוכנית האימון? כל היסטוריית האימונים שלה תימחק גם היא. פעולה זו אינה הפיכה.")) return
+    // Plans with logged sessions are archived server-side (history is kept);
+    // plans with no history are deleted.
+    if (!confirm("להסיר את תוכנית האימון? היסטוריית האימונים שכבר נרשמו תישמר.")) return
     setDeleting(planId)
     try {
       const res = await fetch(`/api/workouts/plans/${planId}`, { method: "DELETE" })

@@ -43,6 +43,7 @@ export default function FinishModal() {
     setFatigue,
     setSleepHours,
     resetSession,
+    drainSync,
   } = useGymStore()
 
   const [summary, setSummary] = useState<FinishSummary | null>(null)
@@ -67,6 +68,14 @@ export default function FinishModal() {
     setError(null)
 
     try {
+      // Make sure every logged set reached the server first (in-flight
+      // writes + offline queue). Sets still pending will sync later — the
+      // server accepts late sets for a finished session.
+      const stillPending = await drainSync()
+      if (stillPending > 0) {
+        setError(`${stillPending} סטים עדיין ממתינים לסנכרון — הם יישלחו כשהחיבור יחזור.`)
+      }
+      // fatigueLevel is sent only if the user actually picked one (else null).
       const res = await fetch(`/api/gym/sessions/${sessionId}/finish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -122,7 +131,7 @@ export default function FinishModal() {
                 <BedDouble size={16} className="text-[#007AFF]" />
                 <p className="text-sm font-semibold text-gray-700">כמה שעות ישנת אתמול?</p>
                 {sleepHours != null && (
-                  <span className="ms-auto text-sm font-bold text-[#007AFF]">{sleepHours} שע'</span>
+                  <span className="ms-auto text-sm font-bold text-[#007AFF]">{sleepHours} שע&apos;</span>
                 )}
               </div>
               <div className="flex gap-2">
@@ -149,11 +158,12 @@ export default function FinishModal() {
               <p className="text-sm font-semibold text-center mb-4 text-gray-700">
                 איך אתה מרגיש?
               </p>
+              <p className="text-[10px] text-gray-400 text-center -mt-3 mb-3">אופציונלי</p>
               <div className="flex gap-2">
                 {FATIGUE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    onClick={() => setFatigue(opt.value)}
+                    onClick={() => setFatigue(fatigueLevel === opt.value ? null : opt.value)}
                     className={cn(
                       "flex-1 flex flex-col items-center gap-1 py-3 rounded-2xl border-2 transition-all",
                       fatigueLevel === opt.value

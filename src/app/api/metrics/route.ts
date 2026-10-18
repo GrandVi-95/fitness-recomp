@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import {
-  calculateBMR,
-  calculateTDEE,
-  calculateCurrentTarget,
-  calculateAutoProtein,
-  calculateTargetFats,
-  calculateTargetCarbs,
-} from "@/utils/nutrition-math"
+import { syncStoredTargets } from "@/lib/targets-server"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -23,8 +16,8 @@ export async function GET() {
         select: {
           targetWeight: true,
           startWeight: true,
-          startMuscleMass: true,
-          muscleMassGoal: true,
+          startFatFreeMass: true,
+          fatFreeMassGoal: true,
         },
       }),
       db.bodyMetric.findMany({
@@ -36,7 +29,7 @@ export async function GET() {
           date: true,
           weightKg: true,
           bodyFatPct: true,
-          muscleMassKg: true,
+          fatFreeMassKg: true,
           waistCm: true,
         },
       }),
@@ -47,8 +40,8 @@ export async function GET() {
       goals: {
         startWeight: user?.startWeight ?? null,
         targetWeight: user?.targetWeight ?? null,
-        startMuscleMass: user?.startMuscleMass ?? null,
-        muscleMassGoal: user?.muscleMassGoal ?? 5.0,
+        startFatFreeMass: user?.startFatFreeMass ?? null,
+        fatFreeMassGoal: user?.fatFreeMassGoal ?? 5.0,
       },
     })
   } catch (err) {
@@ -58,75 +51,60 @@ export async function GET() {
 }
 
 /** POST /api/metrics
- * Body: { weightKg: number, bodyFatPct?: number }
- * Creates a new BodyMetric entry. Also updates User.startWeight if this is the first entry.
+ * Body: { weightKg: number, bodyFatPct?: number, waistCm?: number }
+ * Creates a BodyMetric entry, backfills baselines on the first entry, and
+ * re-derives targets (which use the 7-day TREND weight, not this one reading).
  */
 export async function POST(request: Request) {
   try {
     const { weightKg, bodyFatPct, waistCm } = await request.json()
 
-    if (typeof weightKg !== "number" || weightKg <= 0 || weightKg > 300) {
+    if (typeof weightKg !== "number" || !Number.isFinite(weightKg) || weightKg < 30 || weightKg > 300) {
       return NextResponse.json({ error: "משקל לא תקין" }, { status: 400 })
     }
-    if (waistCm !== undefined && waistCm !== null && (typeof waistCm !== "number" || waistCm <= 0 || waistCm > 300)) {
+    if (bodyFatPct !== undefined && bodyFatPct !== null &&
+        (typeof bodyFatPct !== "number" || !Number.isFinite(bodyFatPct) || bodyFatPct < 3 || bodyFatPct > 60)) {
+      return NextResponse.json({ error: "אחוז שומן לא תקין (3–60)" }, { status: 400 })
+    }
+    if (waistCm !== undefined && waistCm !== null &&
+        (typeof waistCm !== "number" || !Number.isFinite(waistCm) || waistCm < 40 || waistCm > 200)) {
       return NextResponse.json({ error: "היקף מותן לא תקין" }, { status: 400 })
     }
 
-    const muscleMassKg =
-      typeof bodyFatPct === "number" && bodyFatPct > 0
+    // Fat-free mass = weight × (1 − BF%). Includes water/bone/organs — it is
+    // NOT skeletal muscle, and creatine water shows up here too.
+    const fatFreeMassKg =
+      typeof bodyFatPct === "number"
         ? Math.round(weightKg * (1 - bodyFatPct / 100) * 10) / 10
         : null
 
-    const metric = await db.bodyMetric.create({
-      data: {
-        userId: DEMO_USER_ID,
-        weightKg,
-        bodyFatPct: typeof bodyFatPct === "number" ? bodyFatPct : null,
-        muscleMassKg,
-        waistCm: typeof waistCm === "number" ? waistCm : null,
-        date: new Date(),
-      },
+    const metric = await db.$transaction(async (tx) => {
+      const created = await tx.bodyMetric.create({
+        data: {
+          userId: DEMO_USER_ID,
+          weightKg,
+          bodyFatPct: typeof bodyFatPct === "number" ? bodyFatPct : null,
+          fatFreeMassKg,
+          waistCm: typeof waistCm === "number" ? waistCm : null,
+          date: new Date(),
+        },
+      })
+      const user = await tx.user.findUnique({
+        where: { id: DEMO_USER_ID },
+        select: { startWeight: true, startFatFreeMass: true },
+      })
+      const baseline: { startWeight?: number; startFatFreeMass?: number } = {}
+      if (!user?.startWeight) baseline.startWeight = weightKg
+      if (!user?.startFatFreeMass && fatFreeMassKg != null) baseline.startFatFreeMass = fatFreeMassKg
+      if (Object.keys(baseline).length > 0) {
+        await tx.user.update({ where: { id: DEMO_USER_ID }, data: baseline })
+      }
+      return created
     })
 
-    // Backfill startWeight on first entry + auto-recalculate targets
-    const [user, settings] = await Promise.all([
-      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { startWeight: true, targetCalories: true, targetProtein: true } }),
-      db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } }),
-    ])
+    await syncStoredTargets(DEMO_USER_ID)
 
-    const userUpdates: { startWeight?: number; targetCalories?: number; targetProtein?: number; targetFats?: number; targetCarbs?: number } = {}
-
-    if (!user?.startWeight) userUpdates.startWeight = weightKg
-
-    // Controlled Lean Gain: auto calories = (TDEE × 1.05) + the persistent
-    // check-in offset — never raw TDEE.
-    if (settings?.autoCalorieGoal) {
-      const bmr = calculateBMR(
-        weightKg,
-        settings.height,
-        settings.age,
-        settings.gender,
-      )
-      const tdee = calculateTDEE(bmr, settings.activityMultiplier)
-      userUpdates.targetCalories = calculateCurrentTarget(tdee, settings.calorieAdjustmentOffset ?? 0)
-    }
-
-    if (settings?.autoProteinGoal) {
-      userUpdates.targetProtein = calculateAutoProtein(weightKg)
-    }
-
-    // Fat is always weight-based (g/kg); carbs are the absolute remainder.
-    {
-      const calForMacros = userUpdates.targetCalories ?? user?.targetCalories ?? 2500
-      const protForMacros = userUpdates.targetProtein ?? user?.targetProtein ?? 180
-      userUpdates.targetFats = calculateTargetFats(weightKg)
-      userUpdates.targetCarbs = calculateTargetCarbs(calForMacros, protForMacros, userUpdates.targetFats)
-    }
-
-    if (Object.keys(userUpdates).length > 0) {
-      await db.user.update({ where: { id: DEMO_USER_ID }, data: userUpdates })
-    }
-
+    revalidatePath("/dashboard")
     revalidatePath("/recovery")
     return NextResponse.json({ metric }, { status: 201 })
   } catch (err) {

@@ -1,69 +1,75 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { addDaysStr, localDateStr, startOfLocalDay } from "@/lib/time"
+import {
+  streakWindowStart,
+  trainingWeekStreaks,
+  weeklyVolumeByMuscle,
+} from "@/lib/training"
 
 const DEMO_USER_ID = "demo-user"
-
-// Ordered list of muscles to include in the weekly volume response
-const MUSCLE_ORDER = [
-  "chest",
-  "back",
-  "shoulders",
-  "biceps",
-  "triceps",
-  "quads",
-  "hamstrings",
-  "core",
-] as const
-
-type Muscle = (typeof MUSCLE_ORDER)[number]
-
-// Hebrew display names for each muscle group
-const MUSCLE_LABELS: Record<Muscle, string> = {
-  chest:      "חזה",
-  back:       "גב",
-  shoulders:  "כתפיים",
-  biceps:     "בייספס",
-  triceps:    "טרייספס",
-  quads:      "קוואדס",
-  hamstrings: "ירכיים",
-  core:       "בטן",
-}
-
-// Minimum / maximum weekly working-set targets per muscle group
-const MUSCLE_THRESHOLDS: Record<Muscle, { min: number; max: number }> = {
-  chest:      { min: 8, max: 20 },
-  back:       { min: 8, max: 20 },
-  shoulders:  { min: 6, max: 16 },
-  biceps:     { min: 6, max: 12 },
-  triceps:    { min: 6, max: 12 },
-  quads:      { min: 8, max: 20 },
-  hamstrings: { min: 8, max: 20 },
-  core:       { min: 6, max: 12 },
-}
 
 /** GET /api/recovery
  *
  * Returns the recovery dashboard payload:
  *   - lastSleep / lastFatigue from the most recent completed session
  *   - lastAvgRpe  — average RPE across working sets of that session
- *   - weeklyVolume — set counts + status per muscle group for the last 7 days
- *   - consecutiveWeeks — streak of weeks that contained ≥ 1 completed session
+ *   - weeklyVolume — effective sets (direct 1, indirect 0.5) per muscle over
+ *     the last 7 days, with status vs the weekly PLANNING range
+ *   - consecutiveWeeks — streak of local weeks with ≥ 1 completed session
+ *   - stalledWeeks / deloadThreshold — consecutive completed weeks with no
+ *     e1RM improvement on the main lifts, vs the user's deload threshold
+ *
+ * Sessions of archived workouts are included — history is history.
  */
 export async function GET() {
   try {
     const now = new Date()
+    // Last 7 local calendar days (today + 6 before), Israel time
+    const sevenDaysAgo = startOfLocalDay(addDaysStr(localDateStr(now), -6))
 
-    // ── 1. Last completed session ──────────────────────────────────────────
-    const lastSession = await db.workoutSession.findFirst({
-      where: {
-        userId: DEMO_USER_ID,
-        completedAt: { not: null },
-      },
-      orderBy: { completedAt: "desc" },
-      include: {
-        sets: { where: { isWarmup: false } },
-      },
-    })
+    const [lastSession, recentSets, streakSessions, settings] = await Promise.all([
+      // ── 1. Last completed session ────────────────────────────────────
+      db.workoutSession.findFirst({
+        where: { userId: DEMO_USER_ID, completedAt: { not: null } },
+        orderBy: { completedAt: "desc" },
+        include: { sets: { where: { isWarmup: false } } },
+      }),
+      // ── 2. Working sets of the last 7 days ───────────────────────────
+      db.setLog.findMany({
+        where: {
+          isWarmup: false,
+          session: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { gte: sevenDaysAgo } },
+        },
+        select: {
+          exercise: { select: { name: true, primaryMuscle: true, secondaryMuscles: true } },
+        },
+      }),
+      // ── 3. One query for the whole streak window (no per-week counts) ─
+      db.workoutSession.findMany({
+        where: {
+          userId: DEMO_USER_ID,
+          completedAt: { not: null },
+          startedAt: { gte: streakWindowStart(now) },
+        },
+        select: {
+          startedAt: true,
+          sets: {
+            where: { isWarmup: false },
+            select: {
+              exerciseId: true,
+              weightKg: true,
+              reps: true,
+              exercise: { select: { isCompound: true, trackingType: true } },
+            },
+          },
+        },
+      }),
+      db.userSettings.findUnique({
+        where: { userId: DEMO_USER_ID },
+        select: { deloadThreshold: true },
+      }),
+    ])
 
     // Average RPE from working sets that have an RPE value recorded
     let lastAvgRpe: number | null = null
@@ -78,68 +84,8 @@ export async function GET() {
       }
     }
 
-    // ── 2. Weekly volume (last 7 days) ─────────────────────────────────────
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-
-    const recentSessions = await db.workoutSession.findMany({
-      where: {
-        userId: DEMO_USER_ID,
-        completedAt: { not: null },
-        startedAt: { gte: sevenDaysAgo },
-      },
-      include: {
-        sets: {
-          where: { isWarmup: false },
-          include: {
-            exercise: { select: { primaryMuscle: true } },
-          },
-        },
-      },
-    })
-
-    // Count working sets per primaryMuscle
-    const setsByMuscle: Record<string, number> = {}
-    for (const session of recentSessions) {
-      for (const set of session.sets) {
-        const muscle = set.exercise.primaryMuscle
-        setsByMuscle[muscle] = (setsByMuscle[muscle] ?? 0) + 1
-      }
-    }
-
-    const weeklyVolume = MUSCLE_ORDER.map((muscle) => {
-      const sets = setsByMuscle[muscle] ?? 0
-      const { min, max } = MUSCLE_THRESHOLDS[muscle]
-      const status: "under" | "optimal" | "over" =
-        sets < min ? "under" : sets > max ? "over" : "optimal"
-
-      return {
-        muscle: MUSCLE_LABELS[muscle],
-        sets,
-        status,
-      }
-    })
-
-    // ── 3. Consecutive training weeks ──────────────────────────────────────
-    // Week 1 = last 7 days, Week 2 = 8–14 days ago, … up to 12 weeks back.
-    // Stop counting the moment a week has zero completed sessions.
-    const MAX_WEEKS = 12
-    let consecutiveWeeks = 0
-
-    for (let week = 0; week < MAX_WEEKS; week++) {
-      const weekEnd   = new Date(now.getTime() - week * 7 * 24 * 60 * 60 * 1000)
-      const weekStart = new Date(now.getTime() - (week + 1) * 7 * 24 * 60 * 60 * 1000)
-
-      const count = await db.workoutSession.count({
-        where: {
-          userId: DEMO_USER_ID,
-          completedAt: { not: null },
-          startedAt: { gte: weekStart, lt: weekEnd },
-        },
-      })
-
-      if (count === 0) break
-      consecutiveWeeks++
-    }
+    const weeklyVolume = weeklyVolumeByMuscle(recentSets)
+    const { consecutiveWeeks, stalledWeeks } = trainingWeekStreaks(streakSessions, now)
 
     // ── Response ──────────────────────────────────────────────────────────
     return NextResponse.json({
@@ -148,6 +94,8 @@ export async function GET() {
       lastAvgRpe,
       weeklyVolume,
       consecutiveWeeks,
+      stalledWeeks,
+      deloadThreshold:  settings?.deloadThreshold ?? 3,
     })
   } catch (err) {
     console.error("[GET /api/recovery]", err)

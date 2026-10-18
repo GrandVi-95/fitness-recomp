@@ -14,30 +14,19 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
-import { computeTargets, SUGAR_TARGET } from "@/lib/nutrition"
 import { getTodayNutrition, getTodayBounds } from "@/lib/nutrition-server"
+import { resolveTargets } from "@/lib/targets-server"
+import { addDaysStr, getLocalWeekBounds, localDateStr } from "@/lib/time"
 import { cn } from "@/lib/utils"
-import { classifyProteinStatus } from "@/utils/nutrition-math"
+import { classifyProteinStatus, isProteinOnTarget } from "@/utils/nutrition-math"
 import VersionBadge from "@/components/dashboard/ChangelogModal"
 import CheckInCard from "@/components/dashboard/CheckInCard"
 
 const DEMO_USER_ID  = "demo-user"
-const TZ_OFFSET_MS  = 3 * 60 * 60 * 1000 // Israel UTC+3
 
 // Shared "bento box" card treatment — pure white, extreme rounding, ultra-soft
 // diffused shadow, no visible border. Every card on this page uses this.
 const CARD = "bg-white rounded-[2rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
-
-// ── Date helpers ─────────────────────────────────────────────────────────────
-
-function israelDayKey(d: Date): string {
-  const s = new Date(d.getTime() + TZ_OFFSET_MS)
-  return `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, "0")}-${String(s.getUTCDate()).padStart(2, "0")}`
-}
-
-function utcDateStr(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,43 +42,40 @@ interface WeekDayData {
 
 async function getDashboardData() {
   const { startOfDay } = getTodayBounds()
-  const twoDaysAgo = new Date(startOfDay.getTime() - 2 * 24 * 60 * 60 * 1000)
+  const todayKey = localDateStr()
+  const twoDaysAgo = getTodayBounds(new Date(startOfDay.getTime() - 36 * 60 * 60 * 1000)).startOfDay
 
   // Current week bounds (Israel Sunday → Saturday) for the streak widget
-  const nowShifted    = new Date(Date.now() + TZ_OFFSET_MS)
-  const sundayShifted = new Date(nowShifted)
-  sundayShifted.setUTCDate(nowShifted.getUTCDate() - nowShifted.getUTCDay())
-  sundayShifted.setUTCHours(0, 0, 0, 0)
-  const weekStartUTC = new Date(sundayShifted.getTime() - TZ_OFFSET_MS)
-  const weekEndUTC   = new Date(weekStartUTC.getTime() + 7 * 24 * 60 * 60 * 1000)
+  const week = getLocalWeekBounds(0)
+  const weekStartUTC = week.start
+  const weekEndUTC   = week.nextStart
 
   const [
     user,
     { totals: todayNutrition },
-    latestMetric,
+    targets,
     lastSession,
     activePlan,
     alertNutritionLogs,
     weekSessions,
     weekNutritionLogs,
+    dayPlans,
   ] = await Promise.all([
     db.user.findUnique({
       where:   { id: DEMO_USER_ID },
       include: { userSettings: true },
     }),
     getTodayNutrition(DEMO_USER_ID),
-    db.bodyMetric.findFirst({
-      where:   { userId: DEMO_USER_ID },
-      orderBy: { date: "desc" },
-    }),
+    resolveTargets(DEMO_USER_ID, todayKey),
+    // Last COMPLETED session decides what's next (an abandoned one doesn't).
     db.workoutSession.findFirst({
-      where:   { userId: DEMO_USER_ID },
-      orderBy: { startedAt: "desc" },
-      include: { workout: true },
+      where:   { userId: DEMO_USER_ID, completedAt: { not: null } },
+      orderBy: { completedAt: "desc" },
+      select:  { workoutId: true },
     }),
     db.workoutPlan.findFirst({
-      where:   { userId: DEMO_USER_ID, isActive: true },
-      include: { workouts: { orderBy: { order: "asc" } } },
+      where:   { userId: DEMO_USER_ID, isActive: true, archivedAt: null },
+      include: { workouts: { where: { archivedAt: null }, orderBy: { order: "asc" } } },
     }),
     db.nutritionLog.findMany({
       where:   { userId: DEMO_USER_ID, date: { gte: twoDaysAgo, lt: startOfDay } },
@@ -105,19 +91,33 @@ async function getDashboardData() {
       where:   { userId: DEMO_USER_ID, date: { gte: weekStartUTC, lt: weekEndUTC } },
       include: { foodItems: true },
     }),
+    // Per-day target snapshots — each day is judged against ITS target.
+    db.dayPlan.findMany({
+      where:  {
+        userId: DEMO_USER_ID,
+        date: {
+          gte: [addDaysStr(todayKey, -2), week.startStr].sort()[0],
+          lte: week.endStr,
+        },
+      },
+      select: { date: true, targetCalories: true, targetProtein: true },
+    }),
   ])
 
   // ── Targets ──────────────────────────────────────────────────────────────────
+  // One resolver for every screen: today's (training/rest-adjusted) targets,
+  // computed off the 7-day TREND weight rather than a single noisy weigh-in.
   const settings     = user?.userSettings
-  const latestWeight = latestMetric?.weightKg ?? null
+  const latestWeight = targets.weightKg
   const calorieAdjustmentOffset = settings?.calorieAdjustmentOffset ?? 0
-  const { calories: targetCalories, protein: targetProtein, fat: targetFats, carbs: targetCarbs } = computeTargets({
-    targetCalories:  user?.targetCalories,
-    targetProtein:   user?.targetProtein,
-    targetFats:      user?.targetFats,
-    targetCarbs:     user?.targetCarbs,
-    autoProteinGoal: settings?.autoProteinGoal,
-    weightKg:        latestWeight,
+  const { calories: targetCalories, protein: targetProtein, fat: targetFats, carbs: targetCarbs } = targets.day
+  const sugarReferenceG = targets.sugarReferenceG
+  const dayTypeLabel    =
+    targets.dayTypeSource === "unset" ? "יום ממוצע" : targets.isTrainingDay ? "יום אימון" : "יום מנוחה"
+  const planByDay = new Map(dayPlans.filter((d) => d.targetCalories > 0).map((d) => [d.date, d]))
+  const targetFor = (day: string) => ({
+    calories: planByDay.get(day)?.targetCalories ?? targets.base.calories,
+    protein:  planByDay.get(day)?.targetProtein  ?? targets.base.protein,
   })
 
   // ── Next workout ──────────────────────────────────────────────────────────────
@@ -138,18 +138,18 @@ async function getDashboardData() {
   if (smartAlertsEnabled) {
     const alertDayMap = new Map<string, { calories: number; protein: number }>()
     for (const log of alertNutritionLogs) {
-      const key  = utcDateStr(log.date)
+      const key  = localDateStr(log.date)
       const prev = alertDayMap.get(key) ?? { calories: 0, protein: 0 }
       prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
       prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
       alertDayMap.set(key, prev)
     }
     if (alertDayMap.size >= 2) {
-      const days      = [...alertDayMap.values()]
+      const days      = [...alertDayMap.entries()]
       const THRESHOLD = 0.8
       showSmartAlert  =
-        days.every((d) => d.calories < targetCalories * THRESHOLD) ||
-        days.every((d) => d.protein  < targetProtein  * THRESHOLD)
+        days.every(([day, d]) => d.calories < targetFor(day).calories * THRESHOLD) ||
+        days.every(([, d]) => !isProteinOnTarget(d.protein, latestWeight, targetProtein))
     }
   }
 
@@ -158,31 +158,29 @@ async function getDashboardData() {
   const workoutDayKeys = new Set(
     weekSessions
       .filter((s) => s.completedAt)
-      .map((s) => israelDayKey(s.completedAt!)),
+      .map((s) => localDateStr(s.completedAt!)),
   )
 
   // Nutrition per-day accumulator
   const nutritionByDay = new Map<string, { calories: number; protein: number }>()
   for (const log of weekNutritionLogs) {
-    const key  = israelDayKey(log.date)
+    const key  = localDateStr(log.date)
     const prev = nutritionByDay.get(key) ?? { calories: 0, protein: 0 }
     prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
     prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
     nutritionByDay.set(key, prev)
   }
 
-  const todayKey = israelDayKey(new Date())
-
   const weekDays: WeekDayData[] = Array.from({ length: 7 }, (_, i) => {
-    const dayUTC = new Date(weekStartUTC.getTime() + i * 24 * 60 * 60 * 1000)
-    const key    = israelDayKey(dayUTC)
+    const key    = addDaysStr(week.startStr, i)
     const nutr   = nutritionByDay.get(key)
     const isFuture = key > todayKey
 
     let nutritionStatus: WeekDayData["nutritionStatus"] = "none"
     if (!isFuture && nutr) {
-      const calOk  = nutr.calories >= targetCalories * 0.8
-      const protOk = nutr.protein  >= targetProtein  * 0.8
+      const t      = targetFor(key)
+      const calOk  = Math.abs(nutr.calories / t.calories - 1) <= 0.1
+      const protOk = isProteinOnTarget(nutr.protein, latestWeight, t.protein)
       nutritionStatus = calOk && protOk ? "hit" : "partial"
     }
 
@@ -201,6 +199,8 @@ async function getDashboardData() {
     targetProtein,
     targetFats,
     targetCarbs,
+    sugarReferenceG,
+    dayTypeLabel,
     todayNutrition,
     latestWeight,
     calorieAdjustmentOffset,
@@ -366,6 +366,8 @@ export default async function DashboardPage() {
     targetProtein,
     targetFats,
     targetCarbs,
+    sugarReferenceG,
+    dayTypeLabel,
     todayNutrition,
     latestWeight,
     calorieAdjustmentOffset,
@@ -378,9 +380,8 @@ export default async function DashboardPage() {
   const caloriesLeft   = targetCalories - todayNutrition.calories
   const proteinLeft    = targetProtein  - todayNutrition.protein
   // Protein "Green Zone" — evaluated in g/kg bodyweight, not % of a fixed
-  // gram target, so 1.8–2.19 g/kg ("good") is a genuine success and is
-  // NEVER flagged as a miss, even if it happens to sit under the 2.2 g/kg
-  // "optimal" target in raw grams.
+  // gram target, so 1.6–1.99 g/kg ("good") is a genuine success and is
+  // NEVER flagged as a miss, even if it sits under the 2.2 g/kg target.
   const proteinStatus = latestWeight
     ? classifyProteinStatus(todayNutrition.protein, latestWeight)
     : null
@@ -415,7 +416,7 @@ export default async function DashboardPage() {
           <div>
             <p className="text-[14px] font-semibold tracking-tight text-gray-900">בדיקת חלבון</p>
             <p className="text-[13px] mt-0.5 leading-relaxed text-gray-500">
-              נותרו לך {Math.round(proteinLeft)} גר' לעמידה ביעד — הוסף שייק או ארוחה עשירת חלבון.
+              נותרו לך {Math.round(proteinLeft)} גר&apos; לעמידה ביעד — הוסף שייק או ארוחה עשירת חלבון.
             </p>
           </div>
         </div>
@@ -493,16 +494,16 @@ export default async function DashboardPage() {
               strokeHex="#FF9500"
             />
             <MacroRing
-              label="סוכר"
+              label={todayNutrition.sugarComplete ? "סוכר כולל" : "סוכר כולל (חלקי)"}
               current={todayNutrition.sugar}
-              target={SUGAR_TARGET}
+              target={sugarReferenceG}
               unit=" גר'"
               ringColorClass="text-gray-900"
-              strokeHex="#FF3B30"
+              strokeHex="#FF9F0A"
             />
           </div>
 
-          {/* אזור חלבון — Green Zone: "good" (1.8–2.19 ג'/ק"ג) הוא הצלחה, לא כישלון */}
+          {/* אזור חלבון — Green Zone: "good" (1.6–1.99 ג'/ק"ג) הוא הצלחה, לא כישלון */}
           {proteinStatus && proteinStatus.status !== "needs_improvement" ? (
             <p className="text-[13px] text-center font-medium text-[#34C759]">
               🟢{" "}
@@ -513,7 +514,7 @@ export default async function DashboardPage() {
           ) : proteinLeft > 0 && (
             <p className="text-[13px] text-center text-gray-500">
               <span className="font-medium text-[#007AFF]">
-                נותרו {Math.round(proteinLeft)} גר' חלבון
+                נותרו {Math.round(proteinLeft)} גר&apos; חלבון
               </span>{" "}
               — העדיפו ארוחות עשירות בחלבון.
             </p>
@@ -522,7 +523,7 @@ export default async function DashboardPage() {
           {/* שקיפות המנוע — איזה משתנים מניעים את היעדים היום */}
           <p className="text-xs text-gray-400 font-medium text-center pt-3 border-t border-gray-100">
             {latestWeight != null
-              ? `מחושב לפי ${latestWeight.toFixed(1)} ק״ג${
+              ? `${dayTypeLabel} • מחושב לפי ממוצע 7 ימים ${latestWeight.toFixed(1)} ק״ג${
                   calorieAdjustmentOffset
                     ? ` • התאמת אלגוריתם: ${calorieAdjustmentOffset > 0 ? "+" : ""}${calorieAdjustmentOffset} קל׳`
                     : ""
@@ -536,7 +537,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 gap-3.5">
         <StatCard
           icon={TrendingUp}
-          label="משקל גוף"
+          label="משקל (ממוצע 7 ימים)"
           value={latestWeight ? `${latestWeight} ק"ג` : "לא נמדד"}
           sub={latestWeight ? `יעד: ${targetProtein} גר' חלבון` : "הוסף מדידה במדדים"}
           tintBgClass="bg-emerald-50"

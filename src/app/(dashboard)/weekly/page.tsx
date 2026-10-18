@@ -1,4 +1,6 @@
 // דו"ח שבועי — ניתוח ביצועים מקיף
+// force-dynamic: reads live DB data per request (never prerender at build time).
+export const dynamic = "force-dynamic"
 
 import {
   CalendarDays,
@@ -13,6 +15,9 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { db } from "@/lib/db"
+import { addDaysStr, getLocalWeekBounds, localDateStr } from "@/lib/time"
+import { resolveTargets } from "@/lib/targets-server"
+import { dailyAveragedMean, estimateOneRepMax, isProteinOnTarget } from "@/utils/nutrition-math"
 import WeeklyCharts from "./WeeklyCharts"
 
 const DEMO_USER_ID = "demo-user"
@@ -21,11 +26,6 @@ const DAY_LABELS_HE = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שב'"]
 
 // Shared "bento box" card treatment — matches the dashboard page / metrics page.
 const CARD = "bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
-
-/** Returns "YYYY-MM-DD" using the **local** calendar date, never UTC. */
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
 
 const MUSCLE_HE: Record<string, string> = {
   chest: "חזה",
@@ -47,45 +47,24 @@ const MUSCLE_HE: Record<string, string> = {
 async function getWeeklyData() {
   const now = new Date()
 
-  // This week: Sunday 00:00 → now
-  const thisWeekStart = new Date(now)
-  thisWeekStart.setDate(now.getDate() - now.getDay())
-  thisWeekStart.setHours(0, 0, 0, 0)
-
-  // Shift back 3 h (UTC+3 Israel Summer upper bound) so sessions started just
-  // after local midnight Sunday aren't missed when the server runs in UTC.
-  // Shift back 3 h (UTC+3 Israel Summer upper bound) so sessions started just
-  // after local midnight Sunday aren't missed when the server runs in UTC.
-  const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
-  const thisWeekStartQ = new Date(thisWeekStart.getTime() - TZ_OFFSET_MS)
-  const lastWeekStartQ = new Date(thisWeekStartQ.getTime() - 7 * 24 * 60 * 60 * 1000)
-
-  // Last week: previous Sunday — used for body metrics filter
-  const lastWeekStart = new Date(thisWeekStart)
-  lastWeekStart.setDate(thisWeekStart.getDate() - 7)
+  // Israel-local Sunday→Saturday weeks (DST-aware). Every query below uses the
+  // SAME half-open boundaries, keyed on completedAt for sessions.
+  const thisWeek = getLocalWeekBounds(0, now)
+  const lastWeek = getLocalWeekBounds(1, now)
 
   const [
-    user,
-    activePlan,
+    targets,
+    settings,
     thisWeekSessions,
     lastWeekSessions,
     thisWeekNutrition,
     bodyMetrics,
+    dayPlans,
   ] = await Promise.all([
-    db.user.findUnique({
-      where: { id: DEMO_USER_ID },
-      include: { userSettings: true },
-    }),
-    db.workoutPlan.findFirst({
-      where: { userId: DEMO_USER_ID, isActive: true },
-      include: { workouts: true },
-    }),
+    resolveTargets(DEMO_USER_ID),
+    db.userSettings.findUnique({ where: { userId: DEMO_USER_ID }, select: { trainingDaysPerWeek: true } }),
     db.workoutSession.findMany({
-      where: {
-        userId: DEMO_USER_ID,
-        startedAt: { gte: thisWeekStartQ },
-        completedAt: { not: null },
-      },
+      where: { userId: DEMO_USER_ID, completedAt: { gte: thisWeek.start, lt: thisWeek.nextStart } },
       include: {
         sets: {
           where: { isWarmup: false },
@@ -94,11 +73,7 @@ async function getWeeklyData() {
       },
     }),
     db.workoutSession.findMany({
-      where: {
-        userId: DEMO_USER_ID,
-        startedAt: { gte: lastWeekStartQ, lt: thisWeekStartQ },
-        completedAt: { not: null },
-      },
+      where: { userId: DEMO_USER_ID, completedAt: { gte: lastWeek.start, lt: lastWeek.nextStart } },
       include: {
         sets: {
           where: { isWarmup: false },
@@ -107,33 +82,33 @@ async function getWeeklyData() {
       },
     }),
     db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: thisWeekStart } },
+      where: { userId: DEMO_USER_ID, date: { gte: thisWeek.start, lt: thisWeek.nextStart } },
       include: { foodItems: true },
     }),
     db.bodyMetric.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: lastWeekStart } },
+      where: { userId: DEMO_USER_ID, date: { gte: lastWeek.start, lt: thisWeek.nextStart } },
       orderBy: { date: "asc" },
+    }),
+    db.dayPlan.findMany({
+      where: { userId: DEMO_USER_ID, date: { gte: thisWeek.startStr, lte: thisWeek.endStr } },
+      select: { date: true, targetCalories: true, targetProtein: true },
     }),
   ])
 
-  // ── Targets ────────────────────────────────────────────────────────────────
-  const latestWeight =
-    bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStart).at(-1)?.weightKg ??
-    bodyMetrics.at(-1)?.weightKg ??
-    null
-
-  let targetProtein = user?.targetProtein ?? 185
-  if (user?.userSettings?.autoProteinGoal && latestWeight) {
-    targetProtein = Math.round(latestWeight * 2.2)
-  }
-  const targetCalories = user?.targetCalories ?? 2600
+  // ── Targets (shared resolver — same numbers as dashboard/nutrition) ────────
+  const latestWeight = targets.weightKg
+  const targetProtein = targets.base.protein
+  const targetCalories = targets.base.calories
 
   // ── Progressive overload ───────────────────────────────────────────────────
+  // Strength is compared by best estimated 1RM (Epley); tonnage is shown but a
+  // "PR" means beating the best e1RM in ALL earlier history, not just last week.
   interface ExStats {
     name: string
     primaryMuscle: string
     thisVolume: number
     thisMaxWeight: number
+    thisBestE1rm: number
     lastVolume: number
     lastMaxWeight: number
   }
@@ -147,11 +122,13 @@ async function getWeeklyData() {
         primaryMuscle: set.exercise.primaryMuscle,
         thisVolume: 0,
         thisMaxWeight: 0,
+        thisBestE1rm: 0,
         lastVolume: 0,
         lastMaxWeight: 0,
       }
       prev.thisVolume += set.weightKg * set.reps
       prev.thisMaxWeight = Math.max(prev.thisMaxWeight, set.weightKg)
+      prev.thisBestE1rm = Math.max(prev.thisBestE1rm, estimateOneRepMax(set.weightKg, set.reps))
       exerciseMap.set(set.exerciseId, prev)
     }
   }
@@ -165,9 +142,27 @@ async function getWeeklyData() {
     }
   }
 
-  const progressionList = [...exerciseMap.values()]
-    .sort((a, b) => b.thisVolume - a.thisVolume)
-    .map((ex) => ({
+  // Lifetime best e1RM BEFORE this week, per exercise (one query).
+  const historySets = exerciseMap.size
+    ? await db.setLog.findMany({
+        where: {
+          exerciseId: { in: [...exerciseMap.keys()] },
+          isWarmup: false,
+          session: { userId: DEMO_USER_ID, completedAt: { lt: thisWeek.start } },
+        },
+        select: { exerciseId: true, weightKg: true, reps: true },
+      })
+    : []
+  const priorBest = new Map<string, number>()
+  for (const h of historySets) {
+    const e = estimateOneRepMax(h.weightKg, h.reps)
+    if (e > (priorBest.get(h.exerciseId) ?? 0)) priorBest.set(h.exerciseId, e)
+  }
+  const hasHistory = new Set(historySets.map((h) => h.exerciseId))
+
+  const progressionList = [...exerciseMap.entries()]
+    .sort(([, a], [, b]) => b.thisVolume - a.thisVolume)
+    .map(([exerciseId, ex]) => ({
       name: ex.name,
       primaryMuscle: ex.primaryMuscle,
       thisVolume: Math.round(ex.thisVolume),
@@ -179,9 +174,9 @@ async function getWeeklyData() {
         ex.lastVolume > 0
           ? Math.round(((ex.thisVolume - ex.lastVolume) / ex.lastVolume) * 100)
           : null,
-      weightDelta: Math.round((ex.thisMaxWeight - ex.lastMaxWeight) * 10) / 10,
-      isPR: ex.lastMaxWeight > 0 && ex.thisMaxWeight > ex.lastMaxWeight,
-      isNew: ex.lastMaxWeight === 0,
+      weightDelta: ex.lastMaxWeight > 0 ? Math.round((ex.thisMaxWeight - ex.lastMaxWeight) * 10) / 10 : 0,
+      isPR: (priorBest.get(exerciseId) ?? 0) > 0 && ex.thisBestE1rm > (priorBest.get(exerciseId) ?? 0),
+      isNew: !hasHistory.has(exerciseId),
     }))
 
   // ── Daily nutrition ────────────────────────────────────────────────────────
@@ -193,13 +188,13 @@ async function getWeeklyData() {
     prev.protein += log.foodItems.reduce((s, i) => s + i.protein, 0)
     nutritionByDay.set(key, prev)
   }
+  const planByDay = new Map(dayPlans.filter((d) => d.targetProtein > 0).map((d) => [d.date, d]))
 
   const todayStr = localDateStr(now)
   const dailyNutrition = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(thisWeekStart)
-    d.setDate(d.getDate() + i)
-    const day = localDateStr(d)
+    const day = addDaysStr(thisWeek.startStr, i)
     const data = nutritionByDay.get(day)
+    const dayTargetProtein = planByDay.get(day)?.targetProtein ?? targetProtein
     return {
       label: DAY_LABELS_HE[i] ?? String(i + 1),
       day,
@@ -207,6 +202,7 @@ async function getWeeklyData() {
       protein: Math.round((data?.protein ?? 0) * 10) / 10,
       hasData: !!data,
       isFuture: day > todayStr,
+      proteinHit: !!data && isProteinOnTarget(data.protein, latestWeight, dayTargetProtein),
     }
   })
 
@@ -219,29 +215,18 @@ async function getWeeklyData() {
     loggedDays.length > 0
       ? Math.round((loggedDays.reduce((s, d) => s + d.protein, 0) / loggedDays.length) * 10) / 10
       : 0
-  const proteinDaysHit = dailyNutrition.filter(
-    (d) => d.hasData && d.protein >= targetProtein,
-  ).length
+  // Same Green-Zone rule as the dashboard (>= 1.6 g/kg), not 100% of target.
+  const proteinDaysHit = dailyNutrition.filter((d) => d.proteinHit).length
 
-  // ── Body weight trend ──────────────────────────────────────────────────────
-  const thisWeekMetrics = bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStart)
-  const lastWeekMetrics = bodyMetrics.filter((m) => {
-    const d = new Date(m.date)
-    return d >= lastWeekStart && d < thisWeekStart
-  })
-
-  const thisWeekAvgWeight =
-    thisWeekMetrics.length > 0
-      ? Math.round(
-          (thisWeekMetrics.reduce((s, m) => s + m.weightKg, 0) / thisWeekMetrics.length) * 100,
-        ) / 100
-      : null
-  const lastWeekAvgWeight =
-    lastWeekMetrics.length > 0
-      ? Math.round(
-          (lastWeekMetrics.reduce((s, m) => s + m.weightKg, 0) / lastWeekMetrics.length) * 100,
-        ) / 100
-      : null
+  // ── Body weight trend (mean of daily means) ────────────────────────────────
+  const weekAvg = (from: Date, to: Date) => {
+    const rows = bodyMetrics.filter((m) => m.date >= from && m.date < to)
+    if (rows.length === 0) return null
+    const { mean } = dailyAveragedMean(rows.map((m) => ({ day: localDateStr(m.date), value: m.weightKg })))
+    return Math.round(mean * 100) / 100
+  }
+  const thisWeekAvgWeight = weekAvg(thisWeek.start, thisWeek.nextStart)
+  const lastWeekAvgWeight = weekAvg(lastWeek.start, lastWeek.nextStart)
 
   const weightDelta =
     thisWeekAvgWeight !== null && lastWeekAvgWeight !== null
@@ -249,13 +234,13 @@ async function getWeeklyData() {
       : null
 
   // ── Workout adherence ──────────────────────────────────────────────────────
+  // Goal = the planned training days/week (the plan's template count includes
+  // home alternatives, so it isn't a weekly target).
   const workoutsCompleted = thisWeekSessions.length
-  const workoutGoal = activePlan?.workouts?.length ?? 3
+  const workoutGoal = Math.max(1, settings?.trainingDaysPerWeek ?? 4)
 
-  const weekLabel = thisWeekStart.toLocaleDateString("he-IL", {
-    day: "numeric",
-    month: "short",
-  })
+  const [, wm, wd] = thisWeek.startStr.split("-").map(Number)
+  const weekLabel = `${wd}/${wm}`
 
   return {
     targetCalories,
@@ -403,7 +388,7 @@ export default async function WeeklyPage() {
         {/* Avg Calories */}
         <div>
           <div className="flex justify-between text-xs mb-1.5">
-            <span className="text-gray-500">ממוצע קלוריות</span>
+            <span className="text-gray-500">ממוצע קלוריות (ימים מתועדים)</span>
             <span
               className={cn(
                 "font-semibold text-gray-900",
@@ -440,7 +425,7 @@ export default async function WeeklyPage() {
           <p className="text-[11px] text-gray-400 mb-2">עמידה ביעד חלבון — יום לפי יום</p>
           <div className="flex gap-1.5 justify-between">
             {dailyNutrition.map((day, i) => {
-              const hit = day.hasData && day.protein >= targetProtein
+              const hit = day.proteinHit
               const missed = day.hasData && !hit
               const future = day.isFuture
               return (
@@ -490,7 +475,7 @@ export default async function WeeklyPage() {
                 <span className="text-xs text-gray-400 font-normal"> ק&quot;ג</span>
               </p>
               {lastWeekAvgWeight && (
-                <p className="text-[10px] text-gray-300">ממוצע 7י'</p>
+                <p className="text-[10px] text-gray-300">ממוצע 7י&apos;</p>
               )}
             </div>
 
@@ -557,7 +542,7 @@ export default async function WeeklyPage() {
 
       {/* ── Progressive overload ────────────────────────────── */}
       <div className={cn(CARD, "p-4")}>
-        <SectionHeader icon={TrendingUp} title="עומס פרוגרסיבי" iconColor="text-[#34C759]" />
+        <SectionHeader icon={TrendingUp} title="עומס פרוגרסיבי — השבוע (חלקי) מול שבוע שעבר" iconColor="text-[#34C759]" />
 
         {progressionList.length === 0 ? (
           <div className="mt-4 text-center py-4">

@@ -89,7 +89,7 @@ export default function RecipeCreator({ onSaved }: Props) {
       const items = (data.items ?? []) as Array<{ name: string; quantity: number; unit: string }>
       const detected = items.map((it) => `${it.name} ${it.quantity}${it.unit}`).join(", ")
       if (detected) {
-        setIngredients((prev) => (prev ? `${prev}, ${detected}` : detected))
+        setIngredients((prev) => (prev ? `${prev}, ${detected}` : detected).slice(0, 4000))
       }
     } catch {
       setScanError("שגיאה בניתוח התמונה — נסה שוב")
@@ -134,7 +134,7 @@ export default function RecipeCreator({ onSaved }: Props) {
         .flatMap((m) => m.items ?? [])
         .map((it) => `${it.name} ${it.quantity}${it.unit}`)
         .join(", ")
-      if (all) setIngredients((prev) => (prev ? `${prev}, ${all}` : all))
+      if (all) setIngredients((prev) => (prev ? `${prev}, ${all}` : all).slice(0, 4000))
     } catch {
       setVoiceError("שגיאה בניתוח ההקלטה — נסה שוב")
     } finally {
@@ -239,6 +239,7 @@ export default function RecipeCreator({ onSaved }: Props) {
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
+        maxLength={120}
         placeholder="שם המתכון (לדוגמה: פאי טופו גדול)"
         className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-amber-400 placeholder:text-gray-300 transition-colors"
         dir="rtl"
@@ -250,6 +251,7 @@ export default function RecipeCreator({ onSaved }: Props) {
           rows={3}
           value={ingredients}
           onChange={(e) => setIngredients(e.target.value)}
+          maxLength={4000}
           placeholder="רכיבים וכמויות לכל המתכון (400 גרם טופו, 2 כפות שמן זית, 100 גרם תרד...)"
           className="w-full bg-transparent text-sm text-gray-900 focus:outline-none placeholder:text-gray-300 resize-none"
           dir="rtl"

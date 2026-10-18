@@ -10,7 +10,7 @@ const DEMO_USER_ID = "demo-user"
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const weeksAgo = Math.max(0, parseInt(searchParams.get("weeksAgo") ?? "0", 10) || 0)
+    const weeksAgo = Math.min(52, Math.max(0, parseInt(searchParams.get("weeksAgo") ?? "0", 10) || 0))
     const report   = await getWeeklyReport(DEMO_USER_ID, weeksAgo)
     return NextResponse.json(report)
   } catch (err) {

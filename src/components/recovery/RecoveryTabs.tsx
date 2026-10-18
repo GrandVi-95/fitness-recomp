@@ -21,16 +21,11 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import WeeklyCharts from "@/app/(dashboard)/weekly/WeeklyCharts"
+import type { MetricKind, PlanningStatus, VolumeEntry } from "@/lib/training"
 
 // ─────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────
-
-interface VolumeEntry {
-  muscle: string
-  sets: number
-  status: "under" | "optimal" | "over"
-}
 
 export interface RecoveryData {
   lastSleep: number | null
@@ -38,6 +33,10 @@ export interface RecoveryData {
   lastAvgRpe: number | null
   weeklyVolume: VolumeEntry[]
   consecutiveWeeks: number
+  // Consecutive completed weeks with no e1RM improvement on the main lifts,
+  // vs UserSettings.deloadThreshold.
+  stalledWeeks: number
+  deloadThreshold: number
 }
 
 interface DayNutrition {
@@ -52,21 +51,23 @@ interface DayNutrition {
 interface ProgressionEntry {
   name: string
   primaryMuscle: string
-  thisVolume: number
-  thisMaxWeight: number
+  // e1rm (weighted, kg) | reps (bodyweight) | duration (seconds)
+  kind: MetricKind
+  thisVolume: number          // tonnage kg · total reps · total seconds
   lastVolume: number
-  lastMaxWeight: number
   volumeDelta: number
   volumeDeltaPct: number | null
-  weightDelta: number
-  isPR: boolean
-  isNew: boolean
+  thisBest: number            // best e1RM · best reps · longest hold
+  bestDelta: number | null    // vs the week before (null = not trained then)
+  isPR: boolean               // beats ALL prior history (lifetime)
+  isNew: boolean              // never logged before this week
 }
 
 export interface WeeklyData {
   targetCalories: number
   targetProtein: number
   weekLabel: string
+  progressionWeekLabel: string   // start of the last COMPLETED week
   progressionList: ProgressionEntry[]
   dailyNutrition: DayNutrition[]
   avgCalories: number
@@ -83,15 +84,21 @@ export interface WeeklyData {
 // Constants
 // ─────────────────────────────────────────────────────────
 
-const DELOAD_THRESHOLD = 6
-
 // Shared "bento box" card treatment — matches the dashboard page / CheckInCard.
 const CARD = "bg-white rounded-2xl shadow-[0_4px_16px_rgb(0,0,0,0.04)]"
 
-const STATUS_STYLES = {
-  optimal: { bar: "bg-[#34C759]", label: "bg-green-50 text-[#34C759]", text: "אופטימלי" },
-  under:   { bar: "bg-[#FF9500]", label: "bg-amber-50 text-[#FF9500]", text: "חסר"      },
-  over:    { bar: "bg-[#FF3B30]", label: "bg-red-50 text-[#FF3B30]",   text: "ביתר"     },
+// Weekly set targets are PLANNING ranges, not physiological limits — being
+// above a range just means "more than planned", so no alarm colours.
+const STATUS_STYLES: Record<PlanningStatus, { bar: string; label: string; text: string }> = {
+  in_range: { bar: "bg-[#34C759]", label: "bg-green-50 text-[#34C759]", text: "בטווח התכנון"     },
+  below:    { bar: "bg-[#FF9500]", label: "bg-amber-50 text-[#FF9500]", text: "מתחת לטווח התכנון" },
+  above:    { bar: "bg-[#007AFF]", label: "bg-blue-50 text-[#007AFF]",  text: "מעל טווח התכנון"   },
+}
+
+const METRIC_UNIT: Record<MetricKind, string> = {
+  e1rm:     "ק\"ג",
+  reps:     "חז'",
+  duration: "שנ'",
 }
 
 const MUSCLE_HE: Record<string, string> = {
@@ -143,9 +150,10 @@ function ProgressBar({
 // ─────────────────────────────────────────────────────────
 
 function RecoveryContent({ data }: { data: RecoveryData }) {
-  const { lastSleep, lastFatigue, lastAvgRpe, weeklyVolume, consecutiveWeeks } = data
+  const { lastSleep, lastFatigue, lastAvgRpe, weeklyVolume, consecutiveWeeks, stalledWeeks, deloadThreshold } = data
   const hasData = lastSleep != null || lastFatigue != null || lastAvgRpe != null
-  const underTrained = weeklyVolume.filter((m) => m.status === "under")
+  const belowRange = weeklyVolume.filter((m) => m.status === "below")
+  const deloadSuggested = deloadThreshold > 0 && stalledWeeks >= deloadThreshold
 
   const scores = [
     { label: "שינה",      value: lastSleep   ?? "—", unit: lastSleep   != null ? "שע'"  : "", icon: BedDouble,  color: "text-blue-500"   },
@@ -203,62 +211,77 @@ function RecoveryContent({ data }: { data: RecoveryData }) {
       <div className={cn(CARD, "p-4 space-y-4")}>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-            <BarChart3 size={15} className="text-[#007AFF]" /> נפח שבועי
+            <BarChart3 size={15} className="text-[#007AFF]" /> נפח שבועי מול טווח תכנון
           </h2>
           <span className="text-xs text-gray-400">7 ימים אחרונים</span>
         </div>
+        <p className="text-[11px] text-gray-400 -mt-2">
+          סט ישיר = 1, סט עקיף (שריר משני) = 0.5. הטווחים הם יעדי תכנון, לא גבול פיזיולוגי.
+        </p>
 
         {weeklyVolume.every((m) => m.sets === 0) ? (
           <p className="text-xs text-gray-300 text-center py-2">אין אימונים מ-7 הימים האחרונים.</p>
         ) : (
-          weeklyVolume.map(({ muscle, sets, status }) => {
+          weeklyVolume.map(({ muscle, sets, min, max, status }) => {
             const style = STATUS_STYLES[status]
             return (
               <div key={muscle} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-500 w-20">{muscle}</span>
-                  <span className="text-gray-400">{sets} סטים</span>
+                  <span className="text-gray-400">
+                    {sets} סטים <span className="text-gray-300">({min}–{max})</span>
+                  </span>
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${style.label}`}>{style.text}</span>
                 </div>
                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${style.bar}`} style={{ width: `${Math.min((sets / 20) * 100, 100)}%` }} />
+                  <div className={`h-full rounded-full transition-all ${style.bar}`} style={{ width: `${Math.min((sets / (max * 1.25)) * 100, 100)}%` }} />
                 </div>
               </div>
             )
           })
         )}
 
-        {underTrained.length > 0 && (
+        {belowRange.length > 0 && (
           <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
-            <span className="font-semibold text-[#FF9500]">אימון חסר: </span>
-            {underTrained.map((m) => m.muscle).join(", ")} — הוסף סטים השבוע.
+            <span className="font-semibold text-[#FF9500]">מתחת לטווח התכנון: </span>
+            {belowRange.map((m) => m.muscle).join(", ")} — אפשר לשקול להוסיף סטים.
           </div>
         )}
       </div>
 
-      {/* גלאי הפרדה */}
+      {/* הצעת דילואד — לפי שבועות קיפאון בביצועים, לא לפי מספר שבועות אימון */}
       <div className={cn(CARD, "p-4 space-y-3")}>
         <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-          <BedDouble size={15} className="text-blue-500" /> גלאי הפרדה
+          <BedDouble size={15} className="text-blue-500" /> הצעת דילואד (שבוע הורדת עומס)
         </h2>
         <div className="flex items-center gap-3 text-sm">
-          <CheckCircle2 size={18} className="text-[#34C759] shrink-0" />
+          {deloadSuggested
+            ? <AlertTriangle size={18} className="text-[#FF9500] shrink-0" />
+            : <CheckCircle2 size={18} className="text-[#34C759] shrink-0" />}
           <p className="text-gray-500">
-            {consecutiveWeeks === 0
-              ? "עדיין לא זוהו שבועות אימון."
-              : <><span className="font-semibold text-gray-900">{consecutiveWeeks} שבועות</span> אימון רצופים.</>
+            {deloadSuggested
+              ? <>אין שיפור בתרגילים המרכזיים כבר <span className="font-semibold text-gray-900">{stalledWeeks} שבועות</span> — כדאי לשקול שבוע דילואד.</>
+              : stalledWeeks === 0
+              ? "אין כרגע סימני קיפאון בתרגילים המרכזיים."
+              : <><span className="font-semibold text-gray-900">{stalledWeeks} שבועות</span> ללא שיפור בתרגילים המרכזיים.</>
             }
           </p>
         </div>
         <p className="text-xs text-gray-400">
-          הפרדה תומלץ לאחר <span className="text-[#FF9500]">{DELOAD_THRESHOLD} שבועות רצופים</span> של אימון.
+          הצעה בלבד: דילואד מוצע אחרי <span className="text-[#FF9500]">{deloadThreshold} שבועות רצופים</span> ללא
+          שיפור ב-1RM המשוער בתרגילים המרכזיים (ניתן לשנות בהגדרות).
         </p>
-        <div className="flex gap-2">
-          {Array.from({ length: DELOAD_THRESHOLD }).map((_, i) => (
-            <div key={i} className={`flex-1 h-2 rounded-full ${i < consecutiveWeeks ? "bg-[#34C759]" : "bg-gray-100"}`} />
-          ))}
-        </div>
-        <p className="text-[11px] text-gray-300">{consecutiveWeeks} / {DELOAD_THRESHOLD} שבועות עד להפרדה המוצעת</p>
+        {deloadThreshold > 0 && (
+          <div className="flex gap-2">
+            {Array.from({ length: deloadThreshold }).map((_, i) => (
+              <div key={i} className={`flex-1 h-2 rounded-full ${i < stalledWeeks ? "bg-[#FF9500]" : "bg-gray-100"}`} />
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-gray-300">
+          {Math.min(stalledWeeks, deloadThreshold)} / {deloadThreshold} שבועות קיפאון
+          {consecutiveWeeks > 0 && ` · ${consecutiveWeeks} שבועות אימון רצופים`}
+        </p>
       </div>
     </div>
   )
@@ -270,13 +293,12 @@ function RecoveryContent({ data }: { data: RecoveryData }) {
 
 function WeeklyContent({ data }: { data: WeeklyData }) {
   const {
-    targetCalories, targetProtein, weekLabel, progressionList,
+    targetCalories, targetProtein, progressionWeekLabel, progressionList,
     dailyNutrition, avgCalories, avgProtein, proteinDaysHit,
     workoutsCompleted, workoutGoal,
     thisWeekAvgWeight, lastWeekAvgWeight, weightDelta,
   } = data
 
-  const workoutPct = Math.min((workoutsCompleted / workoutGoal) * 100, 100)
   const proteinPct = Math.min((avgProtein / targetProtein) * 100, 100)
   const caloriePct = Math.min((avgCalories / targetCalories) * 100, 100)
 
@@ -287,7 +309,7 @@ function WeeklyContent({ data }: { data: WeeklyData }) {
         <div className={cn(CARD, "p-4 space-y-2")}>
           <div className="flex items-center gap-2">
             <Dumbbell size={15} className="text-[#007AFF]" />
-            <p className="text-xs text-gray-500">אימונים</p>
+            <p className="text-xs text-gray-500">אימונים השבוע</p>
           </div>
           <p className="text-3xl font-bold leading-none text-gray-900">
             {workoutsCompleted}
@@ -406,13 +428,13 @@ function WeeklyContent({ data }: { data: WeeklyData }) {
             </div>
 
             <div className="text-center">
-              <p className="text-[11px] text-gray-400 mb-1">השבוע</p>
+              <p className="text-[11px] text-gray-400 mb-1">השבוע (חלקי)</p>
               <p className="text-xl font-bold text-gray-900">
                 {thisWeekAvgWeight ?? "—"}
                 <span className="text-xs text-gray-400 font-normal"> ק&quot;ג</span>
               </p>
               {thisWeekAvgWeight && (
-                <p className="text-[10px] text-gray-300">ממוצע {thisWeekAvgWeight && lastWeekAvgWeight ? "7י'" : "חלקי"}</p>
+                <p className="text-[10px] text-gray-300">ממוצע עד היום</p>
               )}
             </div>
           </div>
@@ -437,11 +459,14 @@ function WeeklyContent({ data }: { data: WeeklyData }) {
       {/* Progressive overload */}
       <div className={cn(CARD, "p-4")}>
         <SectionHeader icon={TrendingUp} title="עומס פרוגרסיבי" iconColor="text-[#34C759]" />
+        <p className="text-[11px] text-gray-400 mt-1">
+          שבוע מלא אחרון (מ-{progressionWeekLabel}) מול השבוע שלפניו · שיא = מעל כל ההיסטוריה
+        </p>
 
         {progressionList.length === 0 ? (
           <div className="mt-4 text-center py-4">
             <TrendingUp size={32} className="text-gray-200 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">אין נתוני אימון השבוע עדיין</p>
+            <p className="text-sm text-gray-400">אין נתוני אימון בשבוע המלא האחרון</p>
             <p className="text-xs text-gray-300 mt-1">לאחר האימון הראשון, תראה כאן ניתוח עומס</p>
           </div>
         ) : (
@@ -450,7 +475,7 @@ function WeeklyContent({ data }: { data: WeeklyData }) {
               <span>תרגיל</span>
               <div className="flex gap-4 text-end">
                 <span className="w-16">נפח</span>
-                <span className="w-16">מקסימום</span>
+                <span className="w-16">סט מוביל</span>
               </div>
             </div>
             {progressionList.map((ex, i) => (
@@ -474,21 +499,26 @@ function WeeklyContent({ data }: { data: WeeklyData }) {
                   </p>
                 </div>
                 <div className="flex gap-4 shrink-0">
+                  {/* Volume: tonnage (kg) for weighted, total reps / seconds otherwise */}
                   <div className="w-16 text-end">
                     <p className={cn("text-xs font-semibold",
                       ex.volumeDelta > 0 ? "text-[#34C759]" : ex.volumeDelta < 0 ? "text-[#FF3B30]" : "text-gray-400")}>
-                      {ex.volumeDelta > 0 ? "+" : ""}{ex.volumeDelta} ק&quot;ג
+                      {ex.volumeDelta > 0 ? "+" : ""}{ex.volumeDelta} {METRIC_UNIT[ex.kind]}
                     </p>
                     <p className="text-[10px] text-gray-300">
                       {ex.volumeDeltaPct !== null ? `${ex.volumeDeltaPct > 0 ? "+" : ""}${ex.volumeDeltaPct}%` : "—"}
                     </p>
                   </div>
+                  {/* Best set: e1RM (kg) · reps · seconds */}
                   <div className="w-16 text-end">
                     <p className={cn("text-xs font-semibold",
-                      ex.weightDelta > 0 ? "text-[#34C759]" : ex.weightDelta < 0 ? "text-[#FF3B30]" : "text-gray-400")}>
-                      {ex.weightDelta > 0 ? "+" : ""}{ex.weightDelta} ק&quot;ג
+                      ex.bestDelta == null ? "text-gray-400"
+                      : ex.bestDelta > 0 ? "text-[#34C759]" : ex.bestDelta < 0 ? "text-[#FF3B30]" : "text-gray-400")}>
+                      {ex.bestDelta == null ? "—" : `${ex.bestDelta > 0 ? "+" : ""}${ex.bestDelta} ${METRIC_UNIT[ex.kind]}`}
                     </p>
-                    <p className="text-[10px] text-gray-300">{ex.thisMaxWeight} מקס&apos;</p>
+                    <p className="text-[10px] text-gray-300">
+                      {ex.thisBest} {ex.kind === "e1rm" ? "1RM משוער" : METRIC_UNIT[ex.kind]}
+                    </p>
                   </div>
                 </div>
               </div>

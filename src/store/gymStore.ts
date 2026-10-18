@@ -3,6 +3,7 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 import { groupIntoItems, itemStartIndices } from "@/lib/superset"
+import type { ProgressionSuggestion } from "@/lib/training"
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -10,6 +11,9 @@ import { groupIntoItems, itemStartIndices } from "@/lib/superset"
 
 export interface LoggedSet {
   tempId: string        // client-assigned, used for optimistic updates
+  // Idempotency key sent with every POST of this set (first try, retries and
+  // the offline queue) — the server upserts on it, so a retry never duplicates.
+  clientId?: string
   serverId?: string     // assigned by server after successful POST
   exerciseId: string
   setNumber: number
@@ -27,18 +31,19 @@ export interface PreviousPerformance {
   sessionDate: string   // "Apr 10"
   sets: { reps: number; weightKg: number; rpe?: number; durationSecs?: number }[]
   topSetWeightKg: number
+  topSetReps?: number       // reps performed WITH the top-set weight
   topDurationSecs?: number  // best hold time (duration exercises)
   totalVolume: number
 }
 
+/** Last session's top set — a real performed (weight, reps) pair. */
 export interface ExerciseBaseline {
   weightKg: number
   reps: number | null  // null when no history yet
   durationSecs?: number | null  // anchor for duration exercises
-  // true = last 2 sessions matched → athlete consolidated, consider increasing
-  // false = most-recent session used as anchor (athlete still adapting)
-  isConfirmed: boolean
 }
+
+export type { ProgressionSuggestion }
 
 export interface SessionExercise {
   workoutExerciseId: string
@@ -57,6 +62,8 @@ export interface SessionExercise {
   superSetId?: string
   previousPerformance: PreviousPerformance | null
   baseline: ExerciseBaseline | null
+  // Double-progression suggestion (null for AMRAP / no history)
+  progression?: ProgressionSuggestion | null
 }
 
 export interface LastLoggedSetInfo {
@@ -81,8 +88,11 @@ export interface SyncQueueItem {
     rpe:           number
     isWarmup:      boolean
     durationSecs?: number
+    clientId?:     string
   }
 }
+
+export type SetPayload = SyncQueueItem["payload"]
 
 interface GymState {
   // ── Session ────────────────────────────────────────────────
@@ -112,7 +122,7 @@ interface GymState {
   lastLoggedSetInfo: LastLoggedSetInfo | null
 
   // ── Finish ─────────────────────────────────────────────────
-  fatigueLevel: number          // 1–5
+  fatigueLevel: number | null   // 1–5, only when the user explicitly rates it
   sleepHours: number | null     // hours slept before session
 
   // ── Offline sync queue ─────────────────────────────────────
@@ -126,8 +136,11 @@ interface GymState {
     exercises: SessionExercise[]
   }) => void
   logSet: (
-    setData: Omit<LoggedSet, "tempId" | "loggedAt">
+    setData: Omit<LoggedSet, "tempId" | "loggedAt" | "clientId">
   ) => string  // returns tempId
+  // Optimistically records a set AND persists it (tracked, idempotent POST;
+  // queued for retry on failure). Returns the tempId.
+  recordSet: (setData: Omit<SetPayload, "clientId">) => string
   updateSetServerId: (tempId: string, serverId: string) => void
   adjustWeight: (exerciseId: string, delta: number) => void
   adjustReps: (exerciseId: string, delta: number) => void
@@ -144,12 +157,16 @@ interface GymState {
   startRest: (durationSecs: number, info: LastLoggedSetInfo) => void
   skipRest: () => void
   adjustRestDuration: (deltaSecs: number) => void
-  setFatigue: (level: number) => void
+  setFatigue: (level: number | null) => void
   setSleepHours: (hours: number | null) => void
   markFinished: () => void
   resetSession: () => void
   addPendingSync: (item: SyncQueueItem) => void
+  // Serialized: concurrent calls chain onto the running flush.
   flushPendingSync: () => Promise<void>
+  // Awaits every in-flight set POST, then flushes the queue. Resolves with
+  // the number of sets still pending (offline) afterwards.
+  drainSync: () => Promise<number>
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -162,13 +179,84 @@ export function parseDefaultReps(targetReps: string): number {
   return match ? parseInt(match[1], 10) : 8
 }
 
+/** Unique id per logged set — doubles as the server idempotency key. */
+function newClientId(): string {
+  // randomUUID needs a secure context (https / localhost) — fall back otherwise
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+}
+
+type PostResult = { ok: true; id: string } | { ok: false; retry: boolean }
+
+/** One set POST. A 4xx (other than 401/403/408/429) means the server will
+ *  never accept it, so it must not sit in the retry queue forever. 401/403
+ *  are retryable: an expired login must not discard sets — they sync once
+ *  the user signs in again. */
+async function postSet(sessionId: string, payload: SetPayload): Promise<PostResult> {
+  try {
+    const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const { id } = await res.json()
+      return { ok: true, id }
+    }
+    const retry =
+      res.status >= 500 || [401, 403, 408, 429].includes(res.status)
+    if (!retry) console.warn("[gym] set rejected by server", res.status, payload)
+    return { ok: false, retry }
+  } catch {
+    return { ok: false, retry: true }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Store
 // ─────────────────────────────────────────────────────────────
 
 export const useGymStore = create<GymState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      // In-flight first-attempt POSTs. Every set is ALSO queued in the
+      // persisted pendingSync BEFORE its first POST, so a reload mid-request
+      // can't lose it (the server dedupes the retry on clientId).
+      const inFlight = new Set<Promise<void>>()
+      // Tail of the serialized flush chain.
+      let flushChain: Promise<void> = Promise.resolve()
+
+      const removeQueued = (tempId: string) =>
+        set((state) => ({ pendingSync: state.pendingSync.filter((p) => p.tempId !== tempId) }))
+
+      // Works through a snapshot of the queue, removing ONLY the items that
+      // succeeded (or were permanently rejected) — items added meanwhile are
+      // untouched and picked up by the next flush.
+      const runFlush = async () => {
+        const items = get().pendingSync
+        for (const item of items) {
+          // Back-compat: items queued before clientIds existed get one now
+          // (stable from here on, since it's written back into the queue).
+          let payload = item.payload
+          if (!payload.clientId) {
+            payload = { ...payload, clientId: item.tempId }
+            set((state) => ({
+              pendingSync: state.pendingSync.map((p) => (p.tempId === item.tempId ? { ...p, payload } : p)),
+            }))
+          }
+          const result = await postSet(item.sessionId, payload)
+          if (result.ok) {
+            get().updateSetServerId(item.tempId, result.id)
+            removeQueued(item.tempId)
+          } else if (!result.retry) {
+            removeQueued(item.tempId)
+          }
+        }
+      }
+
+      return {
       // ── Initial state ──────────────────────────────────────
       sessionId: null,
       workoutId: null,
@@ -186,7 +274,7 @@ export const useGymStore = create<GymState>()(
       restStartedAt: null,
       restDurationSecs: 90,
       lastLoggedSetInfo: null,
-      fatigueLevel: 3,
+      fatigueLevel: null,
       sleepHours: null,
       pendingSync: [],
 
@@ -198,20 +286,20 @@ export const useGymStore = create<GymState>()(
         const inputDurationSecs: Record<string, number> = {}
 
         for (const ex of exercises) {
-          // Prefer the server-computed baseline (driven by last-2-session comparison).
-          // Fall back to previous-performance top set, then 0.
+          // Prefer the double-progression suggestion (next target), then the
+          // last real top set (baseline), then previous top weight, then 0.
+          const prog = ex.progression
           inputWeightKg[ex.exerciseId] =
-            ex.baseline?.weightKg ?? ex.previousPerformance?.topSetWeightKg ?? 0
-          // Use the baseline's confirmed reps when available, otherwise parse the
-          // target rep string (e.g. "8-12" → 8). `||` (not ??) so duration sets
-          // whose history has reps 0 fall through to the target parse.
+            prog?.suggestedWeightKg ?? ex.baseline?.weightKg ?? ex.previousPerformance?.topSetWeightKg ?? 0
+          // `||` (not ??) so duration sets whose history has reps 0 fall
+          // through to the target parse (e.g. "8-12" → 8).
           inputReps[ex.exerciseId] =
-            ex.baseline?.reps || parseDefaultReps(ex.targetReps)
+            prog?.suggestedReps || ex.baseline?.reps || parseDefaultReps(ex.targetReps)
           inputRpe[ex.exerciseId] = 7
-          // Duration anchor: best previous hold, else lower bound of the
-          // seconds target (e.g. "30-60" → 30)
+          // Duration anchor: suggested / best previous hold, else lower bound
+          // of the seconds target (e.g. "30-60" → 30)
           inputDurationSecs[ex.exerciseId] =
-            ex.baseline?.durationSecs || parseDefaultReps(ex.targetReps)
+            prog?.suggestedDurationSecs || ex.baseline?.durationSecs || parseDefaultReps(ex.targetReps)
         }
 
         set({
@@ -231,14 +319,14 @@ export const useGymStore = create<GymState>()(
           restStartedAt: null,
           restDurationSecs: 90,
           lastLoggedSetInfo: null,
-          fatigueLevel: 3,
+          fatigueLevel: null,
           sleepHours: null,
         })
       },
 
       logSet: (setData) => {
-        const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`
-        const newSet: LoggedSet = { ...setData, tempId, loggedAt: Date.now() }
+        const tempId = newClientId()
+        const newSet: LoggedSet = { ...setData, tempId, clientId: tempId, loggedAt: Date.now() }
 
         set((state) => ({
           loggedSets: {
@@ -250,6 +338,26 @@ export const useGymStore = create<GymState>()(
           },
         }))
 
+        return tempId
+      },
+
+      recordSet: (setData) => {
+        const sessionId = get().sessionId
+        const tempId = get().logSet(setData)
+        if (!sessionId) return tempId
+        const payload: SetPayload = { ...setData, clientId: tempId }
+        get().addPendingSync({ sessionId, tempId, payload })
+        const p = (async () => {
+          const result = await postSet(sessionId, payload)
+          if (result.ok) {
+            get().updateSetServerId(tempId, result.id)
+            removeQueued(tempId)
+          } else if (!result.retry) {
+            removeQueued(tempId)
+          }
+        })()
+        inFlight.add(p)
+        void p.finally(() => inFlight.delete(p))
         return tempId
       },
 
@@ -402,30 +510,21 @@ export const useGymStore = create<GymState>()(
       markFinished: () => set({ status: "finished", restActive: false }),
 
       addPendingSync: (item) =>
-        set((state) => ({ pendingSync: [...state.pendingSync, item] })),
+        set((state) =>
+          state.pendingSync.some((p) => p.tempId === item.tempId)
+            ? {}
+            : { pendingSync: [...state.pendingSync, item] }
+        ),
 
-      flushPendingSync: async () => {
-        const { pendingSync, updateSetServerId } = get()
-        if (pendingSync.length === 0) return
-        const failed: SyncQueueItem[] = []
-        for (const item of pendingSync) {
-          try {
-            const res = await fetch(`/api/gym/sessions/${item.sessionId}/sets`, {
-              method:  "POST",
-              headers: { "Content-Type": "application/json" },
-              body:    JSON.stringify(item.payload),
-            })
-            if (res.ok) {
-              const { id } = await res.json()
-              updateSetServerId(item.tempId, id)
-            } else {
-              failed.push(item)
-            }
-          } catch {
-            failed.push(item)
-          }
-        }
-        set({ pendingSync: failed })
+      flushPendingSync: () => {
+        flushChain = flushChain.then(runFlush, runFlush)
+        return flushChain
+      },
+
+      drainSync: async () => {
+        await Promise.allSettled([...inFlight])
+        await get().flushPendingSync()
+        return get().pendingSync.length
       },
 
       resetSession: () =>
@@ -445,10 +544,11 @@ export const useGymStore = create<GymState>()(
           restActive: false,
           restStartedAt: null,
           lastLoggedSetInfo: null,
-          fatigueLevel: 3,
+          fatigueLevel: null,
           sleepHours: null,
         }),
-    }),
+      }
+    },
     {
       name: "recompos-gym-v1",
       storage: createJSONStorage(() => {

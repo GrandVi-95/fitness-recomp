@@ -11,6 +11,18 @@ interface SavedProtein {
   proteinPerScoop:  number
   carbsPerScoop:    number
   fatPerScoop:      number
+  sugarPerScoop?:   number | null   // not stored yet — unknown for saved powders
+}
+
+// Total sugar of the shake. The liquid preset's sugar is known; a powder's
+// usually isn't (labels saved to "my powders" don't keep it). Unknown is
+// logged as null, never 0: with water + unknown powder the total is unknown;
+// with milk we log the liquid's sugar (powders add only ~1–3 g per scoop, so
+// it's a close lower bound rather than a made-up zero).
+function shakeSugar(powder: SavedProtein, liquidSugar: number, scoops: number): number | null {
+  const powderSugar = typeof powder.sugarPerScoop === "number" ? powder.sugarPerScoop * scoops : null
+  if (powderSugar !== null) return Math.round((powderSugar + liquidSugar) * 10) / 10
+  return liquidSugar > 0 ? liquidSugar : null
 }
 
 interface Props {
@@ -52,6 +64,7 @@ export default function ShakeModal({ mealType, onClose, onLogged, onScanLabel }:
       protein:  Math.round((powder.proteinPerScoop  * scoopsNum + liquid.protein)  * 10) / 10,
       carbs:    Math.round((powder.carbsPerScoop    * scoopsNum + liquid.carbs)    * 10) / 10,
       fat:      Math.round((powder.fatPerScoop      * scoopsNum + liquid.fat)      * 10) / 10,
+      sugar:    shakeSugar(powder, liquid.sugar, scoopsNum),
     }
   }, [powder, liquid, scoopsNum])
 
@@ -73,7 +86,7 @@ export default function ShakeModal({ mealType, onClose, onLogged, onScanLabel }:
             protein:  combined.protein,
             carbs:    combined.carbs,
             fat:      combined.fat,
-            sugar:    0,
+            sugar:    combined.sugar,
           }],
         }),
       })

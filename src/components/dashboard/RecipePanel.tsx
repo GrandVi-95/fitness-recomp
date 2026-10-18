@@ -23,7 +23,7 @@ interface Recipe {
   totalProtein:     number
   totalCarbs:       number
   totalFat:         number
-  totalSugar:       number
+  totalSugar:       number | null
   defaultServingPct: number
 }
 

@@ -1,5 +1,5 @@
 // Fitness & Nutrition Tracking App — Body Recomposition
-// Prisma schema for SQLite (development) / PostgreSQL (production)
+// Prisma schema — PostgreSQL
 
 generator client {
   provider = "prisma-client"
@@ -27,9 +27,11 @@ model User {
   targetFats      Int      @default(69)      // g/day fat (25% of calories)
   targetCarbs     Int      @default(290)     // g/day carbs (remaining calories)
   targetWeight    Float?                     // goal body weight kg
-  muscleMassGoal  Float    @default(5.0)     // +5 kg muscle target
-  startWeight     Float?                     // baseline body weight kg
-  startMuscleMass Float?                     // baseline muscle mass kg
+  // Fat-free mass (FFM) = weight × (1 − BF%). Includes water, bone and organs
+  // — NOT a direct measure of skeletal muscle. Column names kept for history.
+  fatFreeMassGoal  Float   @default(5.0) @map("muscleMassGoal")  // +kg FFM target
+  startWeight      Float?                     // baseline body weight kg
+  startFatFreeMass Float?  @map("startMuscleMass")               // baseline FFM kg
   // Preferences
   splitType       String   @default("PPL")   // PPL | AB | FULL_BODY | CUSTOM
   restSeconds     Int      @default(90)      // default rest timer
@@ -44,6 +46,7 @@ model User {
   userSettings    UserSettings?
   checkIns        CheckIn[]
   savedProteins   SavedProtein[]
+  dayPlans        DayPlan[]
 }
 
 model UserSettings {
@@ -56,7 +59,7 @@ model UserSettings {
   fatiguePacingEnabled Boolean @default(true)
   // AI NLP settings
   aiProvider           String  @default("anthropic") // anthropic | openai | gemini
-  aiApiKey             String?                        // user-supplied key (stored in plain text for local dev)
+  aiApiKey             String?                        // user-supplied key — AES-GCM encrypted at rest (see lib/secrets.ts)
   autoProteinGoal      Boolean @default(true)         // true = latestWeight × 2.2, false = manual
   smartAlertsEnabled   Boolean @default(true)         // show smart nutrition alert banner
   showWeeklySummary    Boolean @default(true)         // show weekly summary card on dashboard
@@ -83,6 +86,17 @@ model UserSettings {
   // apply a NEGATIVE offset: creatine loading adds intramuscular water that
   // reads as a weight spike, not fat gain. Increases are still allowed.
   creatineCalibrationActive Boolean @default(false)
+  // When calibration was switched on. Calibration auto-expires after
+  // CREATINE_CALIBRATION_DAYS so it can never block adjustments indefinitely.
+  creatineStartedAt       DateTime?
+  // Goal drives the base energy balance and the check-in thresholds:
+  // lean_gain (TDEE × 1.05) | recomp (TDEE × 1.00) | fat_loss (TDEE × 0.85)
+  goal                    String  @default("lean_gain")
+  // Planned training days per week — used to keep the WEEKLY energy budget
+  // intact when rest days get fewer calories than training days.
+  trainingDaysPerWeek     Int     @default(4)
+  // Last weekly report sent ("YYYY-MM-DD" week start, Israel time) — dedupes cron retries.
+  lastReportWeekStart     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -119,6 +133,10 @@ model WorkoutPlan {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  // Plans with logged history are archived instead of deleted so completed
+  // sessions are never lost.
+  archivedAt DateTime?
+
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workouts Workout[]
 }
@@ -133,6 +151,8 @@ model Workout {
   // gym | home — home workouts are fully separate rows with their own exercise
   // rows, so their set history can never mix with gym history
   environment  String   @default("gym")
+  // Removed from the plan but kept because it has logged sessions.
+  archivedAt   DateTime?
 
   plan      WorkoutPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
   exercises WorkoutExercise[]
@@ -173,8 +193,12 @@ model WorkoutSession {
   notes        String?
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  // NoAction: a template with history can't be hard-deleted (it's archived instead).
+  workout Workout @relation(fields: [workoutId], references: [id], onDelete: NoAction)
   sets    SetLog[]
+
+  @@index([userId, completedAt])
+  @@index([workoutId, completedAt])
 }
 
 model SetLog {
@@ -188,9 +212,15 @@ model SetLog {
   isWarmup     Boolean  @default(false)
   durationSecs Int?     // static holds (plank, wall-sit): hold time in seconds
   loggedAt     DateTime @default(now())
+  // Client-generated idempotency key — a retried/offline-synced set upserts
+  // on this instead of creating a duplicate row.
+  clientId     String?  @unique
 
   session  WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   exercise Exercise       @relation(fields: [exerciseId], references: [id])
+
+  @@index([sessionId])
+  @@index([exerciseId, loggedAt])
 }
 
 // ─────────────────────────────────────────────
@@ -231,6 +261,8 @@ model NutritionLog {
 
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodItems NutritionFoodItem[]
+
+  @@index([userId, date])
 }
 
 model NutritionFoodItem {
@@ -245,9 +277,10 @@ model NutritionFoodItem {
   protein      Float
   carbs        Float
   fat          Float
-  fiber        Float   @default(0)
-  sugar        Float   @default(0)
-  saturatedFat Float   @default(0)
+  // null = unknown (not measured / not on the label) — distinct from a real 0.
+  fiber        Float?  @default(0)
+  sugar        Float?  @default(0)
+  saturatedFat Float?  @default(0)
 
   log  NutritionLog @relation(fields: [logId], references: [id], onDelete: Cascade)
   food Food?        @relation(fields: [foodId], references: [id])
@@ -269,6 +302,7 @@ model SavedProtein {
   carbsPerScoop    Float
   fatPerScoop      Float
   caloriesPerScoop Float
+  sugarPerScoop    Float?  // null = unknown
   createdAt        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -287,7 +321,7 @@ model Recipe {
   totalProtein     Float    @default(0)
   totalCarbs       Float    @default(0)
   totalFat         Float    @default(0)
-  totalSugar       Float    @default(0)
+  totalSugar       Float?   @default(0) // null = unknown
   defaultServingPct Float   @default(25)   // % of total batch per standard portion
   createdAt        DateTime @default(now())
 }
@@ -302,11 +336,14 @@ model BodyMetric {
   date       DateTime @default(now())
   weightKg   Float
   bodyFatPct Float?   // % — from calipers / smart scale
-  muscleMassKg Float? // derived: bodyweight * (1 - bodyFatPct/100)
+  // Fat-free mass, derived: weight × (1 − BF%). Not skeletal muscle.
+  fatFreeMassKg Float? @map("muscleMassKg")
   waistCm    Float?   // waist circumference cm — "Waist Increase" signal for check-ins
   notes      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }
 
 // ─────────────────────────────────────────────
@@ -322,21 +359,52 @@ model CheckIn {
   date             DateTime @default(now())
   // Noise-filtered trend inputs at the time of this check-in
   weightTrendPct   Float    // 7-day-avg vs prior-7-day-avg, % change per week (signed)
-  weightTrendLabel String   // "fast_loss" | "down" | "stable" | "up"
+  weightTrendLabel String   // "fast_loss" | "down" | "stable" | "up" | "fast_gain" | "unknown"
+  // Weight rate relative to the goal's target band: below | in_range | above | unknown
+  rateVsGoal       String?
   // Recorded during Creatine Calibration — its weight/waist labels reflect
   // water retention, so it never counts toward the "2 consecutive" cut rule.
   creatineCalibrationActive Boolean @default(false)
   waistCm          Float?   // waist reading used for this check-in, if any
   waistDeltaCm     Float?   // signed change vs the previous check-in's waistCm
   waistTrendLabel  String   // "down" | "stable" | "up"
-  perfTrendLabel   String   // "down" | "stable" | "up" — training volume trend
+  perfTrendLabel   String   // "down" | "stable" | "up" | "unknown" — matched-exercise e1RM trend
   // Decision
   decision         String   // "no_change" | "increase" | "decrease"
   offsetDelta      Int      // 0 | +150 | -150 applied this cycle
   offsetAfter      Int      // calorieAdjustmentOffset value after this check-in
   reasoning        String   // short Hebrew explanation shown to the user
+  // Logged intake vs. target over the cycle (null = not enough logging).
+  adherencePct     Float?
+  // Idempotency: the id of the check-in this one follows ("first" for the
+  // very first). Two concurrent POSTs for the same cycle collide on the
+  // unique constraint instead of both applying an adjustment.
+  cycleKey         String   @default(cuid())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cycleKey])
+  @@index([userId, date])
+}
+
+// One row per local (Asia/Jerusalem) day: whether it's a training or rest
+// day, plus a snapshot of the targets in force that day — so history is
+// judged against the target of THAT day, not today's.
+model DayPlan {
+  id             String  @id @default(cuid())
+  userId         String
+  date           String  // "YYYY-MM-DD", Asia/Jerusalem
+  isTrainingDay  Boolean @default(true)
+  // true only when the user set the day type (vs. a plain target snapshot)
+  explicitDayType Boolean @default(false)
+  targetCalories Int
+  targetProtein  Int
+  targetCarbs    Int
+  targetFats     Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
 }
 
 model ProgressPhoto {
@@ -348,4 +416,6 @@ model ProgressPhoto {
   notes  String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }

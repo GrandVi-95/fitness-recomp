@@ -4,32 +4,15 @@
 
 import { db } from "@/lib/db"
 
-// Israel is UTC+3 (summer) / UTC+2 (winter). We use the upper bound (UTC+3) as a
-// safe constant — this is the same convention used for workout session queries.
-const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
+import { getLocalDayBounds } from "@/lib/time"
 
 /**
- * Returns the UTC-equivalent start and end of "today" in the local Israel
- * timezone (UTC+3).  Using raw setHours(0,0,0,0) on a UTC server gives UTC
- * midnight, which is 03:00 AM Israel time — this function corrects that by
- * shifting the boundary back by the TZ offset before and after.
- *
- * Example (server = UTC, user in Israel):
- *   Server now  = 2024-05-04T21:30Z  (= May 5 00:30 Israel)
- *   startOfDay  = 2024-05-04T21:00Z  (= May 5 00:00 Israel) ✓
- *   endOfDay    = 2024-05-05T20:59Z  (= May 5 23:59 Israel) ✓
+ * Half-open UTC bounds [startOfDay, nextStartOfDay) of "today" in Israel
+ * local time (Asia/Jerusalem, DST-aware, independent of the server's TZ).
  */
-export function getTodayBounds(): { startOfDay: Date; endOfDay: Date } {
-  const now = new Date()
-  const localNow   = new Date(now.getTime() + TZ_OFFSET_MS)
-  const localStart = new Date(localNow)
-  localStart.setHours(0, 0, 0, 0)
-  const localEnd   = new Date(localNow)
-  localEnd.setHours(23, 59, 59, 999)
-  return {
-    startOfDay: new Date(localStart.getTime() - TZ_OFFSET_MS),
-    endOfDay:   new Date(localEnd.getTime()   - TZ_OFFSET_MS),
-  }
+export function getTodayBounds(now: Date = new Date()): { startOfDay: Date; nextStartOfDay: Date } {
+  const { start, nextStart } = getLocalDayBounds(now)
+  return { startOfDay: start, nextStartOfDay: nextStart }
 }
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -44,9 +27,10 @@ export interface TodayNutritionEntry {
   protein:      number
   carbs:        number
   fat:          number
-  fiber:        number
-  sugar:        number
-  saturatedFat: number
+  // null = unknown (not measured), distinct from 0
+  fiber:        number | null
+  sugar:        number | null
+  saturatedFat: number | null
   // AI nudge for the whole meal (shared across every item in the same log) —
   // undefined when the meal was quick-logged without an AI call.
   insight?:     string
@@ -58,8 +42,12 @@ export interface TodayNutritionResult {
     protein:      number
     carbs:        number
     fat:          number
+    fiber:        number
     sugar:        number
     saturatedFat: number
+    // false when at least one logged item's sugar is unknown (null) — the
+    // sugar total is then a LOWER BOUND, not a measured total.
+    sugarComplete: boolean
   }
   byMealType: Record<string, TodayNutritionEntry[]>
 }
@@ -73,10 +61,10 @@ export interface TodayNutritionResult {
  * always return identical data.
  */
 export async function getTodayNutrition(userId: string): Promise<TodayNutritionResult> {
-  const { startOfDay, endOfDay } = getTodayBounds()
+  const { startOfDay, nextStartOfDay } = getTodayBounds()
 
   const logs = await db.nutritionLog.findMany({
-    where:    { userId, date: { gte: startOfDay, lte: endOfDay } },
+    where:    { userId, date: { gte: startOfDay, lt: nextStartOfDay } },
     include:  { foodItems: true },
     orderBy:  { date: "asc" },
   })
@@ -96,10 +84,11 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
       protein:      acc.protein      + item.protein,
       carbs:        acc.carbs        + item.carbs,
       fat:          acc.fat          + item.fat,
-      sugar:        acc.sugar        + item.sugar,
-      saturatedFat: acc.saturatedFat + item.saturatedFat,
+      fiber:        acc.fiber        + (item.fiber ?? 0),
+      sugar:        acc.sugar        + (item.sugar ?? 0),
+      saturatedFat: acc.saturatedFat + (item.saturatedFat ?? 0),
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, saturatedFat: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, saturatedFat: 0 },
   )
 
   const byMealType: Record<string, TodayNutritionEntry[]> = {}
@@ -128,8 +117,10 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
       protein:      Math.round(raw.protein      * 10) / 10,
       carbs:        Math.round(raw.carbs),
       fat:          Math.round(raw.fat          * 10) / 10,
+      fiber:        Math.round(raw.fiber        * 10) / 10,
       sugar:        Math.round(raw.sugar        * 10) / 10,
       saturatedFat: Math.round(raw.saturatedFat * 10) / 10,
+      sugarComplete: allItems.every((i) => i.sugar != null),
     },
     byMealType,
   }

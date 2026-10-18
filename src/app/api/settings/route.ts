@@ -1,15 +1,30 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
+import { encryptSecret } from "@/lib/secrets"
+import { computeCalorieTarget, getTrendWeight, resolveTargets, syncStoredTargets } from "@/lib/targets-server"
 import {
-  calculateBMR,
-  calculateTDEE,
-  calculateCurrentTarget,
-  calculateAutoProtein,
-  calculateTargetFats,
-  calculateTargetCarbs,
+  ValidationError,
+  optBool,
+  optInt,
+  optNum,
+  optOneOf,
+  optStr,
+} from "@/lib/validate"
+import {
+  CREATINE_CALIBRATION_DAYS,
+  GOALS,
+  checkMacroFeasibility,
+  isCreatineCalibrationEffective,
+  normalizeGoal,
+  resolveFatForBudget,
 } from "@/utils/nutrition-math"
 
 const DEMO_USER_ID = "demo-user"
+
+const GENDERS = ["male", "female"] as const
+const AI_PROVIDERS = ["anthropic", "openai", "gemini"] as const
+const DIETS = ["vegetarian", "vegan", "pescatarian", "omnivore"] as const
 
 /** GET /api/settings */
 export async function GET() {
@@ -26,53 +41,41 @@ export async function GET() {
 
     const latestWeight = user.bodyMetrics[0]?.weightKg ?? null
     const s = user.userSettings
-
-    // Body-profile defaults (used when UserSettings row doesn't exist yet)
-    const height             = s?.height             ?? 183
-    const age                = s?.age                ?? 31
-    const gender             = s?.gender             ?? "male"
-    const activityMultiplier = s?.activityMultiplier ?? 1.45
-    const autoCalorieGoal    = s?.autoCalorieGoal    ?? true
-    const autoProteinGoal    = s?.autoProteinGoal    ?? true
-
-    const calorieAdjustmentOffset = s?.calorieAdjustmentOffset ?? 0
-
-    // Derived auto-targets (for display / preview in the UI)
-    // Controlled Lean Gain: calorie target = (TDEE × 1.05) + the persistent
-    // check-in offset — never raw TDEE.
-    const calculatedProtein = latestWeight ? calculateAutoProtein(latestWeight) : null
-    const calculatedCalories = latestWeight
-      ? calculateCurrentTarget(
-          calculateTDEE(calculateBMR(latestWeight, height, age, gender), activityMultiplier),
-          calorieAdjustmentOffset,
-        )
-      : null
+    const t = await resolveTargets(DEMO_USER_ID)
 
     return NextResponse.json({
       name:                user.name ?? "",
-      targetCalories:      user.targetCalories,
-      targetProtein:       user.targetProtein,
-      targetFats:          user.targetFats,
-      targetCarbs:         user.targetCarbs,
+      targetCalories:      t.base.calories,
+      targetProtein:       t.base.protein,
+      targetFats:          t.base.fat,
+      targetCarbs:         t.base.carbs,
       latestWeight,
-      calculatedProtein,
-      calculatedCalories,
+      trendWeight:         t.weightKg,
+      calculatedProtein:   t.weightKg ? Math.round(t.weightKg * 2.2) : null,
+      calculatedCalories:  t.weightKg ? t.base.calories : null,
       aiProvider:          s?.aiProvider         ?? "anthropic",
       aiApiKeySet:         !!(s?.aiApiKey),
-      autoProteinGoal,
-      autoCalorieGoal,
+      autoProteinGoal:     s?.autoProteinGoal    ?? true,
+      autoCalorieGoal:     s?.autoCalorieGoal    ?? true,
       smartAlertsEnabled:  s?.smartAlertsEnabled ?? true,
       showWeeklySummary:   s?.showWeeklySummary  ?? true,
-      height,
-      age,
-      gender,
-      activityMultiplier,
+      height:              s?.height             ?? 183,
+      age:                 s?.age                ?? 31,
+      gender:              s?.gender             ?? "male",
+      activityMultiplier:  s?.activityMultiplier ?? 1.45,
       dietaryPreference:   s?.dietaryPreference  ?? "vegetarian",
       reportEnabled:       s?.reportEnabled      ?? true,
       reportEmail:         s?.reportEmail        ?? "",
-      calorieAdjustmentOffset,
+      calorieAdjustmentOffset: s?.calorieAdjustmentOffset ?? 0,
       vacationMode:        s?.vacationMode       ?? false,
-      creatineCalibrationActive: s?.creatineCalibrationActive ?? false,
+      creatineCalibrationActive: isCreatineCalibrationEffective(
+        s?.creatineCalibrationActive,
+        s?.creatineStartedAt,
+      ),
+      creatineStartedAt:   s?.creatineStartedAt ?? null,
+      creatineCalibrationDays: CREATINE_CALIBRATION_DAYS,
+      goal:                normalizeGoal(s?.goal),
+      trainingDaysPerWeek: s?.trainingDaysPerWeek ?? 4,
     })
   } catch (err) {
     console.error("[GET /api/settings]", err)
@@ -80,177 +83,152 @@ export async function GET() {
   }
 }
 
-interface SettingsBody {
-  name?: string
-  // Manual override targets (used when auto flags are false)
-  targetCalories?: number
-  targetProtein?: number
-  // Body profile
-  weight?: number
-  height?: number
-  age?: number
-  gender?: string
-  activityMultiplier?: number
-  autoCalorieGoal?: boolean
-  // AI
-  aiProvider?: string
-  aiApiKey?: string | null
-  // Other
-  autoProteinGoal?: boolean
-  smartAlertsEnabled?: boolean
-  showWeeklySummary?: boolean
-  dietaryPreference?: string
-  reportEnabled?: boolean
-  reportEmail?: string
-  vacationMode?: boolean
-  creatineCalibrationActive?: boolean
-}
-
-/** PUT /api/settings */
+/** PUT /api/settings — validates the whole body first, then writes atomically. */
 export async function PUT(request: Request) {
   try {
-    const body: SettingsBody = await request.json()
-    const {
-      name,
-      targetCalories,
-      targetProtein,
-      weight,
-      height,
-      age,
-      gender,
-      activityMultiplier,
-      autoCalorieGoal,
-      aiProvider,
-      aiApiKey,
-      autoProteinGoal,
-      smartAlertsEnabled,
-      showWeeklySummary,
-      dietaryPreference,
-      reportEnabled,
-      reportEmail,
-      vacationMode,
-      creatineCalibrationActive,
-    } = body
-
-    // ── 1. Validate manual ranges ────────────────────────────────────────────
-    if (targetCalories !== undefined && (targetCalories < 1000 || targetCalories > 10000)) {
-      return NextResponse.json(
-        { error: 'יעד קלוריות חייב להיות בין 1,000 ל-10,000 קק"ל' },
-        { status: 400 },
-      )
-    }
-    if (targetProtein !== undefined && (targetProtein < 30 || targetProtein > 500)) {
-      return NextResponse.json(
-        { error: "יעד חלבון חייב להיות בין 30 ל-500 גר'" },
-        { status: 400 },
-      )
-    }
-    if (weight !== undefined && (typeof weight !== "number" || weight <= 0 || weight > 300)) {
-      return NextResponse.json({ error: "משקל לא תקין" }, { status: 400 })
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "גוף הבקשה אינו תקין" }, { status: 400 })
     }
 
-    // ── 2. If a new weight was supplied, log it as a BodyMetric ──────────────
-    if (typeof weight === "number") {
-      await db.bodyMetric.create({
-        data: { userId: DEMO_USER_ID, weightKg: weight, date: new Date() },
-      })
-      // Backfill startWeight if this is the first entry
-      const user = await db.user.findUnique({
-        where: { id: DEMO_USER_ID },
-        select: { startWeight: true },
-      })
-      if (!user?.startWeight) {
-        await db.user.update({ where: { id: DEMO_USER_ID }, data: { startWeight: weight } })
+    // ── 1. Validate everything before any write ──────────────────────────────
+    let v
+    try {
+      v = {
+        name:               optStr(body.name, "name", 60),
+        // Manual targets are only validated (and used) when their auto flag is off.
+        targetCalories:     body.autoCalorieGoal === true ? undefined : optNum(body.targetCalories, "targetCalories", 1000, 6000),
+        targetProtein:      body.autoProteinGoal === true ? undefined : optNum(body.targetProtein, "targetProtein", 30, 400),
+        weight:             optNum(body.weight, "weight", 30, 300),
+        height:             optNum(body.height, "height", 120, 230),
+        age:                optInt(body.age, "age", 14, 100),
+        gender:             optOneOf(body.gender, "gender", GENDERS),
+        activityMultiplier: optNum(body.activityMultiplier, "activityMultiplier", 1.2, 1.9),
+        autoCalorieGoal:    optBool(body.autoCalorieGoal, "autoCalorieGoal"),
+        aiProvider:         optOneOf(body.aiProvider, "aiProvider", AI_PROVIDERS),
+        aiApiKey:           body.aiApiKey === null ? null : optStr(body.aiApiKey, "aiApiKey", 300),
+        autoProteinGoal:    optBool(body.autoProteinGoal, "autoProteinGoal"),
+        smartAlertsEnabled: optBool(body.smartAlertsEnabled, "smartAlertsEnabled"),
+        showWeeklySummary:  optBool(body.showWeeklySummary, "showWeeklySummary"),
+        dietaryPreference:  optOneOf(body.dietaryPreference, "dietaryPreference", DIETS),
+        reportEnabled:      optBool(body.reportEnabled, "reportEnabled"),
+        reportEmail:        optStr(body.reportEmail, "reportEmail", 200),
+        vacationMode:       optBool(body.vacationMode, "vacationMode"),
+        creatineCalibrationActive: optBool(body.creatineCalibrationActive, "creatineCalibrationActive"),
+        goal:               optOneOf(body.goal, "goal", GOALS),
+        trainingDaysPerWeek: optInt(body.trainingDaysPerWeek, "trainingDaysPerWeek", 0, 7),
       }
+      if (v.reportEmail && v.reportEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.reportEmail.trim())) {
+        throw new ValidationError("reportEmail: invalid address")
+      }
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return NextResponse.json({ error: `ערך לא תקין — ${err.message}` }, { status: 400 })
+      }
+      throw err
     }
 
-    // ── 3. Determine effective body-profile values for auto-calculation ───────
-    //   Use the incoming values if provided, else fall back to stored settings.
     const [existing, currentUser] = await Promise.all([
       db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } }),
-      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { targetCalories: true, targetProtein: true } }),
+      db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { targetCalories: true, targetProtein: true, startWeight: true } }),
     ])
 
-    const effectiveHeight             = height             ?? existing?.height             ?? 183
-    const effectiveAge                = age                ?? existing?.age                ?? 31
-    const effectiveGender             = gender             ?? existing?.gender             ?? "male"
-    const effectiveActivityMultiplier = activityMultiplier ?? existing?.activityMultiplier ?? 1.45
-    const effectiveAutoCalorie        = autoCalorieGoal    ?? existing?.autoCalorieGoal    ?? true
-    const effectiveAutoProtein        = autoProteinGoal    ?? existing?.autoProteinGoal    ?? true
-
-    // Effective weight: new value supplied → fall back to latest stored BodyMetric
-    let effectiveWeight: number | null = typeof weight === "number" ? weight : null
-    if (effectiveWeight === null) {
-      const latest = await db.bodyMetric.findFirst({
-        where: { userId: DEMO_USER_ID },
-        orderBy: { date: "desc" },
-        select: { weightKg: true },
-      })
-      effectiveWeight = latest?.weightKg ?? null
-    }
-
-    // ── 4. Build User-level updates (name + computed targets) ────────────────
-    const userUpdates: { name?: string; targetCalories?: number; targetProtein?: number; targetFats?: number; targetCarbs?: number } = {}
-
-    if (name !== undefined) userUpdates.name = name.trim()
-
-    // Controlled Lean Gain: auto calories = (TDEE × 1.05) + the persistent,
-    // cumulative check-in offset — never raw TDEE. The offset itself is only
-    // ever changed by the bi-weekly check-in engine (see /api/checkin), not here.
-    const effectiveOffset = existing?.calorieAdjustmentOffset ?? 0
-    if (effectiveAutoCalorie && effectiveWeight !== null) {
-      const bmr = calculateBMR(effectiveWeight, effectiveHeight, effectiveAge, effectiveGender)
-      const tdee = calculateTDEE(bmr, effectiveActivityMultiplier)
-      userUpdates.targetCalories = calculateCurrentTarget(tdee, effectiveOffset)
-    } else if (!effectiveAutoCalorie && targetCalories !== undefined) {
-      userUpdates.targetCalories = Math.round(targetCalories)
-    }
-
-    if (effectiveAutoProtein && effectiveWeight !== null) {
-      userUpdates.targetProtein = calculateAutoProtein(effectiveWeight)
-    } else if (!effectiveAutoProtein && targetProtein !== undefined) {
-      userUpdates.targetProtein = Math.round(targetProtein)
-    }
-
-    // Fat is always weight-based (g/kg) — there's no manual-fat override.
-    // Carbs are always the absolute remainder of calories after protein + fat.
-    if (userUpdates.targetCalories !== undefined || userUpdates.targetProtein !== undefined || effectiveWeight !== null) {
-      const calForMacros = userUpdates.targetCalories ?? currentUser?.targetCalories ?? 2500
-      const protForMacros = userUpdates.targetProtein ?? currentUser?.targetProtein ?? 180
-      userUpdates.targetFats = effectiveWeight !== null ? calculateTargetFats(effectiveWeight) : calculateTargetFats(70)
-      userUpdates.targetCarbs = calculateTargetCarbs(calForMacros, protForMacros, userUpdates.targetFats)
-    }
-
-    if (Object.keys(userUpdates).length > 0) {
-      await db.user.update({ where: { id: DEMO_USER_ID }, data: userUpdates })
-    }
-
-    // ── 5. Upsert UserSettings ───────────────────────────────────────────────
-    const settingsData = {
-      ...(aiProvider             !== undefined ? { aiProvider }                         : {}),
-      ...(aiApiKey               !== undefined ? { aiApiKey: aiApiKey || null }         : {}),
-      ...(autoProteinGoal        !== undefined ? { autoProteinGoal }                    : {}),
-      ...(smartAlertsEnabled     !== undefined ? { smartAlertsEnabled }                 : {}),
-      ...(showWeeklySummary      !== undefined ? { showWeeklySummary }                  : {}),
-      ...(height                 !== undefined ? { height: Math.round(height) }         : {}),
-      ...(age                    !== undefined ? { age: Math.round(age) }               : {}),
-      ...(gender                 !== undefined ? { gender }                              : {}),
-      ...(activityMultiplier     !== undefined ? { activityMultiplier }                 : {}),
-      ...(autoCalorieGoal        !== undefined ? { autoCalorieGoal }                    : {}),
-      ...(dietaryPreference      !== undefined ? { dietaryPreference }                  : {}),
-      ...(reportEnabled          !== undefined ? { reportEnabled }                      : {}),
-      ...(reportEmail            !== undefined ? { reportEmail: reportEmail.trim() || null } : {}),
-      ...(vacationMode           !== undefined ? { vacationMode }                       : {}),
-      ...(creatineCalibrationActive !== undefined ? { creatineCalibrationActive }       : {}),
-    }
-
-    if (Object.keys(settingsData).length > 0) {
-      if (existing) {
-        await db.userSettings.update({ where: { userId: DEMO_USER_ID }, data: settingsData })
-      } else {
-        await db.userSettings.create({ data: { userId: DEMO_USER_ID, ...settingsData } })
+    // ── 2. Feasibility of MANUAL targets: protein + minimum fat must fit ────
+    const effectiveAutoCalorie = v.autoCalorieGoal ?? existing?.autoCalorieGoal ?? true
+    const effectiveAutoProtein = v.autoProteinGoal ?? existing?.autoProteinGoal ?? true
+    if (!effectiveAutoCalorie || !effectiveAutoProtein) {
+      const weight = v.weight ?? (await getTrendWeight(DEMO_USER_ID))
+      if (weight) {
+        // Auto calories are computed exactly as the resolver will.
+        const calories = effectiveAutoCalorie
+          ? computeCalorieTarget({
+              autoCalorieGoal: true,
+              storedCalories: null,
+              weightKg: weight,
+              heightCm: v.height ?? existing?.height ?? 183,
+              age: v.age ?? existing?.age ?? 31,
+              gender: v.gender ?? existing?.gender ?? "male",
+              activityMultiplier: v.activityMultiplier ?? existing?.activityMultiplier ?? 1.45,
+              offset: existing?.calorieAdjustmentOffset ?? 0,
+              goal: normalizeGoal(v.goal ?? existing?.goal),
+            })
+          : (v.targetCalories ?? currentUser?.targetCalories ?? null)
+        const protein = effectiveAutoProtein ? Math.round(weight * 2.2) : (v.targetProtein ?? currentUser?.targetProtein ?? null)
+        if (calories != null && protein != null) {
+          const fat = resolveFatForBudget(calories, protein, weight)
+          const { feasible, remainderKcal } = checkMacroFeasibility(calories, protein, fat)
+          if (!feasible) {
+            return NextResponse.json(
+              {
+                error: `היעדים לא אפשריים: ${protein} גר' חלבון ו-${fat} גר' שומן כבר דורשים ${calories - remainderKcal} קק"ל — יותר מיעד הקלוריות (${calories}).`,
+              },
+              { status: 400 },
+            )
+          }
+        }
       }
     }
+
+    // ── 3. Write atomically ─────────────────────────────────────────────────
+    // "Turned on" also covers re-enabling after the window expired (the stored
+    // flag may still be true while GET already reports it as off).
+    const creatineTurnedOn =
+      v.creatineCalibrationActive === true &&
+      !isCreatineCalibrationEffective(existing?.creatineCalibrationActive, existing?.creatineStartedAt)
+    const settingsData = {
+      ...(v.aiProvider           !== undefined ? { aiProvider: v.aiProvider } : {}),
+      ...(v.aiApiKey             !== undefined ? { aiApiKey: v.aiApiKey ? encryptSecret(v.aiApiKey.trim()) : null } : {}),
+      ...(v.autoProteinGoal      !== undefined ? { autoProteinGoal: v.autoProteinGoal } : {}),
+      ...(v.smartAlertsEnabled   !== undefined ? { smartAlertsEnabled: v.smartAlertsEnabled } : {}),
+      ...(v.showWeeklySummary    !== undefined ? { showWeeklySummary: v.showWeeklySummary } : {}),
+      ...(v.height               !== undefined ? { height: Math.round(v.height) } : {}),
+      ...(v.age                  !== undefined ? { age: v.age } : {}),
+      ...(v.gender               !== undefined ? { gender: v.gender } : {}),
+      ...(v.activityMultiplier   !== undefined ? { activityMultiplier: v.activityMultiplier } : {}),
+      ...(v.autoCalorieGoal      !== undefined ? { autoCalorieGoal: v.autoCalorieGoal } : {}),
+      ...(v.dietaryPreference    !== undefined ? { dietaryPreference: v.dietaryPreference } : {}),
+      ...(v.reportEnabled        !== undefined ? { reportEnabled: v.reportEnabled } : {}),
+      ...(v.reportEmail          !== undefined ? { reportEmail: v.reportEmail.trim() || null } : {}),
+      ...(v.vacationMode         !== undefined ? { vacationMode: v.vacationMode } : {}),
+      ...(v.goal                 !== undefined ? { goal: v.goal } : {}),
+      ...(v.trainingDaysPerWeek  !== undefined ? { trainingDaysPerWeek: v.trainingDaysPerWeek } : {}),
+      ...(v.creatineCalibrationActive !== undefined
+        ? {
+            creatineCalibrationActive: v.creatineCalibrationActive,
+            ...(creatineTurnedOn ? { creatineStartedAt: new Date() } : {}),
+            ...(v.creatineCalibrationActive === false ? { creatineStartedAt: null } : {}),
+          }
+        : {}),
+    }
+
+    await db.$transaction(async (tx) => {
+      if (v.weight !== undefined) {
+        await tx.bodyMetric.create({ data: { userId: DEMO_USER_ID, weightKg: v.weight, date: new Date() } })
+        if (!currentUser?.startWeight) {
+          await tx.user.update({ where: { id: DEMO_USER_ID }, data: { startWeight: v.weight } })
+        }
+      }
+
+      const userData: { name?: string; targetCalories?: number; targetProtein?: number } = {}
+      if (v.name !== undefined) userData.name = v.name.trim()
+      // Manual targets are stored only when the matching auto flag is off;
+      // auto targets are re-derived below by syncStoredTargets.
+      if (!effectiveAutoCalorie && v.targetCalories !== undefined) userData.targetCalories = Math.round(v.targetCalories)
+      if (!effectiveAutoProtein && v.targetProtein !== undefined) userData.targetProtein = Math.round(v.targetProtein)
+      if (Object.keys(userData).length > 0) {
+        await tx.user.update({ where: { id: DEMO_USER_ID }, data: userData })
+      }
+
+      await tx.userSettings.upsert({
+        where: { userId: DEMO_USER_ID },
+        update: settingsData,
+        create: { userId: DEMO_USER_ID, ...settingsData },
+      })
+    })
+
+    // ── 4. Re-derive the whole target set (calories, protein, fat, carbs) ───
+    await syncStoredTargets(DEMO_USER_ID)
+    revalidatePath("/dashboard")
 
     return NextResponse.json({ ok: true })
   } catch (err) {

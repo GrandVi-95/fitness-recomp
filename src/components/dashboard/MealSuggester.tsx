@@ -25,7 +25,7 @@ interface MealMacros {
   protein:  number
   carbs:    number
   fat:      number
-  sugar:    number
+  sugar:    number | null   // null = unknown
 }
 
 interface MealData {
@@ -213,7 +213,9 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
                 <span className="text-[#007AFF]">{meal.macros.protein}ג' חלב'</span>
                 <span className="text-[#34C759]">{meal.macros.carbs}ג' פחמ'</span>
                 <span className="text-amber-600">{meal.macros.fat}ג' שומן</span>
-                <span className="text-rose-500">{meal.macros.sugar}ג' סוכר</span>
+                {meal.macros.sugar !== null && (
+                  <span className="text-rose-500">{meal.macros.sugar}ג' סוכר</span>
+                )}
               </div>
             </div>
           ))}
@@ -339,6 +341,7 @@ export default function MealSuggester({ remaining, dietaryPreference, onUseSugge
             type="text"
             value={ingredients}
             onChange={(e) => setIngredients(e.target.value)}
+            maxLength={4000}
             onKeyDown={(e) => {
               if (e.key === "Enter" && ingredients.trim() && !loading) suggest(ingredients.trim())
             }}

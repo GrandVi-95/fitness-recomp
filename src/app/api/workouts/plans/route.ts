@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { optStr, readJsonBody, str, ValidationError } from "@/lib/validate"
 
 const DEMO_USER_ID = "demo-user"
 
 /** GET /api/workouts/plans
- * Returns all WorkoutPlans for the demo user, including every workout day
+ * Returns all live WorkoutPlans for the demo user, including every workout day
  * and its exercises (with exercise metadata resolved from the Exercise table).
+ * Archived plans/workouts (kept only for their session history) are excluded.
  */
 export async function GET() {
   try {
     const rawPlans = await db.workoutPlan.findMany({
-      where: { userId: DEMO_USER_ID },
+      where: { userId: DEMO_USER_ID, archivedAt: null },
       include: {
         workouts: {
+          where: { archivedAt: null },
           orderBy: { order: "asc" },
           include: {
             exercises: {
@@ -83,12 +86,20 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as {
-      name?: string
-      splitType?: string
+    let name: string
+    let splitType: string
+    try {
+      const body = await readJsonBody<Record<string, unknown>>(request, 2_000)
+      name = str(body?.name, "name", 100).trim()
+      splitType = optStr(body?.splitType, "splitType", 30)?.trim() || "CUSTOM"
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
+      }
+      throw err
     }
 
-    if (!body.name?.trim()) {
+    if (!name) {
       return NextResponse.json(
         { error: "שם התוכנית הוא שדה חובה" },
         { status: 400 },
@@ -98,8 +109,8 @@ export async function POST(request: NextRequest) {
     const plan = await db.workoutPlan.create({
       data: {
         userId: DEMO_USER_ID,
-        name: body.name.trim(),
-        splitType: body.splitType ?? "CUSTOM",
+        name,
+        splitType,
         isActive: true,
       },
     })

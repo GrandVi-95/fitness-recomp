@@ -11,9 +11,9 @@ export interface UserProfile {
   targetCalories: number     // kcal/day
   targetProtein: number      // g/day
   targetWeight: number | null
-  muscleMassGoal: number     // +5 kg
+  fatFreeMassGoal: number    // +kg fat-free mass (not muscle per se)
   startWeight: number | null
-  startMuscleMass: number | null
+  startFatFreeMass: number | null
   splitType: SplitType
   restSeconds: number
   createdAt: Date
@@ -246,7 +246,7 @@ export interface BodyMetric {
   date: Date
   weightKg: number
   bodyFatPct?: number
-  muscleMassKg?: number      // derived from weight & body fat
+  fatFreeMassKg?: number     // weight × (1 − BF%) — includes water/bone/organs
   notes?: string
 }
 
@@ -273,7 +273,7 @@ export interface RecompProgress {
   currentDate: Date
   startWeight: number
   currentWeight: number
-  estimatedMuscleMassGain: number  // kg
+  estimatedFatFreeMassGain: number // kg
   estimatedFatLoss: number         // kg
   progressTowardsGoal: number      // 0–100 %
   weeklyAverages: WeeklyWeightAverage[]

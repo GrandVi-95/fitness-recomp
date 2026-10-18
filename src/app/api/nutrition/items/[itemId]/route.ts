@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
+import { num, readJsonBody, ValidationError } from "@/lib/validate"
 
 const DEMO_USER_ID = "demo-user"
+const MAX_QUANTITY = 5000
 
 /** PUT /api/nutrition/items/[itemId]
- * Body: { quantity: number }
- * Scales all macros proportionally to the new quantity.
+ * Body: { quantity: number }  (finite, > 0, ≤ 5000)
+ * Scales all macros and sub-nutrients proportionally to the new quantity.
  */
 export async function PUT(
   request: Request,
@@ -14,10 +16,18 @@ export async function PUT(
 ) {
   try {
     const { itemId } = await params
-    const { quantity } = await request.json()
-
-    if (typeof quantity !== "number" || quantity <= 0) {
-      return NextResponse.json({ error: "כמות לא תקינה" }, { status: 400 })
+    let quantity: number
+    try {
+      const body = await readJsonBody<{ quantity?: unknown }>(request, 1024)
+      quantity = num(body?.quantity, "quantity", 0, MAX_QUANTITY)
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return NextResponse.json({ error: `כמות לא תקינה — מספר גדול מ-0 ועד ${MAX_QUANTITY}` }, { status: 400 })
+      }
+      throw err
+    }
+    if (quantity <= 0) {
+      return NextResponse.json({ error: `כמות לא תקינה — מספר גדול מ-0 ועד ${MAX_QUANTITY}` }, { status: 400 })
     }
 
     const item = await db.nutritionFoodItem.findUnique({
@@ -27,17 +37,26 @@ export async function PUT(
     if (!item || item.log.userId !== DEMO_USER_ID) {
       return NextResponse.json({ error: "לא נמצא" }, { status: 404 })
     }
+    // A stored quantity of 0 (or a corrupt negative) has no ratio to scale by.
+    if (!(item.quantity > 0) || !Number.isFinite(item.quantity)) {
+      return NextResponse.json({ error: "לא ניתן לשנות כמות לפריט הזה — מחק והוסף מחדש" }, { status: 409 })
+    }
 
     const ratio = quantity / item.quantity
+    const round1 = (v: number) => Math.round(v * 10) / 10
+    // Sub-nutrients: null = unknown, and stays unknown after scaling.
+    const scale = (v: number | null) => (v === null ? null : round1(v * ratio))
     const updated = await db.nutritionFoodItem.update({
       where: { id: itemId },
       data: {
         quantity,
-        calories: item.calories * ratio,
-        protein:  item.protein  * ratio,
-        carbs:    item.carbs    * ratio,
-        fat:      item.fat      * ratio,
-        fiber:    item.fiber    * ratio,
+        calories:     round1(item.calories * ratio),
+        protein:      round1(item.protein  * ratio),
+        carbs:        round1(item.carbs    * ratio),
+        fat:          round1(item.fat      * ratio),
+        fiber:        scale(item.fiber),
+        sugar:        scale(item.sugar),
+        saturatedFat: scale(item.saturatedFat),
       },
     })
 

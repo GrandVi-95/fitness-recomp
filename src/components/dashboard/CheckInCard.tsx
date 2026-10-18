@@ -4,11 +4,15 @@ import { useEffect, useState } from "react"
 import { ClipboardCheck, Loader2, Check, X, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+type Trend = "fast_loss" | "down" | "stable" | "up" | "fast_gain" | "unknown"
+
 interface CheckInPreview {
   due: boolean
-  weightTrendLabel?: "fast_loss" | "down" | "stable" | "up"
-  waistTrendLabel?: "down" | "stable" | "up"
-  perfTrendLabel?: "down" | "stable" | "up"
+  weightTrendPct?: number
+  weightTrendLabel?: Trend
+  waistTrendLabel?: "down" | "stable" | "up" | "unknown"
+  perfTrendLabel?: "down" | "stable" | "up" | "unknown"
+  adherence?: { loggedDays: number; ratio: number | null; adequate: boolean }
   decision?: "no_change" | "increase" | "decrease"
   offsetDelta?: number
   reasoning?: string
@@ -24,15 +28,20 @@ const WEIGHT_LABELS: Record<string, string> = {
   down: "ירידה",
   stable: "יציב",
   up: "עלייה",
+  fast_gain: "עלייה מהירה",
+  unknown: "אין מספיק שקילות",
 }
-const WAIST_LABELS: Record<string, string> = { down: "ירידה", stable: "יציב", up: "עלייה" }
-const PERF_LABELS: Record<string, string> = { down: "ירידה", stable: "יציב", up: "שיפור" }
+const WAIST_LABELS: Record<string, string> = { down: "ירידה", stable: "יציב", up: "עלייה", unknown: "לא נמדד" }
+const PERF_LABELS: Record<string, string> = { down: "ירידה", stable: "יציב", up: "שיפור", unknown: "אין מספיק נתונים" }
 
 // Read-only "pill" — the check-in engine's auto-computed weight/waist/
 // performance trend readouts, styled like modern iOS segmented pills rather
 // than a raw HTML <select>.
-function TrendPill({ label, trend }: { label: string; trend: "down" | "stable" | "up" | "fast_loss" }) {
-  const Icon = trend === "up" ? TrendingUp : trend === "down" || trend === "fast_loss" ? TrendingDown : Minus
+function TrendPill({ label, trend }: { label: string; trend: Trend }) {
+  const Icon =
+    trend === "up" || trend === "fast_gain" ? TrendingUp
+    : trend === "down" || trend === "fast_loss" ? TrendingDown
+    : Minus
   return (
     <span className="inline-flex items-center gap-1.5 bg-gray-100 rounded-full px-4 py-2 text-sm font-medium border-none text-gray-900">
       <Icon size={13} className="text-gray-400" />
@@ -41,7 +50,7 @@ function TrendPill({ label, trend }: { label: string; trend: "down" | "stable" |
   )
 }
 
-/** Bi-weekly Controlled Lean Gain check-in prompt — appears on the dashboard
+/** Bi-weekly goal-aware check-in prompt — appears on the dashboard
  *  once 14–21 days have passed since the last check-in, shows the decision
  *  engine's computed trend read + recommendation, and lets the user apply it
  *  (persisting the cumulative calorieAdjustmentOffset) or dismiss for now.
@@ -112,13 +121,28 @@ export default function CheckInCard() {
 
       <div className="flex flex-wrap gap-2">
         {preview.weightTrendLabel && (
-          <TrendPill label={`משקל: ${WEIGHT_LABELS[preview.weightTrendLabel]}`} trend={preview.weightTrendLabel} />
+          <TrendPill
+            label={`משקל: ${WEIGHT_LABELS[preview.weightTrendLabel]}${
+              preview.weightTrendLabel !== "unknown" && preview.weightTrendPct != null
+                ? ` (${preview.weightTrendPct > 0 ? "+" : ""}${preview.weightTrendPct.toFixed(2)}%/שבוע)`
+                : ""
+            }`}
+            trend={preview.weightTrendLabel}
+          />
         )}
         {preview.waistTrendLabel && (
           <TrendPill label={`היקף מותן: ${WAIST_LABELS[preview.waistTrendLabel]}`} trend={preview.waistTrendLabel} />
         )}
         {preview.perfTrendLabel && (
-          <TrendPill label={`ביצועים: ${PERF_LABELS[preview.perfTrendLabel]}`} trend={preview.perfTrendLabel} />
+          <TrendPill label={`כוח: ${PERF_LABELS[preview.perfTrendLabel]}`} trend={preview.perfTrendLabel} />
+        )}
+        {preview.adherence && (
+          <TrendPill
+            label={`תיעוד: ${preview.adherence.loggedDays}/14 ימים${
+              preview.adherence.ratio != null ? ` · ${Math.round(preview.adherence.ratio * 100)}% מהיעד` : ""
+            }`}
+            trend="stable"
+          />
         )}
       </div>
 

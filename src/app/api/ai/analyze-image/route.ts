@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { callGemini } from "@/lib/ai"
+import {
+  callGemini,
+  checkAiRateLimit,
+  requestErrorResponse,
+  resolveGeminiKey,
+  roundFoodItem,
+  sanitizeAndParseJson,
+  validateAiItems,
+  IMAGE_BODY_MAX_BYTES,
+} from "@/lib/ai"
+import { readJsonBody, ValidationError } from "@/lib/validate"
 
 const DEMO_USER_ID = "demo-user"
 
@@ -13,41 +23,50 @@ const ANALYZE_PROMPT =
   'peas — each with its own estimated quantity and macros, never one combined item. ' +
   'For each item, estimate its quantity in grams (field "quantity", unit "g") and its own calories, protein, ' +
   'carbs, fat, and sugar. Name each item in Hebrew. Estimate sugar from visible sweet ingredients, sauces, ' +
-  'fruit, or processed carbs; if not determinable, use 0. ' +
-  'IMPORTANT — scale ambiguity: when analyzing an image with no explicit weight given in accompanying text ' +
-  'or voice, be aware that portion size estimated from a photo alone is inherently uncertain — there is no ' +
-  'guaranteed reference for scale. Estimate portion sizes conservatively rather than generously. In the ' +
-  '"insight" field, write one short, friendly Hebrew sentence gently reminding the user to double-check the ' +
-  'estimated weight, especially if the photo had no visual reference object (e.g. a hand, a coin, or a ' +
-  'standard-size plate) to judge scale by. ' +
-  'Return a JSON object EXACTLY like this: { "items": [ { "name": "Hebrew food item name", "quantity": number, "unit": "g", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number } ], "insight": "one short Hebrew sentence per the rule above" }.'
+  'fruit, or processed carbs; if sugar is not determinable, use null (never 0 as a placeholder). ' +
+  'PORTION SIZE: give your UNBIASED, most likely estimate of each portion — neither conservative nor generous. ' +
+  'Portion size from a photo alone is inherently uncertain (there is no guaranteed reference for scale), so ' +
+  'ALSO give a plausible low/high range for the TOTAL calories of the whole photo in "calorieRange". ' +
+  'HIDDEN CALORIES: explicitly consider cooking oil, butter, dressings and sauces. If the food looks fried, ' +
+  'sautéed, roasted in oil, dressed or sauced, add a separate item for the likely oil/sauce (e.g. "שמן זית", ' +
+  '"טחינה") with your best estimate, and let the range reflect that uncertainty. ' +
+  'In the "insight" field, write one short, friendly Hebrew sentence gently reminding the user to double-check ' +
+  'the estimated weight (and any oil/sauce you assumed), especially if the photo had no visual reference ' +
+  'object (e.g. a hand, a coin, or a standard-size plate) to judge scale by. ' +
+  'Return a JSON object EXACTLY like this: { "items": [ { "name": "Hebrew food item name", "quantity": number, ' +
+  '"unit": "g", "calories": number, "protein": number, "carbs": number, "fat": number, "sugar": number or null } ], ' +
+  '"calorieRange": { "low": number, "high": number }, "insight": "one short Hebrew sentence per the rule above" }.'
 
-interface ImageFoodItem {
-  name:     string
-  quantity: number
-  unit:     string
-  calories: number
-  protein:  number
-  carbs:    number
-  fat:      number
-  sugar:    number
-}
+const ALLOWED_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
-function resolveGeminiKey(aiProvider: string | null, userApiKey: string | null): string | null {
-  if (aiProvider === "gemini" && userApiKey) return userApiKey
-  return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
+/** Low/high total-calorie range — optional; dropped (null) when implausible. */
+function parseCalorieRange(raw: unknown, totalCalories: number): { low: number; high: number } | null {
+  if (!raw || typeof raw !== "object") return null
+  const { low, high } = raw as { low?: unknown; high?: unknown }
+  if (typeof low !== "number" || typeof high !== "number") return null
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high > 20000 || low > high) return null
+  // The point estimate should sit inside (or very near) the range.
+  if (totalCalories < low * 0.9 || totalCalories > high * 1.1) return null
+  return { low: Math.round(low), high: Math.round(high) }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageBase64 } = (await request.json()) as { imageBase64: string }
+    let imageBase64: unknown
+    try {
+      ({ imageBase64 } = await readJsonBody<{ imageBase64?: unknown }>(request, IMAGE_BODY_MAX_BYTES))
+    } catch (err) {
+      const res = requestErrorResponse(err)
+      if (res) return res
+      throw err
+    }
 
-    if (!imageBase64) {
+    if (typeof imageBase64 !== "string" || !imageBase64) {
       return NextResponse.json({ error: "נדרשת תמונה לניתוח" }, { status: 400 })
     }
 
     // ── Security guards ───────────────────────────────────────────────────────
-    const ALLOWED_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
     const mimeMatch    = imageBase64.match(/^data:([^;]+);base64,/)
     const mimeType     = mimeMatch?.[1] ?? ""
 
@@ -60,12 +79,15 @@ export async function POST(request: NextRequest) {
 
     const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, "")
     // base64 string length × 0.75 ≈ binary byte size; enforce 5 MB limit
-    if (base64Data.length * 0.75 > 5 * 1024 * 1024) {
+    if (base64Data.length * 0.75 > MAX_IMAGE_BYTES) {
       return NextResponse.json(
         { error: "התמונה גדולה מדי — גודל מקסימלי 5MB" },
-        { status: 400 },
+        { status: 413 },
       )
     }
+
+    const limited = checkAiRateLimit()
+    if (limited) return limited
 
     const settings = await db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } })
     const apiKey   = resolveGeminiKey(settings?.aiProvider ?? null, settings?.aiApiKey ?? null)
@@ -83,20 +105,50 @@ export async function POST(request: NextRequest) {
         { inlineData: { mimeType, data: base64Data } },
         { text: ANALYZE_PROMPT },
       ],
-    }])
+    }], { generationConfig: { responseMimeType: "application/json" } })
 
-    const result = JSON.parse(rawText) as { items: ImageFoodItem[]; insight?: string }
+    let parsed: { items?: unknown; insight?: unknown; calorieRange?: unknown }
+    try {
+      parsed = sanitizeAndParseJson(rawText)
+    } catch {
+      return NextResponse.json(
+        { error: "המודל החזיר תשובה לא תקינה — נסה תמונה אחרת" },
+        { status: 422 },
+      )
+    }
 
-    if (!Array.isArray(result.items) || result.items.length === 0) {
+    if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
       return NextResponse.json(
         { error: "לא זוהו פריטי מזון בתמונה — נסה תמונה ברורה יותר" },
         { status: 422 },
       )
     }
 
-    return NextResponse.json(result)
+    let items
+    try {
+      items = validateAiItems(parsed.items).map(roundFoodItem)
+    } catch (err) {
+      if (!(err instanceof ValidationError)) throw err
+      console.error(`[POST /api/ai/analyze-image] invalid model output: ${err.message}`)
+      return NextResponse.json(
+        { error: "ה-AI החזיר ערכים תזונתיים לא סבירים — נסה שוב או צלם מחדש" },
+        { status: 422 },
+      )
+    }
+
+    const totalCalories = items.reduce((s, it) => s + it.calories, 0)
+    const insight = typeof parsed.insight === "string" && parsed.insight.trim()
+      ? parsed.insight.trim().slice(0, 300)
+      : undefined
+
+    return NextResponse.json({
+      items,
+      insight,
+      // Uncertainty band for the whole photo (null when the model's range was unusable).
+      calorieRange: parseCalorieRange(parsed.calorieRange, totalCalories),
+    })
   } catch (err) {
-    console.error("[POST /api/ai/analyze-image]", err)
+    console.error("[POST /api/ai/analyze-image]", err instanceof Error ? err.message : "unknown error")
     return NextResponse.json({ error: "שגיאה בניתוח התמונה — נסה שוב" }, { status: 500 })
   }
 }

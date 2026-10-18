@@ -32,8 +32,10 @@ import {
   calculateTDEE,
   calculateCurrentTarget,
   calculateAutoProtein,
-  calculateTargetFats,
   calculateTargetCarbs,
+  resolveFatForBudget,
+  GOAL_ENERGY_FACTOR,
+  type Goal,
 } from "@/utils/nutrition-math"
 import { useRouter } from "next/navigation"
 
@@ -52,6 +54,12 @@ const ACTIVITY_LEVELS = [
   { value: 1.55,  label: "פעיל — 4-5 ימי כושר/שבוע (×1.55)" },
   { value: 1.725, label: "מאוד פעיל — 6-7 ימים (×1.725)" },
   { value: 1.9,   label: "ספורטאי מקצועי (×1.9)" },
+]
+
+const GOAL_OPTIONS: { value: Goal; label: string; hint: string }[] = [
+  { value: "lean_gain", label: "עלייה רזה", hint: "עודף מתון (~5% מעל TDEE) — יעד: ‎+0.1 עד ‎+0.35% ממשקל הגוף בשבוע." },
+  { value: "recomp",    label: "רה-קומפוזיציה", hint: "תחזוקה (TDEE) — משקל יציב, המותן והכוח מראים את ההתקדמות." },
+  { value: "fat_loss",  label: "ירידה בשומן", hint: "גירעון (~15% מתחת ל-TDEE) — יעד: ‎−0.4 עד ‎−1.0% ממשקל הגוף בשבוע." },
 ]
 
 // Shared "bento box" card treatment — matches the dashboard page / other pages.
@@ -84,6 +92,11 @@ interface SettingsData {
   calorieAdjustmentOffset: number
   vacationMode: boolean
   creatineCalibrationActive: boolean
+  creatineStartedAt: string | null
+  creatineCalibrationDays: number
+  goal: Goal
+  trainingDaysPerWeek: number
+  trendWeight: number | null
 }
 
 // ── Small shared components ──────────────────────────────────────────────────
@@ -178,6 +191,10 @@ export default function SettingsPage() {
 
   // Body profile
   const [weight, setWeight]                     = useState<number>(70)
+  // A weigh-in is only logged when the user actually changes the weight.
+  const [weightDirty, setWeightDirty]           = useState(false)
+  const [goal, setGoal]                         = useState<Goal>("lean_gain")
+  const [trainingDaysPerWeek, setTrainingDaysPerWeek] = useState(4)
   const [height, setHeight]                     = useState(183)
   const [age, setAge]                           = useState(31)
   const [gender, setGender]                     = useState("male")
@@ -245,6 +262,8 @@ export default function SettingsPage() {
         setCalorieAdjustmentOffset(d.calorieAdjustmentOffset ?? 0)
         setVacationMode(d.vacationMode ?? false)
         setCreatineCalibration(d.creatineCalibrationActive ?? false)
+        setGoal(d.goal ?? "lean_gain")
+        setTrainingDaysPerWeek(d.trainingDaysPerWeek ?? 4)
       })
       .catch(() => setError("שגיאה בטעינת ההגדרות"))
       .finally(() => setLoading(false))
@@ -252,29 +271,37 @@ export default function SettingsPage() {
 
   // ── Live-calculated targets (instant preview as body-profile fields change) ──
 
-  const { bmr, tdee, currentTarget, autoProteinG, autoFatsG } = useMemo(() => {
-    const w = weight > 0 ? weight : 0
+  // The server computes targets off the 7-day TREND weight; preview the same
+  // number unless the user is typing a new weigh-in.
+  const calcWeight = weightDirty ? weight : (data?.trendWeight ?? weight)
+
+  const { bmr, tdee, currentTarget, autoProteinG } = useMemo(() => {
+    const w = calcWeight > 0 ? calcWeight : 0
     const bmr  = w > 0 ? calculateBMR(w, height, age, gender) : 0
     const tdee = bmr  > 0 ? calculateTDEE(bmr, activityMultiplier) : 0
-    const currentTarget = tdee > 0 ? calculateCurrentTarget(tdee, calorieAdjustmentOffset) : 0
+    const currentTarget = tdee > 0 ? calculateCurrentTarget(tdee, calorieAdjustmentOffset, goal, bmr) : 0
     return {
       bmr,
       tdee,
       currentTarget,
       autoProteinG: w > 0 ? calculateAutoProtein(w) : 0,
-      autoFatsG:    w > 0 ? calculateTargetFats(w) : 0,
     }
-  }, [weight, height, age, gender, activityMultiplier, calorieAdjustmentOffset])
+  }, [calcWeight, height, age, gender, activityMultiplier, calorieAdjustmentOffset, goal])
 
-  // Controlled Lean Gain: auto calories = (TDEE × 1.05) + the persistent
-  // check-in offset — never raw TDEE. Fat is always weight-based (g/kg) —
-  // there's no manual-fat override in this UI, only manual calories/protein.
+  // Auto calories = (TDEE × goal factor) + the bounded check-in offset. Fat
+  // is weight-based (0.9 g/kg, stepped down toward 0.6 g/kg only if needed);
+  // carbs are the remainder. These are the AVERAGE-day targets — training
+  // and rest days are redistributed around them, keeping the weekly total.
   const effectiveCalories = autoCalorieGoal ? currentTarget : manualCalories
   const effectiveProtein  = autoProtein     ? autoProteinG  : manualProtein
-  const effectiveFats     = autoFatsG
+  const effectiveFats     = calcWeight > 0 && effectiveCalories > 0
+    ? resolveFatForBudget(effectiveCalories, effectiveProtein, calcWeight)
+    : 0
   const effectiveCarbs    = effectiveCalories > 0 && effectiveFats > 0
     ? calculateTargetCarbs(effectiveCalories, effectiveProtein, effectiveFats)
     : 0
+  const macrosInfeasible  =
+    effectiveCalories > 0 && effectiveProtein * 4 + effectiveFats * 9 > effectiveCalories
 
   // Vacation Mode toggles immediately (not batched into the main save button)
   // — it's a mode switch, not a form field, so it should take effect the
@@ -323,15 +350,17 @@ export default function SettingsPage() {
         dietaryPreference,
         reportEnabled,
         reportEmail: reportEmail.trim(),
-        // Body profile — always sent so targets stay in sync
-        weight,
+        goal,
+        trainingDaysPerWeek,
+        // Body profile (a weigh-in is logged only when the weight was edited)
+        ...(weightDirty ? { weight } : {}),
         height,
         age,
         gender,
         activityMultiplier,
-        // Manual overrides (ignored by server when auto flags are on)
-        targetCalories: manualCalories,
-        targetProtein:  manualProtein,
+        // Manual overrides — only sent when the matching auto flag is off
+        ...(autoCalorieGoal ? {} : { targetCalories: manualCalories }),
+        ...(autoProtein ? {} : { targetProtein: manualProtein }),
       }
       if (apiKey.trim()) body.aiApiKey = apiKey.trim()
 
@@ -346,6 +375,7 @@ export default function SettingsPage() {
       }
       setSaved(true)
       setApiKey("")
+      setWeightDirty(false)
       setTimeout(() => setSaved(false), 3000)
     } catch (e) {
       setError(e instanceof Error ? e.message : "שמירה נכשלה — אנא נסה שוב.")
@@ -481,19 +511,21 @@ export default function SettingsPage() {
             <FieldLabel>משקל (ק&quot;ג)</FieldLabel>
             <NumberInput
               value={weight}
-              onChange={setWeight}
+              onChange={(v) => { setWeight(v); setWeightDirty(true) }}
               min={30}
               max={300}
               step={0.1}
               unit='ק"ג'
             />
             <p className="text-[10px] text-gray-300">
-              {data?.latestWeight ? `נמדד לאחרונה: ${data.latestWeight}` : "לא נמדד עדיין"}
+              {data?.latestWeight
+                ? `נמדד לאחרונה: ${data.latestWeight}${data.trendWeight ? ` · ממוצע 7 ימים: ${data.trendWeight}` : ""}`
+                : "לא נמדד עדיין"}
             </p>
           </div>
           <div className="space-y-1.5">
             <FieldLabel>גובה (ס&quot;מ)</FieldLabel>
-            <NumberInput value={height} onChange={setHeight} min={100} max={250} unit='ס"מ' />
+            <NumberInput value={height} onChange={setHeight} min={120} max={230} unit='ס"מ' />
           </div>
         </div>
 
@@ -501,7 +533,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <FieldLabel>גיל</FieldLabel>
-            <NumberInput value={age} onChange={setAge} min={10} max={100} unit="שנה" />
+            <NumberInput value={age} onChange={setAge} min={14} max={100} unit="שנה" />
           </div>
           <div className="space-y-1.5">
             <FieldLabel>מין</FieldLabel>
@@ -536,6 +568,36 @@ export default function SettingsPage() {
             </select>
             <ChevronDown size={13} className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
+        </div>
+
+        {/* Goal */}
+        <div className="space-y-1.5">
+          <FieldLabel>מטרה</FieldLabel>
+          <div className="grid grid-cols-3 gap-2">
+            {GOAL_OPTIONS.map((g) => (
+              <button
+                key={g.value}
+                type="button"
+                onClick={() => setGoal(g.value)}
+                className={cn(
+                  "rounded-2xl px-2 py-2.5 text-xs font-medium transition-colors",
+                  goal === g.value ? "bg-black text-white" : "bg-gray-50 text-gray-600 border border-gray-200",
+                )}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-500">{GOAL_OPTIONS.find((g) => g.value === goal)?.hint}</p>
+        </div>
+
+        {/* Training days per week */}
+        <div className="space-y-1.5">
+          <FieldLabel>ימי אימון בשבוע (מתוכנן)</FieldLabel>
+          <NumberInput value={trainingDaysPerWeek} onChange={setTrainingDaysPerWeek} min={0} max={7} unit="ימים" />
+          <p className="text-[11px] text-gray-500">
+            ימי מנוחה מקבלים ~10% פחות קלוריות, וההפרש עובר לימי האימון — כך שסך השבוע נשאר זהה ליעד.
+          </p>
         </div>
       </section>
 
@@ -581,8 +643,14 @@ export default function SettingsPage() {
               <p className="text-sm font-semibold text-gray-900">כיול קריאטין</p>
               <p className="text-[11px] text-gray-500">
                 משעה את קיצוץ הקלוריות באלגוריתם ה-Check-In כדי למנוע ירידה שגויה ביעדים
-                עקב צבירת נוזלים תוך-שריריים מקריאטין.
+                עקב צבירת נוזלים תוך-שריריים מקריאטין (3–5 גר&apos; ביום; טעינה אינה חובה).
+                נכבה אוטומטית אחרי {data?.creatineCalibrationDays ?? 28} ימים.
               </p>
+              {creatineCalibration && data?.creatineStartedAt && (
+                <p className="text-[11px] text-violet-600 mt-0.5">
+                  פעיל מאז {new Date(data.creatineStartedAt).toLocaleDateString("he-IL")}
+                </p>
+              )}
             </div>
           </div>
           <Toggle enabled={creatineCalibration} onChange={handleToggleCreatine} />
@@ -612,7 +680,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <Flame size={16} className="text-[#FF9500]" />
                   <div>
-                    <p className="text-[11px] text-gray-500">יעד קלוריות מחושב (Lean Gain)</p>
+                    <p className="text-[11px] text-gray-500">יעד קלוריות מחושב ליום ממוצע ({GOAL_OPTIONS.find((g) => g.value === goal)?.label})</p>
                     <p className="text-2xl font-black text-[#FF9500] leading-none">
                       {currentTarget > 0 ? currentTarget.toLocaleString() : "—"}
                       <span className="text-sm font-normal text-gray-400"> קק&quot;ל</span>
@@ -632,7 +700,7 @@ export default function SettingsPage() {
                     TDEE = {bmr.toLocaleString()} × {activityMultiplier} = <span className="text-gray-400">{tdee.toLocaleString()}</span>
                   </p>
                   <p className="text-[10px] text-gray-300 font-mono">
-                    יעד = TDEE × 1.05{" "}
+                    יעד = TDEE × {GOAL_ENERGY_FACTOR[goal].toFixed(2)}{" "}
                     {calorieAdjustmentOffset !== 0
                       ? `${calorieAdjustmentOffset > 0 ? "+" : "−"} ${Math.abs(calorieAdjustmentOffset)} (תיקון בדיקה)`
                       : ""}
@@ -648,7 +716,7 @@ export default function SettingsPage() {
                 value={manualCalories}
                 onChange={setManualCalories}
                 min={1000}
-                max={10000}
+                max={6000}
                 step={50}
                 unit='קק"ל'
               />
@@ -701,7 +769,7 @@ export default function SettingsPage() {
                 value={manualProtein}
                 onChange={setManualProtein}
                 min={30}
-                max={500}
+                max={400}
                 unit="גר'"
               />
             </div>
@@ -754,6 +822,11 @@ export default function SettingsPage() {
               <p className="text-[10px] text-gray-300">
                 סה&quot;כ: {effectiveProtein * 4 + effectiveCarbs * 4 + effectiveFats * 9} קק&quot;ל מתוך {effectiveCalories.toLocaleString()} יעד
               </p>
+              {macrosInfeasible && (
+                <p className="text-[11px] text-[#FF3B30] mt-1">
+                  החלבון והשומן לבדם חורגים מיעד הקלוריות — העלה את הקלוריות או הורד את החלבון.
+                </p>
+              )}
             </div>
           </div>
         )}

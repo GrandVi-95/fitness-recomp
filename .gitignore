@@ -31,8 +31,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # SQLite local database files
-prisma/*.db
-prisma/*.db-journal
+*.db
+*.db-journal
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -45,3 +45,6 @@ prisma/*.db-journal
 next-env.d.ts
 
 /src/generated/prisma
+
+# supabase cli local state
+supabase/.temp/

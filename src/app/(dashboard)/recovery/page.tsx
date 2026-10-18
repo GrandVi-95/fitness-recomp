@@ -2,121 +2,97 @@ export const dynamic = "force-dynamic"
 
 import { db } from "@/lib/db"
 import RecoveryTabs, { type RecoveryData, type WeeklyData } from "@/components/recovery/RecoveryTabs"
+import { APP_TIME_ZONE, addDaysStr, getLocalWeekBounds, localDateStr, startOfLocalDay } from "@/lib/time"
+import { isProteinOnTarget } from "@/utils/nutrition-math"
+import {
+  metricKind,
+  setMetric,
+  setVolume,
+  streakWindowStart,
+  trainingWeekStreaks,
+  weeklyVolumeByMuscle,
+  type MetricKind,
+} from "@/lib/training"
 
 const DEMO_USER_ID = "demo-user"
-const TZ_OFFSET_MS = 3 * 60 * 60 * 1000 // Israel UTC+3
-
-const MUSCLE_ORDER = ["chest","back","shoulders","biceps","triceps","quads","hamstrings","core"] as const
-type Muscle = typeof MUSCLE_ORDER[number]
-
-const MUSCLE_LABELS: Record<Muscle, string> = {
-  chest:"חזה", back:"גב", shoulders:"כתפיים", biceps:"בייספס",
-  triceps:"טרייספס", quads:"קוואדס", hamstrings:"ירכיים", core:"בטן",
-}
-
-const THRESHOLDS: Record<Muscle, { min: number; max: number }> = {
-  chest:      { min:8,  max:20 }, back:      { min:8,  max:20 },
-  shoulders:  { min:6,  max:16 }, biceps:    { min:6,  max:12 },
-  triceps:    { min:6,  max:12 }, quads:     { min:8,  max:20 },
-  hamstrings: { min:8,  max:20 }, core:      { min:6,  max:12 },
-}
 
 const DAY_LABELS_HE = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שב'"]
 
-const MUSCLE_HE_EXTRA: Record<string, string> = {
-  legs: "רגליים", glutes: "ישבן", calves: "שוקיים", other: "אחר",
-}
-
-// Returns "YYYY-MM-DD" in Israel time (UTC+3) for any UTC Date.
-function israelDateStr(d: Date): string {
-  const shifted = new Date(d.getTime() + TZ_OFFSET_MS)
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`
-}
-
-// Returns UTC-equivalent boundaries for the current Israel calendar week (Sun–Sat).
-function getIsraelWeekBounds(): { thisWeekStartQ: Date; lastWeekStartQ: Date } {
-  const now = new Date()
-  // Shift forward to Israel time so UTC date/day methods give Israel calendar values
-  const israelNow = new Date(now.getTime() + TZ_OFFSET_MS)
-
-  // Sunday of current Israel week (JS day 0 = Sunday)
-  const israelSunday = new Date(israelNow)
-  israelSunday.setUTCDate(israelNow.getUTCDate() - israelNow.getUTCDay())
-  israelSunday.setUTCHours(0, 0, 0, 0)
-
-  // Shift back to real UTC for DB queries
-  const thisWeekStartQ = new Date(israelSunday.getTime() - TZ_OFFSET_MS)
-  const lastWeekStartQ = new Date(thisWeekStartQ.getTime() - 7 * 24 * 60 * 60 * 1000)
-
-  return { thisWeekStartQ, lastWeekStartQ }
+function weekLabelOf(start: Date): string {
+  return start.toLocaleDateString("he-IL", { day: "numeric", month: "short", timeZone: APP_TIME_ZONE })
 }
 
 async function getRecoveryData(): Promise<RecoveryData> {
   const now = new Date()
+  // Last 7 local calendar days (today + 6 before), Israel time
+  const sevenDaysAgo = startOfLocalDay(addDaysStr(localDateStr(now), -6))
 
-  const lastSession = await db.workoutSession.findFirst({
-    where: { userId: DEMO_USER_ID, completedAt: { not: null } },
-    orderBy: { completedAt: "desc" },
-    include: { sets: { where: { isWarmup: false } } },
-  })
+  // Sessions of archived workouts are included on purpose — history is history.
+  const [lastSession, recentSets, streakSessions, settings] = await Promise.all([
+    db.workoutSession.findFirst({
+      where: { userId: DEMO_USER_ID, completedAt: { not: null } },
+      orderBy: { completedAt: "desc" },
+      include: { sets: { where: { isWarmup: false } } },
+    }),
+    db.setLog.findMany({
+      where: {
+        isWarmup: false,
+        session: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { gte: sevenDaysAgo } },
+      },
+      select: { exercise: { select: { name: true, primaryMuscle: true, secondaryMuscles: true } } },
+    }),
+    // One query over the whole streak window, grouped by local week in memory
+    db.workoutSession.findMany({
+      where: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { gte: streakWindowStart(now) } },
+      select: {
+        startedAt: true,
+        sets: {
+          where: { isWarmup: false },
+          select: {
+            exerciseId: true,
+            weightKg: true,
+            reps: true,
+            exercise: { select: { isCompound: true, trackingType: true } },
+          },
+        },
+      },
+    }),
+    db.userSettings.findUnique({
+      where: { userId: DEMO_USER_ID },
+      select: { deloadThreshold: true },
+    }),
+  ])
 
   const rpeValues = lastSession?.sets.map((s) => s.rpe).filter((r): r is number => r != null) ?? []
   const lastAvgRpe = rpeValues.length
     ? Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10
     : null
 
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const recentSessions = await db.workoutSession.findMany({
-    where: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { gte: sevenDaysAgo } },
-    include: {
-      sets: {
-        where: { isWarmup: false },
-        include: { exercise: { select: { primaryMuscle: true } } },
-      },
-    },
-  })
-
-  const setsByMuscle: Record<string, number> = {}
-  for (const s of recentSessions)
-    for (const set of s.sets)
-      setsByMuscle[set.exercise.primaryMuscle] = (setsByMuscle[set.exercise.primaryMuscle] ?? 0) + 1
-
-  const weeklyVolume = MUSCLE_ORDER.map((muscle) => {
-    const sets = setsByMuscle[muscle] ?? 0
-    const { min, max } = THRESHOLDS[muscle]
-    const status: "under" | "optimal" | "over" = sets < min ? "under" : sets > max ? "over" : "optimal"
-    return { muscle: MUSCLE_LABELS[muscle], sets, status }
-  })
-
-  let consecutiveWeeks = 0
-  for (let w = 0; w < 12; w++) {
-    const end   = new Date(now.getTime() - w * 7 * 86_400_000)
-    const start = new Date(now.getTime() - (w + 1) * 7 * 86_400_000)
-    const count = await db.workoutSession.count({
-      where: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { gte: start, lt: end } },
-    })
-    if (count === 0) break
-    consecutiveWeeks++
-  }
+  const { consecutiveWeeks, stalledWeeks } = trainingWeekStreaks(streakSessions, now)
 
   return {
     lastSleep:    lastSession?.sleepHours   ?? null,
     lastFatigue:  lastSession?.fatigueLevel ?? null,
     lastAvgRpe,
-    weeklyVolume,
+    weeklyVolume: weeklyVolumeByMuscle(recentSets),
     consecutiveWeeks,
+    stalledWeeks,
+    deloadThreshold: settings?.deloadThreshold ?? 3,
   }
 }
 
 async function getWeeklyData(): Promise<WeeklyData> {
   const now = new Date()
-  const { thisWeekStartQ, lastWeekStartQ } = getIsraelWeekBounds()
+  // Current (partial) week, last COMPLETED week, and the week before it.
+  const thisWeek = getLocalWeekBounds(0, now)
+  const lastWeek = getLocalWeekBounds(1, now)
+  const priorWeek = getLocalWeekBounds(2, now)
 
   const [
     user,
     activePlan,
-    thisWeekSessions,
-    lastWeekSessions,
+    thisWeekSessionCount,
+    comparisonSessions,
     thisWeekNutrition,
     bodyMetrics,
   ] = await Promise.all([
@@ -125,43 +101,46 @@ async function getWeeklyData(): Promise<WeeklyData> {
       include: { userSettings: true },
     }),
     db.workoutPlan.findFirst({
-      where: { userId: DEMO_USER_ID, isActive: true },
-      include: { workouts: true },
+      where: { userId: DEMO_USER_ID, isActive: true, archivedAt: null },
+      include: { workouts: { where: { archivedAt: null, environment: "gym" }, select: { id: true } } },
     }),
-    db.workoutSession.findMany({
-      where: { userId: DEMO_USER_ID, startedAt: { gte: thisWeekStartQ }, completedAt: { not: null } },
-      include: {
-        sets: {
-          where: { isWarmup: false },
-          include: { exercise: { select: { name: true, primaryMuscle: true } } },
-        },
-      },
+    db.workoutSession.count({
+      where: { userId: DEMO_USER_ID, startedAt: { gte: thisWeek.start }, completedAt: { not: null } },
     }),
+    // Progression compares the two most recent COMPLETED weeks — never a
+    // partial current week against a full one.
     db.workoutSession.findMany({
       where: {
         userId: DEMO_USER_ID,
-        startedAt: { gte: lastWeekStartQ, lt: thisWeekStartQ },
+        startedAt: { gte: priorWeek.start, lt: thisWeek.start },
         completedAt: { not: null },
       },
-      include: {
+      select: {
+        startedAt: true,
         sets: {
           where: { isWarmup: false },
-          include: { exercise: { select: { name: true } } },
+          select: {
+            exerciseId: true,
+            weightKg: true,
+            reps: true,
+            durationSecs: true,
+            exercise: { select: { name: true, primaryMuscle: true, trackingType: true } },
+          },
         },
       },
     }),
     db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: thisWeekStartQ } },
+      where: { userId: DEMO_USER_ID, date: { gte: thisWeek.start } },
       include: { foodItems: true },
     }),
     db.bodyMetric.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: lastWeekStartQ } },
+      where: { userId: DEMO_USER_ID, date: { gte: lastWeek.start } },
       orderBy: { date: "asc" },
     }),
   ])
 
   const latestWeight =
-    bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStartQ).at(-1)?.weightKg ??
+    bodyMetrics.filter((m) => new Date(m.date) >= thisWeek.start).at(-1)?.weightKg ??
     bodyMetrics.at(-1)?.weightKg ?? null
 
   let targetProtein = user?.targetProtein ?? 185
@@ -170,72 +149,104 @@ async function getWeeklyData(): Promise<WeeklyData> {
   }
   const targetCalories = user?.targetCalories ?? 2600
 
+  // ── Progressive overload: last completed week vs the week before ──────
   interface ExStats {
     name: string
     primaryMuscle: string
+    kind: MetricKind
     thisVolume: number
-    thisMaxWeight: number
+    thisBest: number
     lastVolume: number
-    lastMaxWeight: number
+    lastBest: number
   }
 
   const exerciseMap = new Map<string, ExStats>()
+  const priorWeekSets: { exerciseId: string; weightKg: number; reps: number; durationSecs: number | null }[] = []
 
-  for (const session of thisWeekSessions) {
+  for (const session of comparisonSessions) {
+    const inLastWeek = session.startedAt >= lastWeek.start
     for (const set of session.sets) {
+      if (!inLastWeek) {
+        priorWeekSets.push(set)
+        continue
+      }
+      const kind = metricKind(set.exercise.trackingType)
       const prev = exerciseMap.get(set.exerciseId) ?? {
         name: set.exercise.name,
         primaryMuscle: set.exercise.primaryMuscle,
-        thisVolume: 0, thisMaxWeight: 0, lastVolume: 0, lastMaxWeight: 0,
+        kind,
+        thisVolume: 0, thisBest: 0, lastVolume: 0, lastBest: 0,
       }
-      prev.thisVolume += set.weightKg * set.reps
-      prev.thisMaxWeight = Math.max(prev.thisMaxWeight, set.weightKg)
+      prev.thisVolume += setVolume(kind, set)
+      prev.thisBest = Math.max(prev.thisBest, setMetric(kind, set))
       exerciseMap.set(set.exerciseId, prev)
     }
   }
+  for (const set of priorWeekSets) {
+    const ex = exerciseMap.get(set.exerciseId)
+    if (!ex) continue
+    ex.lastVolume += setVolume(ex.kind, set)
+    ex.lastBest = Math.max(ex.lastBest, setMetric(ex.kind, set))
+  }
 
-  for (const session of lastWeekSessions) {
-    for (const set of session.sets) {
-      const ex = exerciseMap.get(set.exerciseId)
-      if (!ex) continue
-      ex.lastVolume += set.weightKg * set.reps
-      ex.lastMaxWeight = Math.max(ex.lastMaxWeight, set.weightKg)
+  // Lifetime best BEFORE the compared week — a PR must beat all prior
+  // history, and "new" means the exercise was never logged before.
+  const lifetimeBest = new Map<string, number>()
+  const exerciseIds = [...exerciseMap.keys()]
+  if (exerciseIds.length > 0) {
+    const history = await db.setLog.findMany({
+      where: {
+        exerciseId: { in: exerciseIds },
+        isWarmup: false,
+        session: { userId: DEMO_USER_ID, completedAt: { not: null }, startedAt: { lt: lastWeek.start } },
+      },
+      select: { exerciseId: true, weightKg: true, reps: true, durationSecs: true },
+    })
+    for (const set of history) {
+      const kind = exerciseMap.get(set.exerciseId)!.kind
+      const m = setMetric(kind, set)
+      lifetimeBest.set(set.exerciseId, Math.max(lifetimeBest.get(set.exerciseId) ?? 0, m))
     }
   }
 
-  const progressionList = [...exerciseMap.values()]
-    .sort((a, b) => b.thisVolume - a.thisVolume)
-    .map((ex) => ({
-      name: ex.name,
-      primaryMuscle: ex.primaryMuscle,
-      thisVolume: Math.round(ex.thisVolume),
-      thisMaxWeight: ex.thisMaxWeight,
-      lastVolume: Math.round(ex.lastVolume),
-      lastMaxWeight: ex.lastMaxWeight,
-      volumeDelta: Math.round(ex.thisVolume - ex.lastVolume),
-      volumeDeltaPct: ex.lastVolume > 0
-        ? Math.round(((ex.thisVolume - ex.lastVolume) / ex.lastVolume) * 100)
-        : null,
-      weightDelta: Math.round((ex.thisMaxWeight - ex.lastMaxWeight) * 10) / 10,
-      isPR: ex.lastMaxWeight > 0 && ex.thisMaxWeight > ex.lastMaxWeight,
-      isNew: ex.lastMaxWeight === 0,
-    }))
+  const roundMetric = (kind: MetricKind, n: number) =>
+    kind === "e1rm" ? Math.round(n * 2) / 2 : Math.round(n)
 
-  // Group nutrition by Israel calendar day
+  const progressionList = [...exerciseMap.entries()]
+    .sort(([, a], [, b]) => b.thisVolume - a.thisVolume)
+    .map(([exerciseId, ex]) => {
+      const hasHistory = lifetimeBest.has(exerciseId)
+      const prevBest = lifetimeBest.get(exerciseId) ?? 0
+      return {
+        name: ex.name,
+        primaryMuscle: ex.primaryMuscle,
+        kind: ex.kind,
+        thisVolume: Math.round(ex.thisVolume),
+        lastVolume: Math.round(ex.lastVolume),
+        volumeDelta: Math.round(ex.thisVolume - ex.lastVolume),
+        volumeDeltaPct: ex.lastVolume > 0
+          ? Math.round(((ex.thisVolume - ex.lastVolume) / ex.lastVolume) * 100)
+          : null,
+        thisBest: roundMetric(ex.kind, ex.thisBest),
+        bestDelta: ex.lastBest > 0 ? roundMetric(ex.kind, ex.thisBest - ex.lastBest) : null,
+        isPR: hasHistory && prevBest > 0 && ex.thisBest > prevBest,
+        isNew: !hasHistory,
+      }
+    })
+
+  // ── Nutrition — current (partial) week, grouped by local calendar day ──
   const nutritionByDay = new Map<string, { calories: number; protein: number }>()
   for (const log of thisWeekNutrition) {
-    const key = israelDateStr(log.date)
+    const key = localDateStr(log.date)
     const prev = nutritionByDay.get(key) ?? { calories: 0, protein: 0 }
     prev.calories += log.foodItems.reduce((s, i) => s + i.calories, 0)
     prev.protein  += log.foodItems.reduce((s, i) => s + i.protein, 0)
     nutritionByDay.set(key, prev)
   }
 
-  const todayStr = israelDateStr(now)
+  const todayStr = localDateStr(now)
   const dailyNutrition = Array.from({ length: 7 }, (_, i) => {
-    // Each day starts at thisWeekStartQ + i full days
-    const dayUTC = new Date(thisWeekStartQ.getTime() + i * 24 * 60 * 60 * 1000)
-    const day = israelDateStr(dayUTC)
+    const day = addDaysStr(thisWeek.startStr, i)
     const data = nutritionByDay.get(day)
     return {
       label: DAY_LABELS_HE[i] ?? String(i + 1),
@@ -254,12 +265,16 @@ async function getWeeklyData(): Promise<WeeklyData> {
   const avgProtein = loggedDays.length > 0
     ? Math.round((loggedDays.reduce((s, d) => s + d.protein, 0) / loggedDays.length) * 10) / 10
     : 0
-  const proteinDaysHit = dailyNutrition.filter((d) => d.hasData && d.protein >= targetProtein).length
+  // Same Green-Zone rule (>= 1.6 g/kg) as the dashboard and weekly report.
+  const proteinDaysHit = dailyNutrition.filter(
+    (d) => d.hasData && isProteinOnTarget(d.protein, latestWeight, targetProtein),
+  ).length
 
-  const thisWeekMetrics = bodyMetrics.filter((m) => new Date(m.date) >= thisWeekStartQ)
+  // ── Body weight — current week is partial and labelled as such ─────────
+  const thisWeekMetrics = bodyMetrics.filter((m) => new Date(m.date) >= thisWeek.start)
   const lastWeekMetrics = bodyMetrics.filter((m) => {
     const d = new Date(m.date)
-    return d >= lastWeekStartQ && d < thisWeekStartQ
+    return d >= lastWeek.start && d < thisWeek.start
   })
 
   const thisWeekAvgWeight = thisWeekMetrics.length > 0
@@ -272,27 +287,24 @@ async function getWeeklyData(): Promise<WeeklyData> {
     ? Math.round((thisWeekAvgWeight - lastWeekAvgWeight) * 100) / 100
     : null
 
-  const workoutsCompleted = thisWeekSessions.length
-  const workoutGoal = activePlan?.workouts?.length ?? 3
-
-  const weekLabel = thisWeekStartQ.toLocaleDateString("he-IL", {
-    day: "numeric",
-    month: "short",
-    timeZone: "Asia/Jerusalem",
-  })
-
-  void MUSCLE_HE_EXTRA
+  // Weekly goal: planned training days; fallback = live gym days in the plan
+  // (home workouts are alternatives, not extra days).
+  const workoutGoal =
+    user?.userSettings?.trainingDaysPerWeek ||
+    activePlan?.workouts?.length ||
+    3
 
   return {
     targetCalories,
     targetProtein,
-    weekLabel,
+    weekLabel: weekLabelOf(thisWeek.start),
+    progressionWeekLabel: weekLabelOf(lastWeek.start),
     progressionList,
     dailyNutrition,
     avgCalories,
     avgProtein,
     proteinDaysHit,
-    workoutsCompleted,
+    workoutsCompleted: thisWeekSessionCount,
     workoutGoal,
     thisWeekAvgWeight,
     lastWeekAvgWeight,

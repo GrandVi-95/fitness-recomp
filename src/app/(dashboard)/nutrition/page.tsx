@@ -5,12 +5,9 @@ import MealSuggester from "@/components/dashboard/MealSuggester"
 import RecipePanel   from "@/components/dashboard/RecipePanel"
 import ShakeModal    from "@/components/dashboard/ShakeModal"
 import {
-  SUGAR_TARGET,
-  REST_DAY_SUGAR_TARGET,
   MILK_PRESETS,
   DEFAULT_MILK_PRESET_ID,
   DEFAULT_MILK_VOLUME_ML,
-  computeRestDayTargets,
 } from "@/lib/nutrition"
 import {
   Send,
@@ -34,7 +31,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// SUGAR_TARGET is imported from @/lib/nutrition (shared with dashboard and weeklyReport)
+// Today's targets (training/rest adjusted) and the total-sugar reference come
+// from GET /api/nutrition/today — the server is the single source of truth.
 
 // ─────────────────────────────────────────────────────────────
 // טיפוסים
@@ -46,6 +44,8 @@ interface MacroTotals {
   carbs:    number
   fat:      number
   sugar?:   number
+  // false → some item's sugar is unknown, so `sugar` is a lower bound
+  sugarComplete?: boolean
 }
 
 // A single food item as parsed by AI, before it's been logged (no id yet) —
@@ -59,12 +59,16 @@ interface DraftFoodItem {
   protein:  number
   carbs:    number
   fat:      number
-  sugar:    number
+  // Sub-nutrients: null = unknown (not estimated), distinct from a real 0
+  sugar:         number | null
+  fiber?:        number | null
+  saturatedFat?: number | null
 }
 
 interface ScanResult {
   items:    DraftFoodItem[]
   insight?: string   // AI nudge — reminder to verify scale-ambiguous weight estimates
+  calorieRange?: { low: number; high: number } | null   // photo-portion uncertainty band
 }
 
 interface VoiceMeal {
@@ -83,9 +87,10 @@ interface LabelScan {
     protein:       number
     carbs:         number
     fat:           number
-    sugar:         number
-    fiber:         number
-    saturatedFat:  number
+    // null = not printed on the label (unknown)
+    sugar:         number | null
+    fiber:         number | null
+    saturatedFat:  number | null
   }
   confidence: "high" | "medium" | "low"
 }
@@ -105,7 +110,11 @@ interface FoodItem {
 interface TodayData {
   totals: MacroTotals
   byMealType: Record<string, FoodItem[]>
-  targets: MacroTotals
+  targets: MacroTotals            // TODAY's targets (already training/rest adjusted)
+  baseTargets?: MacroTotals       // average-day targets
+  isTrainingDay?: boolean
+  dayTypeSource?: "explicit" | "workout" | "unset"
+  sugarReferenceG?: number        // total-sugar reference (not a hard limit)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -527,6 +536,11 @@ function LabelScannerModal({
   )
 }
 
+// Scales a per-100g sub-nutrient; null (unknown) stays null.
+function scaleSub(per100: number | null, factor: number): number | null {
+  return per100 === null ? null : Math.round(per100 * factor * 10) / 10
+}
+
 // ─────────────────────────────────────────────────────────────
 // עמוד תזונה
 // ─────────────────────────────────────────────────────────────
@@ -585,8 +599,12 @@ export default function NutritionPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
 
-  // Training day / rest day cycling toggle — persisted per calendar day (Israel UTC+3)
-  const [isTrainingDay, setIsTrainingDay] = useState(true)
+  // Training day / rest day toggle — persisted server-side per local day
+  // (PUT /api/nutrition/day-plan); the initial value comes from /today.
+  // null = not marked today → the server applies the AVERAGE-day targets
+  const [isTrainingDay, setIsTrainingDay] = useState<boolean | null>(null)
+  const [dayPlanSaving, setDayPlanSaving] = useState(false)
+  const [dayPlanError,  setDayPlanError]  = useState<string | null>(null)
 
   // Coffee quick-log — preset and volume persisted in localStorage
   const [preferredMilkPreset, setPreferredMilkPreset] = useState(DEFAULT_MILK_PRESET_ID)
@@ -600,7 +618,12 @@ export default function NutritionPage() {
   const fetchToday = useCallback(async () => {
     try {
       const res = await fetch("/api/nutrition/today")
-      if (res.ok) setTodayData(await res.json())
+      if (res.ok) {
+        const data = (await res.json()) as TodayData
+        setTodayData(data)
+        if (data.dayTypeSource === "unset") setIsTrainingDay(null)
+        else if (typeof data.isTrainingDay === "boolean") setIsTrainingDay(data.isTrainingDay)
+      }
     } catch (e) {
       console.error("Failed to fetch today's nutrition:", e)
     } finally {
@@ -616,20 +639,41 @@ export default function NutritionPage() {
       .catch(() => {})
   }, [fetchToday])
 
-  // Sync training-day toggle with localStorage (Israel UTC+3 date key).
-  // useLayoutEffect (not useEffect) so the saved value applies BEFORE first
-  // paint — a rest-day user never sees a flash of full training targets —
-  // while keeping server/client initial markup identical (no hydration mismatch).
-  useLayoutEffect(() => {
-    const israelDate = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
-    const saved = localStorage.getItem(`training-day-${israelDate}`)
-    if (saved !== null) setIsTrainingDay(saved === "true")
-  }, [])
-
-  const handleToggleTrainingDay = (val: boolean) => {
-    const israelDate = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
-    localStorage.setItem(`training-day-${israelDate}`, String(val))
+  // Optimistic toggle; the server resolves today's targets for the new day
+  // type, and a failed save reverts the switch.
+  const handleToggleTrainingDay = async (val: boolean) => {
+    if (val === isTrainingDay || dayPlanSaving) return
+    const previous = isTrainingDay
     setIsTrainingDay(val)
+    setDayPlanSaving(true)
+    setDayPlanError(null)
+    try {
+      const res = await fetch("/api/nutrition/day-plan", {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ isTrainingDay: val }),
+      })
+      if (!res.ok) throw new Error(`day-plan ${res.status}`)
+      const data = (await res.json()) as {
+        isTrainingDay:   boolean
+        targets:         MacroTotals
+        baseTargets:     MacroTotals
+        sugarReferenceG: number
+      }
+      setIsTrainingDay(data.isTrainingDay)
+      setTodayData((prev) => prev ? {
+        ...prev,
+        targets:         data.targets,
+        baseTargets:     data.baseTargets,
+        isTrainingDay:   data.isTrainingDay,
+        sugarReferenceG: data.sugarReferenceG,
+      } : prev)
+    } catch {
+      setIsTrainingDay(previous)
+      setDayPlanError("שמירת סוג היום נכשלה — נסה שוב")
+    } finally {
+      setDayPlanSaving(false)
+    }
   }
 
   // Restore coffee preferences from localStorage before first paint
@@ -988,7 +1032,8 @@ export default function NutritionPage() {
       if (labelSaveProduct && pkgGrams) {
         const pf = pkgGrams / 100
         const unitW = labelUnitWeightG()
-        await fetch("/api/recipes", {
+        const unitPct = unitW ? Math.round((unitW / pkgGrams) * 1000) / 10 : null
+        const recipeRes = await fetch("/api/recipes", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({
@@ -998,13 +1043,16 @@ export default function NutritionPage() {
             totalProtein:  Math.round(labelScan.per100g.protein  * pf * 10) / 10,
             totalCarbs:    Math.round(labelScan.per100g.carbs    * pf),
             totalFat:      Math.round(labelScan.per100g.fat      * pf * 10) / 10,
-            totalSugar:    Math.round(labelScan.per100g.sugar    * pf * 10) / 10,
+            // Unknown sugar is omitted (recipes can't store "unknown" yet)
+            ...(labelScan.per100g.sugar !== null && {
+              totalSugar: Math.round(labelScan.per100g.sugar * pf * 10) / 10,
+            }),
             // One unit as the default serving when known, else the standard 25%
-            defaultServingPct: unitW
-              ? Math.round((unitW / pkgGrams) * 1000) / 10
-              : 25,
+            // (0 < pct ≤ 100 — a unit heavier than the package falls back to 100%)
+            defaultServingPct: unitPct && unitPct > 0 ? Math.min(100, unitPct) : 25,
           }),
-        }).catch(() => {})
+        }).catch(() => null)
+        if (!recipeRes?.ok) setLabelError("הארוחה תירשם, אך שמירת המוצר למתכונים נכשלה")
       }
       const res = await fetch("/api/nutrition/log", {
         method:  "POST",
@@ -1019,7 +1067,10 @@ export default function NutritionPage() {
             protein:  Math.round(labelScan.per100g.protein  * factor * 10) / 10,
             carbs:    Math.round(labelScan.per100g.carbs    * factor * 10) / 10,
             fat:      Math.round(labelScan.per100g.fat      * factor * 10) / 10,
-            sugar:    Math.round(labelScan.per100g.sugar    * factor * 10) / 10,
+            // Sub-nutrients from the label; null when the label didn't print them
+            sugar:        scaleSub(labelScan.per100g.sugar,        factor),
+            fiber:        scaleSub(labelScan.per100g.fiber,        factor),
+            saturatedFat: scaleSub(labelScan.per100g.saturatedFat, factor),
           }],
         }),
       })
@@ -1065,6 +1116,9 @@ export default function NutritionPage() {
           proteinPerScoop:  Math.round(labelScan.per100g.protein  * factor * 10) / 10,
           carbsPerScoop:    Math.round(labelScan.per100g.carbs    * factor * 10) / 10,
           fatPerScoop:      Math.round(labelScan.per100g.fat      * factor * 10) / 10,
+          sugarPerScoop:    labelScan.per100g.sugar == null
+            ? null
+            : Math.round(labelScan.per100g.sugar * factor * 10) / 10,
         }),
       })
       if (res.ok) {
@@ -1208,7 +1262,9 @@ export default function NutritionPage() {
               protein:  it.protein,
               carbs:    it.carbs,
               fat:      it.fat,
-              sugar:    it.sugar,
+              sugar:        it.sugar ?? null,
+              fiber:        it.fiber ?? null,
+              saturatedFat: it.saturatedFat ?? null,
             })),
           }),
         })
@@ -1231,16 +1287,20 @@ export default function NutritionPage() {
     setLoggingVoice(false)
   }
 
-  const baseTargets = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
-  const targets = isTrainingDay ? baseTargets : computeRestDayTargets(baseTargets)
+  // Server-resolved targets for today (already training/rest adjusted)
+  const targets     = todayData?.targets ?? { calories: 2600, protein: 185, carbs: 340, fat: 80 }
+  const baseTargets = todayData?.baseTargets ?? targets
   const totals   = todayData?.totals  ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const byMealType = todayData?.byMealType ?? {}
 
   const calRemain  = targets.calories - totals.calories
   const protRemain = targets.protein  - totals.protein
-  const sugarToday  = totals.sugar ?? 0
-  const sugarTarget = isTrainingDay ? SUGAR_TARGET : REST_DAY_SUGAR_TARGET
-  const sugarPct    = Math.min((sugarToday / sugarTarget) * 100, 100)
+  // Total sugar (natural + added) vs. a calorie-scaled reference — guidance,
+  // not a hard limit, so going over is shown in amber, never as an alarm.
+  const sugarToday     = totals.sugar ?? 0
+  const sugarReference = todayData?.sugarReferenceG ?? Math.round((targets.calories * 0.18) / 4)
+  const sugarAbove     = sugarReference > 0 && sugarToday > sugarReference
+  const sugarPct       = sugarReference > 0 ? Math.min((sugarToday / sugarReference) * 100, 100) : 0
 
   return (
     <div className="bg-[#F9FAFB] px-4 py-5 space-y-5 max-w-lg mx-auto">
@@ -1358,9 +1418,11 @@ export default function NutritionPage() {
       <div className="flex items-center gap-2 bg-gray-100 rounded-2xl p-1.5" dir="rtl">
         <button
           onClick={() => handleToggleTrainingDay(true)}
+          disabled={dayPlanSaving}
+          aria-pressed={isTrainingDay === true}
           className={cn(
             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-            isTrainingDay
+            isTrainingDay === true
               ? "bg-[#007AFF] text-white shadow-lg shadow-blue-500/25"
               : "text-gray-400 hover:text-gray-600",
           )}
@@ -1369,9 +1431,11 @@ export default function NutritionPage() {
         </button>
         <button
           onClick={() => handleToggleTrainingDay(false)}
+          disabled={dayPlanSaving}
+          aria-pressed={isTrainingDay === false}
           className={cn(
             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-            !isTrainingDay
+            isTrainingDay === false
               ? "bg-black text-white shadow-lg shadow-black/10"
               : "text-gray-400 hover:text-gray-600",
           )}
@@ -1379,9 +1443,20 @@ export default function NutritionPage() {
           <span>🛌</span> יום מנוחה
         </button>
       </div>
-      {!isTrainingDay && (
+      {dayPlanError && (
+        <div className="flex items-center gap-2 text-xs text-[#FF3B30] bg-red-50 rounded-xl px-3 py-2 -mt-3" dir="rtl">
+          <AlertCircle size={13} className="shrink-0" />
+          {dayPlanError}
+        </div>
+      )}
+      {todayData && isTrainingDay === null && (
         <p className="text-[11px] text-gray-400 text-center -mt-3" dir="rtl">
-          יעד קלוריות הופחת ב-15% · פחמימות ושומן מותאמים · חלבון נשמר מלא
+          היום לא סומן — מוצגים יעדי יום ממוצע ({baseTargets.calories} קק&quot;ל). סמן אימון/מנוחה לחלוקה השבועית.
+        </p>
+      )}
+      {todayData && targets.calories !== baseTargets.calories && (
+        <p className="text-[11px] text-gray-400 text-center -mt-3" dir="rtl">
+          {isTrainingDay ? "יום אימון" : "יום מנוחה"}: {targets.calories} קק&quot;ל (ממוצע שבועי {baseTargets.calories}) · חלבון נשמר מלא
         </p>
       )}
 
@@ -1450,22 +1525,25 @@ export default function NutritionPage() {
         <div className="pt-1">
           <div className="flex justify-between text-[11px] mb-1">
             <span className="text-gray-500 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
-              סוכר יומי
+              <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+              סוכר כולל
             </span>
-            <span className={sugarPct >= 100 ? "text-rose-500 font-semibold" : "text-gray-400"}>
-              {Math.round(sugarToday)} / {sugarTarget} גר'
+            <span className={sugarAbove ? "text-amber-600 font-semibold" : "text-gray-400"}>
+              {totals.sugarComplete === false ? "≥" : ""}{Math.round(sugarToday)} / ~{sugarReference} גר&apos; (ייחוס)
             </span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-700",
-                sugarPct >= 100 ? "bg-rose-500" : "bg-rose-400"
+                sugarAbove ? "bg-amber-500" : "bg-amber-300"
               )}
               style={{ width: `${sugarPct}%` }}
             />
           </div>
+          <p className="text-[10px] text-gray-300 mt-1" dir="rtl">
+            סוכר כולל (טבעי + מוסף) מכל המקורות — ערך ייחוס, לא מגבלה
+          </p>
         </div>
       </div>
 
@@ -1509,6 +1587,7 @@ export default function NutritionPage() {
               rows={2}
               value={nlpText}
               onChange={(e) => setNlpText(e.target.value)}
+              maxLength={4000}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault()
@@ -1670,7 +1749,7 @@ export default function NutritionPage() {
               />
 
               <p className="text-[10px] text-gray-500">
-                ל-100 גרם: {labelScan.per100g.calories} קק"ל · {labelScan.per100g.protein}ג' חלבון · {labelScan.per100g.carbs}ג' פחמ' · {labelScan.per100g.fat}ג' שומן · {labelScan.per100g.sugar}ג' סוכר
+                ל-100 גרם: {labelScan.per100g.calories} קק"ל · {labelScan.per100g.protein}ג' חלבון · {labelScan.per100g.carbs}ג' פחמ' · {labelScan.per100g.fat}ג' שומן{labelScan.per100g.sugar !== null && ` · ${labelScan.per100g.sugar}ג' סוכר`}
               </p>
 
               <div className="flex items-center gap-2">
@@ -1847,7 +1926,14 @@ export default function NutritionPage() {
                   ))}
                 </ul>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold pt-0.5">
-                  <span className="text-orange-500">{Math.round(t.calories)} קק&quot;ל</span>
+                  <span className="text-orange-500">
+                    {Math.round(t.calories)} קק&quot;ל
+                    {scanResult.calorieRange && (
+                      <span className="text-gray-400 font-normal">
+                        {" "}(טווח {scanResult.calorieRange.low}–{scanResult.calorieRange.high})
+                      </span>
+                    )}
+                  </span>
                   <span className="text-[#007AFF]">{Math.round(t.protein)}ג&apos; חלב&apos;</span>
                   <span className="text-emerald-600">{Math.round(t.carbs)}ג&apos; פחמ&apos;</span>
                   <span className="text-amber-600">{Math.round(t.fat)}ג&apos; שומן</span>
@@ -1975,8 +2061,11 @@ export default function NutritionPage() {
                           <label className="flex items-center gap-0.5 text-pink-600">
                             <input
                               type="number"
-                              value={item.sugar}
-                              onChange={e => updateVoiceMealItem(i, ii, { sugar: Number(e.target.value) || 0 })}
+                              value={item.sugar ?? ""}
+                              placeholder="?"
+                              onChange={e => updateVoiceMealItem(i, ii, {
+                                sugar: e.target.value === "" ? null : Number(e.target.value) || 0,
+                              })}
                               className="w-7 bg-transparent text-pink-600 text-[10px] font-semibold focus:outline-none text-center border-b border-pink-200 focus:border-pink-500"
                             />
                             ג&apos; סוכר

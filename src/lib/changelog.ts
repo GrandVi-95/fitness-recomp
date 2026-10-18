@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.17.0",
+    description:
+      "Review fixes: goal-aware coaching (lean gain / recomp / fat loss) with weekly-balanced training/rest days, strength-based check-ins with adherence and data-quality gates, DST-correct Israel dates, signed expiring sessions, encrypted AI keys, preserved workout history, idempotent set logging, validated AI nutrition output, corrected food data and fat-free-mass labels.",
+  },
+  {
     version: "v1.16.0",
     description:
       "Feat: Smart Meal suggestions now include a full recipe (prep time + step-by-step guide), and any ingredient can be removed as unavailable — the meal, macros and recipe are recalculated without it.",
@@ -291,4 +296,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.16.0"
+export const APP_VERSION = "v1.17.0"

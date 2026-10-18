@@ -16,7 +16,6 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronRight,
-  ChevronLeft,
   Dumbbell,
   Clock,
   Flame,
@@ -26,7 +25,13 @@ import {
   Timer,
   RotateCcw,
 } from "lucide-react"
-import { useGymStore, type SessionExercise, type LoggedSet } from "@/store/gymStore"
+import {
+  useGymStore,
+  type SessionExercise,
+  type LoggedSet,
+  type SetPayload,
+  type LastLoggedSetInfo,
+} from "@/store/gymStore"
 import RestTimerOverlay from "@/components/gym/RestTimerOverlay"
 import FinishModal from "@/components/gym/FinishModal"
 import { cn } from "@/lib/utils"
@@ -58,40 +63,34 @@ function formatElapsed(secs: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
 
-type SetPayload = {
-  exerciseId: string
-  setNumber: number
-  reps: number
-  weightKg: number
-  rpe: number
-  isWarmup: boolean
-  durationSecs?: number
+/** Top set of the previous session as a REAL performed pair — weight with
+ *  its own reps (older persisted sessions lack topSetReps → first set). */
+function prevTopSetLabel(prev: NonNullable<SessionExercise["previousPerformance"]>): string {
+  const reps = prev.topSetReps ?? prev.sets[0]?.reps
+  const load = prev.topSetWeightKg > 0 ? `${prev.topSetWeightKg} ק"ג` : "BW"
+  return reps != null ? `${load} × ${reps}` : load
 }
 
-/** POSTs one logged set and reconciles the optimistic tempId with the server id
- *  (or queues it for retry) — shared by single-exercise and super-set logging. */
-async function postLoggedSet(
-  sessionId: string,
-  tempId: string,
-  setData: SetPayload,
-  updateSetServerId: (tempId: string, serverId: string) => void,
-  addPendingSync: (item: { sessionId: string; tempId: string; payload: SetPayload }) => void,
-) {
-  try {
-    const res = await fetch(`/api/gym/sessions/${sessionId}/sets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(setData),
-    })
-    if (res.ok) {
-      const { id } = await res.json()
-      updateSetServerId(tempId, id)
-    } else {
-      addPendingSync({ sessionId, tempId, payload: setData })
-    }
-  } catch {
-    addPendingSync({ sessionId, tempId, payload: setData })
-  }
+/** Hebrew one-liner for the double-progression suggestion. */
+function ProgressionHint({ ex, compact }: { ex: SessionExercise; compact?: boolean }) {
+  const p = ex.progression
+  if (!p) return null
+  const target =
+    p.suggestedDurationSecs != null
+      ? `${p.suggestedDurationSecs} שנ'`
+      : `${p.suggestedWeightKg > 0 ? `${p.suggestedWeightKg} ק"ג × ` : ""}${p.suggestedReps}`
+  return (
+    <p
+      className={cn(
+        "font-semibold",
+        compact ? "text-[10px] mt-1 leading-snug" : "text-[11px]",
+        p.ready ? "text-[#34C759]" : "text-amber-600"
+      )}
+    >
+      {p.ready ? "⬆ מוכן להתקדם · " : "🎯 "}
+      {compact ? `יעד: ${target}` : p.reason}
+    </p>
+  )
 }
 
 /** Derived per-exercise runtime numbers (logged sets, current input values) —
@@ -411,6 +410,7 @@ function WorkoutPicker() {
   const [planName, setPlanName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState<string | null>(null)
+  const [startError, setStartError] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState(false)
   // Environment toggle — persisted so the app opens where you train
   const [environment, setEnvironment] = useState<"gym" | "home">("gym")
@@ -445,16 +445,23 @@ function WorkoutPicker() {
 
   const handleStart = async (workoutId: string, workoutName: string) => {
     setStarting(workoutId)
+    setStartError(null)
     try {
       const res = await fetch("/api/gym/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workoutId }),
       })
-      const { sessionId, exercises } = await res.json()
-      startSession({ sessionId, workoutId, workoutName, exercises })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setStartError(data.error ?? "לא ניתן להתחיל את האימון — רענן ונסה שוב")
+        setStarting(null)
+        return
+      }
+      startSession({ sessionId: data.sessionId, workoutId, workoutName, exercises: data.exercises })
     } catch (err) {
       console.error("Failed to start session:", err)
+      setStartError("שגיאת חיבור — נסה שוב")
       setStarting(null)
     }
   }
@@ -468,6 +475,9 @@ function WorkoutPicker() {
         </h1>
         {planName && (
           <p className="text-sm text-gray-500 mt-0.5">{planName}</p>
+        )}
+        {startError && (
+          <p className="text-xs text-[#FF3B30] mt-2" role="alert">{startError}</p>
         )}
       </div>
 
@@ -621,8 +631,7 @@ function ActiveSession() {
   const inputDurationSecs  = useGymStore((s) => s.inputDurationSecs)
   const startedAt      = useGymStore((s) => s.startedAt)
   // Actions are stable references — selecting them individually never triggers re-renders
-  const logSet             = useGymStore((s) => s.logSet)
-  const updateSetServerId  = useGymStore((s) => s.updateSetServerId)
+  const recordSet          = useGymStore((s) => s.recordSet)
   const adjustWeight       = useGymStore((s) => s.adjustWeight)
   const adjustReps         = useGymStore((s) => s.adjustReps)
   const setWeight          = useGymStore((s) => s.setWeight)
@@ -635,22 +644,35 @@ function ActiveSession() {
   const prevExercise       = useGymStore((s) => s.prevExercise)
   const startRest          = useGymStore((s) => s.startRest)
   const markFinished       = useGymStore((s) => s.markFinished)
-  const addPendingSync     = useGymStore((s) => s.addPendingSync)
   const flushPendingSync   = useGymStore((s) => s.flushPendingSync)
+  const drainSync          = useGymStore((s) => s.drainSync)
 
   const [isWarmup, setIsWarmup] = useState(false)
   const [showRpe, setShowRpe] = useState(false)
+  const [finishing, setFinishing] = useState(false)
 
   const elapsed = useElapsedTime(startedAt)
 
-  // Flush any offline-queued sets when the session first becomes active
-  useEffect(() => { void flushPendingSync() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Flush any offline-queued sets when the session first becomes active, and
+  // again whenever the connection comes back.
+  useEffect(() => {
+    void flushPendingSync()
+    const onOnline = () => void flushPendingSync()
+    window.addEventListener("online", onOnline)
+    return () => window.removeEventListener("online", onOnline)
+  }, [flushPendingSync])
 
-  // Wrap markFinished to drain the sync queue first
+  // Before finishing: wait for every in-flight set write and flush the
+  // offline queue, so the finish summary counts all logged sets.
   const handleFinish = useCallback(async () => {
-    await flushPendingSync()
-    markFinished()
-  }, [flushPendingSync, markFinished])
+    setFinishing(true)
+    try {
+      await drainSync()
+    } finally {
+      setFinishing(false)
+      markFinished()
+    }
+  }, [drainSync, markFinished])
 
   // Items group adjacent super-set pairs into one unit; currentExIdx always
   // lands on an item's first exercise (see moveItemAt/nextExercise/prevExercise
@@ -674,23 +696,136 @@ function ActiveSession() {
     [activeExercises, loggedSets, inputWeightKg, inputReps, inputRpe, inputDurationSecs]
   )
 
-  if (!currentItem) return null
-
-  const isSuperSet = currentItem.type === "superset"
+  const isSuperSet = currentItem?.type === "superset"
 
   // The single-exercise view below reads `currentEx`/`weight`/`reps`/etc. as
   // the "first (and possibly only) exercise of the current item" — for a
   // single item this is exactly the old single-exercise behaviour unchanged.
-  const currentEx = activeExercises[0]
-  const warmupSets = runtimes[0].warmupSets
-  const setsCompleted = runtimes[0].setsCompleted
+  const currentEx = activeExercises[0] as SessionExercise | undefined
   // Complete once every active exercise (both halves of a pair, or the one
   // single exercise) has reached its own target set count.
-  const allSetsComplete = runtimes.every((r) => r.allSetsComplete)
+  const allSetsComplete = runtimes.length > 0 && runtimes.every((r) => r.allSetsComplete)
+  const rpe = runtimes[0]?.rpe ?? 7
 
+  // Super-set: which half is up next in the current round — the one with
+  // fewer working sets that still has sets left (ties → first exercise).
+  const nextInRound = useMemo(() => {
+    let best = -1
+    runtimes.forEach((r, i) => {
+      if (r.allSetsComplete) return
+      if (best === -1 || r.setsCompleted < runtimes[best].setsCompleted) best = i
+    })
+    return best
+  }, [runtimes])
+
+  // A super-set round is "partial" when one half is ahead of the other and
+  // the lagging half still has sets to do.
+  const roundPartial =
+    isSuperSet &&
+    runtimes.length === 2 &&
+    runtimes[0].setsCompleted !== runtimes[1].setsCompleted &&
+    !runtimes.some((r, i) => r.setsCompleted < runtimes[1 - i].setsCompleted && r.allSetsComplete)
+
+  const sharedRest = Math.max(0, ...activeExercises.map((ex) => ex.restSeconds))
+
+  // ── תיעוד סט לתרגיל אחד (בודד, או חצי אחד של סופר-סט) ─────────────────────
+  // Each super-set half is logged independently, so partial rounds are real
+  // data. The shared rest starts only once both halves are done for the
+  // round (or the user explicitly ends the round).
+  const logExercise = useCallback((i: number) => {
+    const ex = activeExercises[i]
+    const rt = runtimes[i]
+    if (!sessionId || !ex || !rt) return
+    if (!isWarmup && rt.allSetsComplete) return // never write past target
+
+    const setNumber = isWarmup ? rt.warmupSets.length + 1 : rt.workingSets.length + 1
+    const setData: Omit<SetPayload, "clientId"> = rt.isDuration
+      ? { exerciseId: ex.exerciseId, setNumber, reps: 0, weightKg: 0, rpe: rt.rpe, isWarmup, durationSecs: rt.duration }
+      : { exerciseId: ex.exerciseId, setNumber, reps: rt.reps, weightKg: rt.weight, rpe: rt.rpe, isWarmup }
+    recordSet(setData)
+
+    if (isWarmup) return // warm-ups never start the rest timer
+
+    const info: LastLoggedSetInfo = {
+      exerciseName: ex.name,
+      weightKg: rt.isDuration ? 0 : rt.weight,
+      reps: rt.isDuration ? 0 : rt.reps,
+      setNumber,
+      isWarmup: false,
+      ...(rt.isDuration && { durationSecs: rt.duration }),
+    }
+
+    if (activeExercises.length < 2) {
+      startRest(ex.restSeconds, info)
+      return
+    }
+    // Super-set: rest once the partner already did this round (or is done).
+    const partner = runtimes[1 - i]
+    if (partner.allSetsComplete || partner.setsCompleted >= setNumber) {
+      startRest(sharedRest, {
+        ...info,
+        exerciseName: activeExercises.map((e) => e.name).join(" 🔗 "),
+      })
+    }
+  }, [sessionId, activeExercises, runtimes, isWarmup, recordSet, startRest, sharedRest])
+
+  // Explicitly close a partial super-set round (e.g. skipped the partner).
+  const handleEndRound = useCallback(() => {
+    const leadIdx = runtimes[0]?.setsCompleted >= (runtimes[1]?.setsCompleted ?? 0) ? 0 : 1
+    const lead = activeExercises[leadIdx]
+    const last = runtimes[leadIdx]?.workingSets.at(-1)
+    if (!lead || !last) return
+    startRest(sharedRest, {
+      exerciseName: activeExercises.map((e) => e.name).join(" 🔗 "),
+      weightKg: last.weightKg,
+      reps: last.reps,
+      setNumber: last.setNumber,
+      isWarmup: false,
+      ...(last.durationSecs != null && { durationSecs: last.durationSecs }),
+    })
+  }, [activeExercises, runtimes, sharedRest, startRest])
+
+  // ── תיעוד החזקה סטטית (פלאנק וכד') ──────────────────────────────────────────
+  const handleLogHold = useCallback((durationSecs: number) => {
+    if (!sessionId || !currentEx) return
+    const allSetsForEx = loggedSets[currentEx.exerciseId] ?? []
+    const setNumber    = allSetsForEx.filter((s) => !s.isWarmup).length + 1
+    recordSet({
+      exerciseId: currentEx.exerciseId,
+      setNumber,
+      reps: 0,
+      weightKg: 0,
+      rpe,
+      isWarmup: false,
+      durationSecs,
+    })
+    startRest(currentEx.restSeconds, {
+      exerciseName: currentEx.name,
+      weightKg: 0,
+      reps: 0,
+      setNumber,
+      isWarmup: false,
+      durationSecs,
+    })
+  }, [sessionId, currentEx, rpe, loggedSets, recordSet, startRest])
+
+  // Enter = תעד סט (super-set: the half that's up next in the round)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || allSetsComplete) return
+      logExercise(isSuperSet ? Math.max(0, nextInRound) : 0)
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [logExercise, allSetsComplete, isSuperSet, nextInRound])
+
+  // All hooks above — safe to bail out now.
+  if (!currentItem || !currentEx) return null
+
+  const warmupSets = runtimes[0].warmupSets
+  const setsCompleted = runtimes[0].setsCompleted
   const weight   = runtimes[0].weight
   const reps     = runtimes[0].reps
-  const rpe      = runtimes[0].rpe
   const duration = runtimes[0].duration
 
   // Tracking mode — duration exercises (wall sit, plank taps) log seconds,
@@ -702,102 +837,6 @@ function ActiveSession() {
   const roundFraction =
     runtimes.reduce((sum, r, i) => sum + r.setsCompleted / activeExercises[i].targetSets, 0) /
     activeExercises.length
-
-  // Whether every active exercise is at the same set count with the same
-  // target — lets the log button show one clean "Set N of M" for the round.
-  const roundInSync =
-    !isSuperSet ||
-    (runtimes.every((r) => r.setsCompleted === runtimes[0].setsCompleted) &&
-      activeExercises.every((ex) => ex.targetSets === activeExercises[0].targetSets))
-
-  // ── תיעוד סט (בודד או שני חלקי סופר-סט כאחד) ─────────────────────────────
-  const handleLogRound = useCallback(async () => {
-    if (!sessionId) return
-
-    let maxRest = 0
-    const loggedNames: string[] = []
-    let displayInfo: { weightKg: number; reps: number; durationSecs?: number; setNumber: number } | null = null
-
-    for (let i = 0; i < activeExercises.length; i++) {
-      const ex = activeExercises[i]
-      const rt = runtimes[i]
-      // If one exercise of a pair already finished its target sets while its
-      // partner hasn't, keep logging only the partner — never write past target.
-      if (!isWarmup && rt.allSetsComplete) continue
-
-      const setNumber = isWarmup ? rt.warmupSets.length + 1 : rt.workingSets.length + 1
-      const setData: SetPayload = rt.isDuration
-        ? { exerciseId: ex.exerciseId, setNumber, reps: 0, weightKg: 0, rpe: rt.rpe, isWarmup, durationSecs: rt.duration }
-        : { exerciseId: ex.exerciseId, setNumber, reps: rt.reps, weightKg: rt.weight, rpe: rt.rpe, isWarmup }
-
-      const tempId = logSet(setData)
-      void postLoggedSet(sessionId, tempId, setData, updateSetServerId, addPendingSync)
-
-      maxRest = Math.max(maxRest, ex.restSeconds)
-      loggedNames.push(ex.name)
-      if (!displayInfo) {
-        displayInfo = {
-          weightKg: rt.isDuration ? 0 : rt.weight,
-          reps: rt.isDuration ? 0 : rt.reps,
-          setNumber,
-          ...(rt.isDuration && { durationSecs: rt.duration }),
-        }
-      }
-    }
-
-    if (!isWarmup && displayInfo && loggedNames.length > 0) {
-      startRest(maxRest, {
-        exerciseName: loggedNames.join(" 🔗 "),
-        ...displayInfo,
-        isWarmup: false,
-      })
-      setIsWarmup(false)
-    }
-  }, [
-    sessionId,
-    activeExercises,
-    runtimes,
-    isWarmup,
-    logSet,
-    startRest,
-    updateSetServerId,
-    addPendingSync,
-  ])
-
-  // ── תיעוד החזקה סטטית (פלאנק וכד') ──────────────────────────────────────────
-  const handleLogHold = useCallback(async (durationSecs: number) => {
-    if (!sessionId || !currentEx) return
-    const allSetsForEx = loggedSets[currentEx.exerciseId] ?? []
-    const setNumber    = allSetsForEx.filter((s) => !s.isWarmup).length + 1
-    const setData      = {
-      exerciseId: currentEx.exerciseId,
-      setNumber,
-      reps: 0,
-      weightKg: 0,
-      rpe,
-      isWarmup: false,
-      durationSecs,
-    }
-    const tempId = logSet(setData)
-    startRest(currentEx.restSeconds, {
-      exerciseName: currentEx.name,
-      weightKg: 0,
-      reps: 0,
-      setNumber,
-      isWarmup: false,
-      durationSecs,
-    })
-    void postLoggedSet(sessionId, tempId, setData, updateSetServerId, addPendingSync)
-  }, [sessionId, currentEx, rpe, loggedSets, logSet, startRest, updateSetServerId, addPendingSync])
-
-  // Enter = תעד סט
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !allSetsComplete) handleLogRound()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [handleLogRound, allSetsComplete])
 
   return (
     <div className="bg-[#F9FAFB] px-4 py-4 max-w-lg mx-auto space-y-4">
@@ -814,9 +853,10 @@ function ActiveSession() {
           </span>
           <button
             onClick={handleFinish}
-            className="text-xs text-gray-400 hover:text-[#FF3B30] transition-colors font-medium px-2"
+            disabled={finishing}
+            className="text-xs text-gray-400 hover:text-[#FF3B30] transition-colors font-medium px-2 disabled:opacity-50"
           >
-            סיים
+            {finishing ? "מסנכרן..." : "סיים"}
           </button>
         </div>
       </div>
@@ -868,7 +908,7 @@ function ActiveSession() {
               </span>
               <span className="flex items-center gap-1">
                 <Clock size={12} className="text-gray-400" />
-                {Math.max(activeExercises[0].restSeconds, activeExercises[1].restSeconds)} שנ' מנוחה משותפת
+                {sharedRest} שנ&apos; מנוחה משותפת
               </span>
             </div>
           </div>
@@ -885,7 +925,7 @@ function ActiveSession() {
               <span className="text-gray-300">·</span>
               <span className="flex items-center gap-1">
                 <Clock size={12} className="text-gray-400" />
-                {currentEx.restSeconds} שנ' מנוחה
+                {currentEx.restSeconds} שנ&apos; מנוחה
               </span>
               <span className="text-gray-300">·</span>
               <span className="capitalize text-gray-400">
@@ -920,21 +960,15 @@ function ActiveSession() {
                   <span className="text-sm font-black text-amber-900">
                     {(ex.previousPerformance.topDurationSecs ?? 0) > 0
                       ? `${ex.previousPerformance.topDurationSecs} שנ'`
-                      : ex.previousPerformance.topSetWeightKg > 0
-                      ? `${ex.previousPerformance.topSetWeightKg}ק"ג`
-                      : "BW"}
+                      : prevTopSetLabel(ex.previousPerformance)}
                   </span>
-                  {ex.previousPerformance.sets[0] != null && (ex.previousPerformance.topDurationSecs ?? 0) === 0 && (
-                    <span className="text-xs text-amber-600">
-                      × {ex.previousPerformance.sets[0].reps}
-                    </span>
-                  )}
                 </div>
               ) : (
                 <p className="text-xs text-gray-500 flex items-center gap-1.5">
                   <Flame size={12} className="text-[#007AFF] shrink-0" /> שיא ראשון
                 </p>
               )}
+              <ProgressionHint ex={ex} compact />
               <p className="text-[11px] text-gray-400 mt-1">{runtimes[i].setsCompleted}/{ex.targetSets} סטים</p>
             </div>
           ))}
@@ -966,7 +1000,7 @@ function ActiveSession() {
                 </span>
                 {(s.durationSecs ?? 0) > 0 ? (
                   <span className="text-sm font-black text-amber-900">
-                    {s.durationSecs} שנ'
+                    {s.durationSecs} שנ&apos;
                   </span>
                 ) : (
                   <>
@@ -988,13 +1022,19 @@ function ActiveSession() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="h-px flex-1 bg-amber-200" />
-            <p className="text-[11px] text-amber-600 font-semibold">
-              ↑ התאם או שפר מספרים אלה להתקדמות
-            </p>
-            <div className="h-px flex-1 bg-amber-200" />
-          </div>
+          {currentEx.progression ? (
+            <div className="border-t border-amber-200 pt-2 text-center">
+              <ProgressionHint ex={currentEx} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 bg-amber-200" />
+              <p className="text-[11px] text-amber-600 font-semibold">
+                ↑ התאם או שפר מספרים אלה להתקדמות
+              </p>
+              <div className="h-px flex-1 bg-amber-200" />
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white shadow-[0_4px_16px_rgb(0,0,0,0.04)] rounded-2xl p-3 flex items-center gap-3">
@@ -1127,10 +1167,11 @@ function ActiveSession() {
 
           {/* ── קלט לפי סוג מעקב ─────────────────────────────── */}
           {isSuperSet ? (
-            /* שני התרגילים זה לצד זה — עמודה לכל תרגיל, קלט אחד משותף לתיעוד */
+            /* שני התרגילים זה לצד זה — עמודה לכל תרגיל, וכפתור תיעוד נפרד לכל אחד */
             <div className="grid grid-cols-2 gap-3">
               {activeExercises.map((ex, i) => {
                 const rt = runtimes[i]
+                const isNext = !isWarmup && i === nextInRound
                 return (
                   <div key={ex.exerciseId} className="space-y-2">
                     <p className="text-[11px] font-bold text-gray-500 truncate px-1">
@@ -1173,6 +1214,27 @@ function ActiveSession() {
                         />
                       </div>
                     )}
+                    <button
+                      onClick={() => logExercise(i)}
+                      disabled={!isWarmup && rt.allSetsComplete}
+                      className={cn(
+                        "w-full h-12 rounded-xl text-sm font-black flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-40",
+                        isWarmup
+                          ? "bg-gray-100 border border-gray-200 text-gray-600"
+                          : rt.allSetsComplete
+                          ? "bg-green-50 text-[#34C759]"
+                          : isNext
+                          ? "bg-[#34C759] text-white shadow-lg shadow-green-500/30"
+                          : "bg-white border-2 border-[#34C759] text-[#34C759]"
+                      )}
+                    >
+                      <CheckCircle2 size={16} strokeWidth={2.5} />
+                      {isWarmup
+                        ? `חימום ${rt.warmupSets.length + 1}`
+                        : rt.allSetsComplete
+                        ? "הושלם"
+                        : `סט ${rt.setsCompleted + 1}/${ex.targetSets}`}
+                    </button>
                   </div>
                 )
               })}
@@ -1230,13 +1292,7 @@ function ActiveSession() {
               {isDuration && (currentEx.previousPerformance.topDurationSecs ?? 0) > 0 ? (
                 `${currentEx.previousPerformance.topDurationSecs} שניות החזקה`
               ) : (
-                <>
-                  {currentEx.previousPerformance.topSetWeightKg > 0
-                    ? `${currentEx.previousPerformance.topSetWeightKg} ק"ג`
-                    : "BW"}
-                  {currentEx.previousPerformance.sets[0] != null &&
-                    ` × ${currentEx.previousPerformance.sets[0].reps} חזרות`}
-                </>
+                <>{prevTopSetLabel(currentEx.previousPerformance)} חזרות</>
               )}
             </p>
           )}
@@ -1271,26 +1327,34 @@ function ActiveSession() {
           )}
 
           {/* ╔══════════════════════════════════════╗
-              ║  כפתור תיעוד סט — אחד לכל הפריט      ║
+              ║  כפתור תיעוד סט (תרגיל בודד)          ║
               ╚══════════════════════════════════════╝ */}
-          <button
-            onClick={handleLogRound}
-            className={cn(
-              "w-full h-16 rounded-2xl font-black text-[1.05rem] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg",
-              isWarmup
-                ? "bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-600 shadow-none"
-                : "bg-[#34C759] hover:opacity-90 active:opacity-80 text-white shadow-green-500/30"
-            )}
-          >
-            <CheckCircle2 size={22} strokeWidth={2.5} />
-            {isWarmup
-              ? `תעד חימום ${warmupSets.length + 1}`
-              : isSuperSet
-              ? roundInSync
-                ? `תעד סט ${setsCompleted + 1} מתוך ${currentEx.targetSets} — שני התרגילים`
-                : `תעד סט — שני התרגילים`
-              : `תעד סט ${setsCompleted + 1} מתוך ${currentEx.targetSets}`}
-          </button>
+          {isSuperSet ? (
+            roundPartial && !isWarmup && (
+              /* סבב חלקי — אפשר לסיים אותו ידנית ולעבור למנוחה המשותפת */
+              <button
+                onClick={handleEndRound}
+                className="w-full h-11 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-500 hover:border-gray-300 transition-colors"
+              >
+                <Clock size={15} /> סיים סבב ועבור למנוחה
+              </button>
+            )
+          ) : (
+            <button
+              onClick={() => logExercise(0)}
+              className={cn(
+                "w-full h-16 rounded-2xl font-black text-[1.05rem] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg",
+                isWarmup
+                  ? "bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-600 shadow-none"
+                  : "bg-[#34C759] hover:opacity-90 active:opacity-80 text-white shadow-green-500/30"
+              )}
+            >
+              <CheckCircle2 size={22} strokeWidth={2.5} />
+              {isWarmup
+                ? `תעד חימום ${warmupSets.length + 1}`
+                : `תעד סט ${setsCompleted + 1} מתוך ${currentEx.targetSets}`}
+            </button>
+          )}
         </div>
       )}
 
@@ -1387,9 +1451,10 @@ function ActiveSession() {
           ) : (
             <button
               onClick={handleFinish}
-              className="flex items-center gap-2 bg-[#34C759] hover:opacity-90 text-white rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
+              disabled={finishing}
+              className="flex items-center gap-2 bg-[#34C759] hover:opacity-90 disabled:opacity-60 text-white rounded-2xl px-5 py-3 text-sm font-bold transition-colors"
             >
-              <CheckCircle2 size={16} /> סיים אימון
+              <CheckCircle2 size={16} /> {finishing ? "מסנכרן סטים..." : "סיים אימון"}
             </button>
           ))
         }

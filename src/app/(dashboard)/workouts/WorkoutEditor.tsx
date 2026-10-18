@@ -68,7 +68,10 @@ const MUSCLE_OPTIONS = [
   { value: "shoulders", label: "כתפיים" },
   { value: "biceps", label: "בייספס" },
   { value: "triceps", label: "טרייספס" },
-  { value: "legs", label: "רגליים" },
+  { value: "quads", label: "קוואדס" },
+  { value: "hamstrings", label: "ירכיים" },
+  { value: "glutes", label: "ישבן" },
+  { value: "calves", label: "שוקיים" },
   { value: "core", label: "בטן" },
   { value: "other", label: "אחר" },
 ]
@@ -524,7 +527,11 @@ export default function WorkoutEditor({ planId, onClose, onSaved }: WorkoutEdito
         })
       }
 
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error ? `שגיאה בשמירה — ${data.error}` : "שגיאה בשמירה — אנא נסה שוב")
+        return
+      }
       setSavedOk(true)
       setTimeout(() => { setSavedOk(false); onSaved() }, 800)
     } catch {

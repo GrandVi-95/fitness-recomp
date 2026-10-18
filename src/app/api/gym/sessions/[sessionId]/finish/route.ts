@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
+import { optInt, optNum, readJsonBody, ValidationError } from "@/lib/validate"
+
+const DEMO_USER_ID = "demo-user"
 
 /** POST /api/gym/sessions/[sessionId]/finish
- * Body: { fatigueLevel: number (1-5) }
+ * Body: { fatigueLevel?: number (1-5), sleepHours?: number }
  *
  * Marks the session as complete, calculates duration and total volume,
  * and returns a summary for the finish screen.
+ *
+ * Idempotent: finishing an already-completed session never rewrites
+ * completedAt/durationMins — it returns the existing values. fatigueLevel is
+ * ONLY the user's explicit post-session rating (null when not given); it is
+ * never derived from set RPE.
  */
 export async function POST(
   request: Request,
@@ -14,20 +22,66 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params
-    const { fatigueLevel, sleepHours } = await request.json()
 
-    const session = await db.workoutSession.findUnique({
-      where: { id: sessionId },
+    let fatigueLevel: number | undefined
+    let sleepHours: number | undefined
+    try {
+      const body = await readJsonBody<Record<string, unknown>>(request, 2_000)
+      fatigueLevel = optInt(body?.fatigueLevel, "fatigueLevel", 1, 5)
+      const sleep = optNum(body?.sleepHours, "sleepHours", 0, 24)
+      sleepHours = sleep != null && sleep > 0 ? Math.round(sleep * 10) / 10 : undefined
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
+      }
+      throw err
+    }
+
+    const session = await db.workoutSession.findFirst({
+      where: { id: sessionId, userId: DEMO_USER_ID },
     })
 
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 })
     }
 
-    // Duration in minutes from session start to now
-    const durationMins = session.startedAt
-      ? Math.round((Date.now() - new Date(session.startedAt).getTime()) / 60_000)
-      : null
+    let durationMins = session.durationMins
+    let alreadyCompleted = session.completedAt != null
+
+    if (!alreadyCompleted) {
+      // Duration in minutes from session start to now
+      const computed = Math.round((Date.now() - session.startedAt.getTime()) / 60_000)
+      // Conditional update — a concurrent duplicate finish can't overwrite it.
+      const { count } = await db.workoutSession.updateMany({
+        where: { id: sessionId, userId: DEMO_USER_ID, completedAt: null },
+        data: {
+          completedAt: new Date(),
+          durationMins: computed,
+          fatigueLevel: fatigueLevel ?? null,
+          ...(sleepHours != null ? { sleepHours } : {}),
+        },
+      })
+      if (count === 1) {
+        durationMins = computed
+      } else {
+        alreadyCompleted = true
+        const fresh = await db.workoutSession.findUnique({ where: { id: sessionId } })
+        durationMins = fresh?.durationMins ?? null
+      }
+    } else if (
+      (fatigueLevel != null && session.fatigueLevel == null) ||
+      (sleepHours != null && session.sleepHours == null)
+    ) {
+      // Retry of a finish that already landed: only fill in answers that are
+      // still missing — never touch completedAt/duration.
+      await db.workoutSession.update({
+        where: { id: sessionId },
+        data: {
+          ...(fatigueLevel != null && session.fatigueLevel == null ? { fatigueLevel } : {}),
+          ...(sleepHours != null && session.sleepHours == null ? { sleepHours } : {}),
+        },
+      })
+    }
 
     // Aggregate all logged sets
     const allSets = await db.setLog.findMany({ where: { sessionId } })
@@ -45,28 +99,13 @@ export async function POST(
           setsWithRpe.length
         : null
 
-    // If user didn't rate fatigue, derive it from avg RPE (RPE 10 → fatigue 5)
-    const resolvedFatigue =
-      fatigueLevel ??
-      (avgRpe != null ? Math.max(1, Math.min(5, Math.round(avgRpe / 2))) : null)
-
-    await db.workoutSession.update({
-      where: { id: sessionId },
-      data: {
-        completedAt: new Date(),
-        durationMins,
-        fatigueLevel: resolvedFatigue,
-        ...(typeof sleepHours === "number" && sleepHours > 0
-          ? { sleepHours: Math.round(sleepHours * 10) / 10 }
-          : {}),
-      },
-    })
-
     revalidatePath("/dashboard")
     revalidatePath("/recovery")
     revalidatePath("/workouts")
 
     return NextResponse.json({
+      ok: true,
+      alreadyCompleted,
       durationMins,
       totalVolume: Math.round(totalVolume),
       workingSetCount: workingSets.length,

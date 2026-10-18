@@ -1,48 +1,29 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
-import { computeTargets } from "@/lib/nutrition"
 import { getTodayNutrition } from "@/lib/nutrition-server"
+import { resolveTargets } from "@/lib/targets-server"
 
 const DEMO_USER_ID = "demo-user"
 
 /** GET /api/nutrition/today
- * Returns today's nutrition logs grouped by meal type,
- * aggregated macros, and daily targets from the user's settings.
+ * Today's nutrition logs grouped by meal type, aggregated macros, and the
+ * targets for TODAY (training/rest-day adjusted, from resolveTargets).
  */
 export async function GET() {
   try {
-    const [{ totals, byMealType }, user, latestMetric] = await Promise.all([
+    const [{ totals, byMealType }, t] = await Promise.all([
       getTodayNutrition(DEMO_USER_ID),
-      db.user.findUnique({
-        where: { id: DEMO_USER_ID },
-        select: {
-          targetCalories: true,
-          targetProtein:  true,
-          targetFats:     true,
-          targetCarbs:    true,
-          userSettings: { select: { autoProteinGoal: true } },
-        },
-      }),
-      db.bodyMetric.findFirst({
-        where: { userId: DEMO_USER_ID },
-        orderBy: { date: "desc" },
-        select: { weightKg: true },
-      }),
+      resolveTargets(DEMO_USER_ID),
     ])
-
-    const { calories, protein, carbs, fat } = computeTargets({
-      targetCalories:  user?.targetCalories,
-      targetProtein:   user?.targetProtein,
-      targetFats:      user?.targetFats,
-      targetCarbs:     user?.targetCarbs,
-      autoProteinGoal: user?.userSettings?.autoProteinGoal,
-      weightKg:        latestMetric?.weightKg,
-    })
 
     return NextResponse.json({
       totals,
       byMealType,
-      targets: { calories, protein, carbs, fat },
+      targets: t.day,
+      baseTargets: t.base,
+      isTrainingDay: t.isTrainingDay,
+      dayTypeSource: t.dayTypeSource,
+      sugarReferenceG: t.sugarReferenceG,
+      weightKg: t.weightKg,
     })
   } catch (err) {
     console.error("[GET /api/nutrition/today]", err)

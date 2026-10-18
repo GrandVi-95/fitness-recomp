@@ -185,7 +185,7 @@ export default function RestTimerOverlay() {
           onClick={() => adjustRestDuration(-15)}
           className="flex items-center gap-1 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-sm font-medium text-gray-600 transition-colors"
         >
-          <Minus size={14} /> 15 שנ'
+          <Minus size={14} /> 15 שנ&apos;
         </button>
 
         <button
@@ -205,7 +205,7 @@ export default function RestTimerOverlay() {
           onClick={() => adjustRestDuration(30)}
           className="flex items-center gap-1 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-sm font-medium text-gray-600 transition-colors"
         >
-          <Plus size={14} /> 30 שנ'
+          <Plus size={14} /> 30 שנ&apos;
         </button>
       </div>
 

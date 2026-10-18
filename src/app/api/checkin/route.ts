@@ -1,145 +1,229 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
+import { Prisma } from "@/generated/prisma/client"
+import { addDaysStr, localDateStr, startOfLocalDay } from "@/lib/time"
+import { computeCalorieTarget, getTrendWeight, syncStoredTargets } from "@/lib/targets-server"
 import {
-  calculateBMR,
-  calculateTDEE,
-  calculateCurrentTarget,
-  classifyWeightTrend,
-  classifyWaistTrend,
+  assessAdherence,
   classifyPerfTrend,
+  classifyWaistTrend,
+  classifyWeightTrend,
+  dailyAveragedMean,
   decideCheckIn,
   isCheckInDue,
-  type WeightTrend,
-  type WaistTrend,
+  isCreatineCalibrationEffective,
+  normalizeGoal,
+  MIN_WEIGH_IN_DAYS_PER_WEEK,
+  type Adherence,
+  type Goal,
   type PerfTrend,
+  type RateVsGoal,
+  type WaistTrend,
+  type WeightTrend,
 } from "@/utils/nutrition-math"
 
 const DEMO_USER_ID = "demo-user"
-const DAY_MS = 24 * 60 * 60 * 1000
 
 interface CheckInSignals {
   due: boolean
+  goal: Goal
   weightTrendPct: number
   weightTrendLabel: WeightTrend
   waistCm: number | null
   waistDeltaCm: number | null
   waistTrendLabel: WaistTrend
   perfTrendLabel: PerfTrend
-  previousWasWeightUpWaistUp: boolean
+  adherence: Adherence
+  previousRateVsGoal: RateVsGoal | null
+  previousWaistTrend: WaistTrend | null
+  creatineActive: boolean
+  autoCalorieGoal: boolean
+  cycleKey: string
 }
 
-/** Gathers and noise-filters every signal the decision matrix needs. */
-async function computeSignals(): Promise<CheckInSignals> {
+/** Gathers and noise-filters every signal the decision engine needs. */
+async function computeSignals(settings: Awaited<ReturnType<typeof loadSettings>>): Promise<CheckInSignals> {
   const now = new Date()
-  const sevenDaysAgo = new Date(now.getTime() - 7 * DAY_MS)
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * DAY_MS)
+  const today = localDateStr(now)
+  // Windows by LOCAL calendar day: recent = last 7 days incl. today, prior = the 7 before.
+  const recentStart = startOfLocalDay(addDaysStr(today, -6))
+  const priorStart = startOfLocalDay(addDaysStr(today, -13))
+  const tomorrowStart = startOfLocalDay(addDaysStr(today, 1))
+  const adherenceStart = startOfLocalDay(addDaysStr(today, -14))
 
-  const [recentMetrics, priorMetrics, lastCheckIn, firstMetric, recentSessions, priorSessions] =
-    await Promise.all([
-      db.bodyMetric.findMany({
-        where: { userId: DEMO_USER_ID, date: { gte: sevenDaysAgo } },
-        orderBy: { date: "desc" },
-        select: { weightKg: true, waistCm: true, date: true },
-      }),
-      db.bodyMetric.findMany({
-        where: { userId: DEMO_USER_ID, date: { gte: fourteenDaysAgo, lt: sevenDaysAgo } },
-        select: { weightKg: true },
-      }),
-      db.checkIn.findFirst({ where: { userId: DEMO_USER_ID }, orderBy: { date: "desc" } }),
-      db.bodyMetric.findFirst({ where: { userId: DEMO_USER_ID }, orderBy: { date: "asc" }, select: { date: true } }),
-      db.workoutSession.findMany({
-        where: { userId: DEMO_USER_ID, completedAt: { gte: sevenDaysAgo, not: null } },
-        include: { sets: { where: { isWarmup: false }, select: { weightKg: true, reps: true } } },
-      }),
-      db.workoutSession.findMany({
-        where: { userId: DEMO_USER_ID, completedAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo, not: null } },
-        include: { sets: { where: { isWarmup: false }, select: { weightKg: true, reps: true } } },
-      }),
-    ])
+  const [metrics, lastCheckIn, firstMetric, sessions, logs, dayPlans] = await Promise.all([
+    db.bodyMetric.findMany({
+      where: { userId: DEMO_USER_ID, date: { gte: priorStart, lt: tomorrowStart } },
+      orderBy: { date: "desc" },
+      select: { weightKg: true, waistCm: true, date: true },
+    }),
+    db.checkIn.findFirst({ where: { userId: DEMO_USER_ID }, orderBy: { date: "desc" } }),
+    db.bodyMetric.findFirst({ where: { userId: DEMO_USER_ID }, orderBy: { date: "asc" }, select: { date: true } }),
+    db.workoutSession.findMany({
+      where: { userId: DEMO_USER_ID, completedAt: { gte: priorStart, lt: tomorrowStart } },
+      select: {
+        completedAt: true,
+        sets: { where: { isWarmup: false }, select: { exerciseId: true, weightKg: true, reps: true } },
+      },
+    }),
+    db.nutritionLog.findMany({
+      where: { userId: DEMO_USER_ID, date: { gte: adherenceStart, lt: tomorrowStart } },
+      select: { date: true, foodItems: { select: { calories: true } } },
+    }),
+    db.dayPlan.findMany({
+      where: { userId: DEMO_USER_ID, date: { gte: addDaysStr(today, -14), lte: addDaysStr(today, -1) } },
+      select: { date: true, targetCalories: true },
+    }),
+  ])
 
-  const avg = (arr: number[]) => (arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0)
-
-  // Weight trend: only a real signal when BOTH 7-day windows have data —
-  // otherwise default to "stable" rather than let a missing window read as
-  // a huge (and false) swing.
+  // ── Weight: mean of daily means, with a minimum number of weigh-in days ──
+  const recentW = metrics.filter((m) => m.date >= recentStart)
+  const priorW = metrics.filter((m) => m.date < recentStart)
+  const toDaily = (rows: typeof metrics) =>
+    dailyAveragedMean(rows.map((m) => ({ day: localDateStr(m.date), value: m.weightKg })))
+  const r = toDaily(recentW)
+  const p = toDaily(priorW)
   const weightTrend =
-    recentMetrics.length > 0 && priorMetrics.length > 0
-      ? classifyWeightTrend(avg(recentMetrics.map((m) => m.weightKg)), avg(priorMetrics.map((m) => m.weightKg)))
-      : { pctPerWeek: 0, label: "stable" as WeightTrend }
+    r.days >= MIN_WEIGH_IN_DAYS_PER_WEEK && p.days >= MIN_WEIGH_IN_DAYS_PER_WEEK
+      ? classifyWeightTrend(r.mean, p.mean)
+      : { pctPerWeek: 0, label: "unknown" as WeightTrend }
 
-  const latestWaist = recentMetrics.find((m) => m.waistCm != null)?.waistCm ?? null
+  // ── Waist: latest reading this week vs the previous check-in's reading ──
+  const latestWaist = recentW.find((m) => m.waistCm != null)?.waistCm ?? null
   const waistDeltaCm =
     latestWaist != null && lastCheckIn?.waistCm != null
       ? Math.round((latestWaist - lastCheckIn.waistCm) * 100) / 100
       : null
-  const waistTrendLabel = classifyWaistTrend(waistDeltaCm)
 
-  const volumeOf = (sessions: typeof recentSessions) =>
-    sessions.reduce((sum, s) => sum + s.sets.reduce((a, set) => a + set.weightKg * set.reps, 0), 0)
-  const perfTrendLabel = classifyPerfTrend(volumeOf(recentSessions), volumeOf(priorSessions))
+  // ── Strength: matched-exercise e1RM, recent vs prior week ──
+  const toPerfSets = (from: Date, to: Date) =>
+    sessions
+      .filter((s) => s.completedAt && s.completedAt >= from && s.completedAt < to)
+      .flatMap((s) => s.sets)
+  const perfTrendLabel = classifyPerfTrend(
+    toPerfSets(recentStart, tomorrowStart),
+    toPerfSets(priorStart, recentStart),
+  )
 
-  // Clean slate: a check-in recorded during Creatine Calibration BREAKS the
-  // consecutive chain rather than being skipped over — skipping would let an
-  // older, pre-creatine weight↑/waist↑ check-in pair with the next one and
-  // trigger an immediate cut right after the toggle is turned off.
-  const previousWasWeightUpWaistUp =
-    !lastCheckIn?.creatineCalibrationActive &&
-    lastCheckIn?.weightTrendLabel === "up" &&
-    lastCheckIn?.waistTrendLabel === "up"
+  // ── Adherence: logged kcal vs that day's target (snapshot, else current),
+  //    over the 14 COMPLETED days (today is still being logged) ──
+  const loggedByDay = new Map<string, number>()
+  for (const log of logs) {
+    const key = localDateStr(log.date)
+    loggedByDay.set(key, (loggedByDay.get(key) ?? 0) + log.foodItems.reduce((a, i) => a + i.calories, 0))
+  }
+  const targetByDay = new Map(dayPlans.filter((d) => d.targetCalories > 0).map((d) => [d.date, d.targetCalories]))
+  const fallbackTarget = computeCalorieTarget({
+    autoCalorieGoal: settings.autoCalorieGoal,
+    storedCalories: settings.storedCalories,
+    weightKg: await getTrendWeight(DEMO_USER_ID, today),
+    heightCm: settings.height,
+    age: settings.age,
+    gender: settings.gender,
+    activityMultiplier: settings.activityMultiplier,
+    offset: settings.offset,
+    goal: settings.goal,
+  })
+  const adherence = assessAdherence(
+    Array.from({ length: 14 }, (_, i) => {
+      const day = addDaysStr(today, -(i + 1))
+      return { loggedKcal: loggedByDay.get(day) ?? 0, targetKcal: targetByDay.get(day) ?? fallbackTarget }
+    }),
+  )
+
+  // A check-in recorded during Creatine Calibration BREAKS the consecutive
+  // chain rather than being skipped over — otherwise an older pre-creatine
+  // signal could pair with the next one and trigger an immediate cut.
+  const prevCounts = lastCheckIn && !lastCheckIn.creatineCalibrationActive
+  const previousRateVsGoal = prevCounts ? (lastCheckIn.rateVsGoal as RateVsGoal | null) : null
+  const previousWaistTrend = prevCounts ? (lastCheckIn.waistTrendLabel as WaistTrend) : null
 
   const anchorDate = firstMetric?.date ?? now
-  const due = isCheckInDue(lastCheckIn?.date ?? null, anchorDate, now)
-
   return {
-    due,
+    due: isCheckInDue(lastCheckIn?.date ?? null, anchorDate, now),
+    goal: settings.goal,
     weightTrendPct: weightTrend.pctPerWeek,
     weightTrendLabel: weightTrend.label,
     waistCm: latestWaist,
     waistDeltaCm,
-    waistTrendLabel,
+    waistTrendLabel: classifyWaistTrend(waistDeltaCm),
     perfTrendLabel,
-    previousWasWeightUpWaistUp,
+    adherence,
+    previousRateVsGoal,
+    previousWaistTrend,
+    creatineActive: isCreatineCalibrationEffective(settings.creatineActive, settings.creatineStartedAt, now),
+    autoCalorieGoal: settings.autoCalorieGoal,
+    cycleKey: lastCheckIn?.id ?? "first",
   }
+}
+
+async function loadSettings() {
+  const [s, user] = await Promise.all([
+    db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } }),
+    db.user.findUnique({ where: { id: DEMO_USER_ID }, select: { targetCalories: true } }),
+  ])
+  return {
+    vacationMode: s?.vacationMode ?? false,
+    goal: normalizeGoal(s?.goal),
+    offset: s?.calorieAdjustmentOffset ?? 0,
+    autoCalorieGoal: s?.autoCalorieGoal ?? true,
+    storedCalories: user?.targetCalories ?? null,
+    height: s?.height ?? 183,
+    age: s?.age ?? 31,
+    gender: s?.gender ?? "male",
+    activityMultiplier: s?.activityMultiplier ?? 1.45,
+    creatineActive: s?.creatineCalibrationActive ?? false,
+    creatineStartedAt: s?.creatineStartedAt ?? null,
+  }
+}
+
+function decide(signals: CheckInSignals, currentOffset: number) {
+  return decideCheckIn({
+    goal: signals.goal,
+    weightPctPerWeek: signals.weightTrendPct,
+    weightTrend: signals.weightTrendLabel,
+    waistTrend: signals.waistTrendLabel,
+    perfTrend: signals.perfTrendLabel,
+    adherence: signals.adherence,
+    previousRateVsGoal: signals.previousRateVsGoal,
+    previousWaistTrend: signals.previousWaistTrend,
+    currentOffset,
+    creatineCalibrationActive: signals.creatineActive,
+    manualCalories: !signals.autoCalorieGoal,
+  })
 }
 
 /** GET /api/checkin — is a bi-weekly check-in due, and what would it decide? */
 export async function GET() {
   try {
-    const settings = await db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } })
+    const settings = await loadSettings()
 
-    // Vacation Mode: the check-in timer is completely paused — never due, and
-    // we don't even compute weight/waist/performance trends while it's on.
-    if (settings?.vacationMode) {
+    // Vacation Mode: the check-in timer is completely paused.
+    if (settings.vacationMode) {
       return NextResponse.json({ due: false, vacationMode: true })
     }
 
-    const signals = await computeSignals()
-
+    const signals = await computeSignals(settings)
     if (!signals.due) {
       return NextResponse.json({ due: false })
     }
 
-    const decision = decideCheckIn({
-      weightTrend: signals.weightTrendLabel,
-      waistTrend: signals.waistTrendLabel,
-      perfTrend: signals.perfTrendLabel,
-      previousWasWeightUpWaistUp: signals.previousWasWeightUpWaistUp,
-      creatineCalibrationActive: settings?.creatineCalibrationActive ?? false,
-    })
-    const currentOffset = settings?.calorieAdjustmentOffset ?? 0
-
+    const decision = decide(signals, settings.offset)
     return NextResponse.json({
       due: true,
+      goal: signals.goal,
       weightTrendPct: signals.weightTrendPct,
       weightTrendLabel: signals.weightTrendLabel,
       waistDeltaCm: signals.waistDeltaCm,
       waistTrendLabel: signals.waistTrendLabel,
       perfTrendLabel: signals.perfTrendLabel,
+      adherence: signals.adherence,
       decision: decision.decision,
       offsetDelta: decision.offsetDelta,
       reasoning: decision.reasoning,
-      currentOffset,
-      offsetAfter: currentOffset + decision.offsetDelta,
+      currentOffset: settings.offset,
+      offsetAfter: settings.offset + decision.offsetDelta,
     })
   } catch (err) {
     console.error("[GET /api/checkin]", err)
@@ -150,81 +234,77 @@ export async function GET() {
 /** POST /api/checkin — apply the due check-in's decision and persist it. */
 export async function POST() {
   try {
-    const settings = await db.userSettings.findUnique({ where: { userId: DEMO_USER_ID } })
+    const settings = await loadSettings()
 
-    // Vacation Mode: never apply a check-in — calorieAdjustmentOffset stays frozen.
-    if (settings?.vacationMode) {
+    if (settings.vacationMode) {
       return NextResponse.json({ error: "מצב חופשה פעיל — הצ'ק-אין מושהה" }, { status: 400 })
     }
 
-    const signals = await computeSignals()
-
+    const signals = await computeSignals(settings)
     if (!signals.due) {
       return NextResponse.json({ error: "אין בדיקה ממתינה כרגע" }, { status: 400 })
     }
 
-    const decision = decideCheckIn({
-      weightTrend: signals.weightTrendLabel,
-      waistTrend: signals.waistTrendLabel,
-      perfTrend: signals.perfTrendLabel,
-      previousWasWeightUpWaistUp: signals.previousWasWeightUpWaistUp,
-      creatineCalibrationActive: settings?.creatineCalibrationActive ?? false,
-    })
-    const currentOffset = settings?.calorieAdjustmentOffset ?? 0
-    const offsetAfter = currentOffset + decision.offsetDelta
-
-    await db.checkIn.create({
-      data: {
-        userId: DEMO_USER_ID,
-        weightTrendPct: signals.weightTrendPct,
-        weightTrendLabel: signals.weightTrendLabel,
-        waistCm: signals.waistCm,
-        waistDeltaCm: signals.waistDeltaCm,
-        waistTrendLabel: signals.waistTrendLabel,
-        perfTrendLabel: signals.perfTrendLabel,
-        decision: decision.decision,
-        offsetDelta: decision.offsetDelta,
-        offsetAfter,
-        reasoning: decision.reasoning,
-        creatineCalibrationActive: settings?.creatineCalibrationActive ?? false,
-      },
-    })
-    await db.userSettings.upsert({
-      where: { userId: DEMO_USER_ID },
-      update: { calorieAdjustmentOffset: offsetAfter },
-      create: { userId: DEMO_USER_ID, calorieAdjustmentOffset: offsetAfter },
-    })
-
-    // Recompute targetCalories immediately off the new offset, so the
-    // dashboard/settings reflect it right away rather than waiting for the
-    // next weight log or settings save to pick it up.
-    if (settings?.autoCalorieGoal !== false) {
-      const latestMetric = await db.bodyMetric.findFirst({
-        where: { userId: DEMO_USER_ID },
-        orderBy: { date: "desc" },
-        select: { weightKg: true },
-      })
-      if (latestMetric) {
-        const bmr = calculateBMR(
-          latestMetric.weightKg,
-          settings?.height ?? 183,
-          settings?.age ?? 31,
-          settings?.gender ?? "male",
-        )
-        const tdee = calculateTDEE(bmr, settings?.activityMultiplier ?? 1.45)
-        await db.user.update({
-          where: { id: DEMO_USER_ID },
-          data: { targetCalories: calculateCurrentTarget(tdee, offsetAfter) },
+    let result
+    try {
+      // One transaction: history row + offset change. The offset is re-read
+      // inside the transaction and incremented atomically; the unique
+      // (userId, cycleKey) makes a concurrent duplicate POST fail instead of
+      // applying the adjustment twice.
+      result = await db.$transaction(async (tx) => {
+        const current = await tx.userSettings.upsert({
+          where: { userId: DEMO_USER_ID },
+          update: {},
+          create: { userId: DEMO_USER_ID },
+          select: { calorieAdjustmentOffset: true },
         })
+        const decision = decide(signals, current.calorieAdjustmentOffset)
+        const offsetAfter = current.calorieAdjustmentOffset + decision.offsetDelta
+
+        await tx.checkIn.create({
+          data: {
+            userId: DEMO_USER_ID,
+            cycleKey: signals.cycleKey,
+            weightTrendPct: signals.weightTrendPct,
+            weightTrendLabel: signals.weightTrendLabel,
+            rateVsGoal: decision.rateVsGoal,
+            waistCm: signals.waistCm,
+            waistDeltaCm: signals.waistDeltaCm,
+            waistTrendLabel: signals.waistTrendLabel,
+            perfTrendLabel: signals.perfTrendLabel,
+            adherencePct: signals.adherence.ratio != null ? Math.round(signals.adherence.ratio * 1000) / 10 : null,
+            decision: decision.decision,
+            offsetDelta: decision.offsetDelta,
+            offsetAfter,
+            reasoning: decision.reasoning,
+            creatineCalibrationActive: signals.creatineActive,
+          },
+        })
+        if (decision.offsetDelta !== 0) {
+          await tx.userSettings.update({
+            where: { userId: DEMO_USER_ID },
+            data: { calorieAdjustmentOffset: { increment: decision.offsetDelta } },
+          })
+        }
+        return { decision, offsetAfter }
+      })
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        return NextResponse.json({ error: "הצ'ק-אין הזה כבר נשמר" }, { status: 409 })
       }
+      throw err
     }
+
+    // Re-derive the full target set (calories AND carbs/fat) off the new offset.
+    await syncStoredTargets(DEMO_USER_ID)
+    revalidatePath("/dashboard")
 
     return NextResponse.json({
       ok: true,
-      decision: decision.decision,
-      offsetDelta: decision.offsetDelta,
-      offsetAfter,
-      reasoning: decision.reasoning,
+      decision: result.decision.decision,
+      offsetDelta: result.decision.offsetDelta,
+      offsetAfter: result.offsetAfter,
+      reasoning: result.decision.reasoning,
     })
   } catch (err) {
     console.error("[POST /api/checkin]", err)
