@@ -74,7 +74,7 @@ export async function getWeeklyReport(
       orderBy:   { completedAt: "asc" },
     }),
     db.nutritionLog.findMany({
-      where:   { userId, date: { gte: start, lt: nextStart } },
+      where:   { userId, status: "eaten", date: { gte: start, lt: nextStart } },
       include: { foodItems: true },
       orderBy: { date: "asc" },
     }),

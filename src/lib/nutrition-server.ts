@@ -36,6 +36,14 @@ export interface TodayNutritionEntry {
   insight?:     string
 }
 
+export interface PlannedMeal {
+  logId:    string
+  mealType: string
+  name:     string
+  items:    TodayNutritionEntry[]
+  totals:   { calories: number; protein: number; carbs: number; fat: number }
+}
+
 export interface TodayNutritionResult {
   totals: {
     calories:     number
@@ -50,6 +58,10 @@ export interface TodayNutritionResult {
     sugarComplete: boolean
   }
   byMealType: Record<string, TodayNutritionEntry[]>
+  // Today's planned (not yet eaten) meals — a forecast, never in `totals`.
+  // Plans from earlier days aren't returned: an unconfirmed plan expires.
+  planned:       PlannedMeal[]
+  plannedTotals: { calories: number; protein: number; carbs: number; fat: number }
 }
 
 /**
@@ -69,7 +81,10 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
     orderBy:  { date: "asc" },
   })
 
-  const allItems = logs.flatMap((l) =>
+  const eatenLogs = logs.filter((l) => l.status !== "planned")
+  const plannedLogs = logs.filter((l) => l.status === "planned")
+
+  const allItems = eatenLogs.flatMap((l) =>
     l.foodItems.map((item) => ({
       ...item,
       mealType: l.mealType,
@@ -91,25 +106,46 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, saturatedFat: 0 },
   )
 
+  const toEntry = (item: (typeof logs)[number]["foodItems"][number], logId: string, insight?: string): TodayNutritionEntry => ({
+    id:           item.id,
+    logId,
+    name:         item.name,
+    quantity:     item.quantity,
+    unit:         item.unit,
+    calories:     item.calories,
+    protein:      item.protein,
+    carbs:        item.carbs,
+    fat:          item.fat,
+    fiber:        item.fiber,
+    sugar:        item.sugar,
+    saturatedFat: item.saturatedFat,
+    insight,
+  })
+
   const byMealType: Record<string, TodayNutritionEntry[]> = {}
   for (const item of allItems) {
     if (!byMealType[item.mealType]) byMealType[item.mealType] = []
-    byMealType[item.mealType].push({
-      id:           item.id,
-      logId:        item.logId,
-      name:         item.name,
-      quantity:     item.quantity,
-      unit:         item.unit,
-      calories:     item.calories,
-      protein:      item.protein,
-      carbs:        item.carbs,
-      fat:          item.fat,
-      fiber:        item.fiber,
-      sugar:        item.sugar,
-      saturatedFat: item.saturatedFat,
-      insight:      item.logInsight,
-    })
+    byMealType[item.mealType].push(toEntry(item, item.logId, item.logInsight))
   }
+
+  const round = (t: { calories: number; protein: number; carbs: number; fat: number }) => ({
+    calories: Math.round(t.calories),
+    protein:  Math.round(t.protein * 10) / 10,
+    carbs:    Math.round(t.carbs),
+    fat:      Math.round(t.fat * 10) / 10,
+  })
+  const sum = (items: { calories: number; protein: number; carbs: number; fat: number }[]) =>
+    items.reduce(
+      (a, i) => ({ calories: a.calories + i.calories, protein: a.protein + i.protein, carbs: a.carbs + i.carbs, fat: a.fat + i.fat }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    )
+  const planned: PlannedMeal[] = plannedLogs.map((l) => ({
+    logId:    l.id,
+    mealType: l.mealType,
+    name:     l.rawInput ?? l.foodItems.map((i) => i.name).join(", "),
+    items:    l.foodItems.map((i) => toEntry(i, l.id)),
+    totals:   round(sum(l.foodItems)),
+  }))
 
   return {
     totals: {
@@ -123,5 +159,7 @@ export async function getTodayNutrition(userId: string): Promise<TodayNutritionR
       sugarComplete: allItems.every((i) => i.sugar != null),
     },
     byMealType,
+    planned,
+    plannedTotals: round(sum(plannedLogs.flatMap((l) => l.foodItems))),
   }
 }

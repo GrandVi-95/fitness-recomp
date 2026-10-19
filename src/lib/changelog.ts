@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.19.0",
+    description:
+      "Feat: Planned meals — add tonight's dinner as 'planned' in Quick Add to see an end-of-day projection (eaten + planned vs target) and how much room is left. Planned meals never count as eaten until confirmed with ✓, expire with the day, and the Smart Meal suggester now fills only the gap left after the plan.",
+  },
+  {
     version: "v1.18.0",
     description:
       "Feat: Quick Add — log a meal by name and macros, or paste a ChatGPT answer (structured MACROS line, free text, Hebrew/English, tables) to fill the form automatically. Blank sugar/fiber/saturated fat stay unknown, an Atwater check flags inconsistent numbers, and a meal can be saved as a favorite.",
@@ -301,4 +306,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.18.0"
+export const APP_VERSION = "v1.19.0"

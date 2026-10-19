@@ -10,7 +10,7 @@ const DEMO_USER_ID = "demo-user"
  */
 export async function GET() {
   try {
-    const [{ totals, byMealType }, t] = await Promise.all([
+    const [{ totals, byMealType, planned, plannedTotals }, t] = await Promise.all([
       getTodayNutrition(DEMO_USER_ID),
       resolveTargets(DEMO_USER_ID),
     ])
@@ -18,6 +18,8 @@ export async function GET() {
     return NextResponse.json({
       totals,
       byMealType,
+      planned,
+      plannedTotals,
       targets: t.day,
       baseTargets: t.base,
       isTrainingDay: t.isTrainingDay,

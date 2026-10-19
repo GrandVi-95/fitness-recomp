@@ -78,7 +78,7 @@ async function getDashboardData() {
       include: { workouts: { where: { archivedAt: null }, orderBy: { order: "asc" } } },
     }),
     db.nutritionLog.findMany({
-      where:   { userId: DEMO_USER_ID, date: { gte: twoDaysAgo, lt: startOfDay } },
+      where:   { userId: DEMO_USER_ID, status: "eaten", date: { gte: twoDaysAgo, lt: startOfDay } },
       include: { foodItems: true },
     }),
     // Week streak: completed workout sessions
@@ -88,7 +88,7 @@ async function getDashboardData() {
     }),
     // Week streak: nutrition logs
     db.nutritionLog.findMany({
-      where:   { userId: DEMO_USER_ID, date: { gte: weekStartUTC, lt: weekEndUTC } },
+      where:   { userId: DEMO_USER_ID, status: "eaten", date: { gte: weekStartUTC, lt: weekEndUTC } },
       include: { foodItems: true },
     }),
     // Per-day target snapshots — each day is judged against ITS target.

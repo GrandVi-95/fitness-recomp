@@ -82,7 +82,7 @@ async function getWeeklyData() {
       },
     }),
     db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: thisWeek.start, lt: thisWeek.nextStart } },
+      where: { userId: DEMO_USER_ID, status: "eaten", date: { gte: thisWeek.start, lt: thisWeek.nextStart } },
       include: { foodItems: true },
     }),
     db.bodyMetric.findMany({

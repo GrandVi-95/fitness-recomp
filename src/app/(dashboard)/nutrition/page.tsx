@@ -108,9 +108,19 @@ interface FoodItem {
   insight?: string   // AI nudge for the meal this item belongs to
 }
 
+interface PlannedMeal {
+  logId:    string
+  mealType: string
+  name:     string
+  totals:   { calories: number; protein: number; carbs: number; fat: number }
+}
+
 interface TodayData {
   totals: MacroTotals
   byMealType: Record<string, FoodItem[]>
+  // Planned (not yet eaten) meals — a forecast, never part of `totals`
+  planned?: PlannedMeal[]
+  plannedTotals?: { calories: number; protein: number; carbs: number; fat: number }
   targets: MacroTotals            // TODAY's targets (already training/rest adjusted)
   baseTargets?: MacroTotals       // average-day targets
   isTrainingDay?: boolean
@@ -616,6 +626,31 @@ export default function NutritionPage() {
   const [coffeeSuccess,       setCoffeeSuccess]       = useState(false)
   const [coffeeError,         setCoffeeError]         = useState<string | null>(null)
   const [showCoffeeSettings,  setShowCoffeeSettings]  = useState(false)
+
+  // ── ארוחות מתוכננות: אישור / מחיקה ─────────────────────
+  const [plannedBusy, setPlannedBusy] = useState<string | null>(null)
+  const handleConfirmPlanned = async (logId: string) => {
+    setPlannedBusy(logId)
+    try {
+      const res = await fetch(`/api/nutrition/logs/${logId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "eaten" }),
+      })
+      if (res.ok) await fetchToday()
+    } finally {
+      setPlannedBusy(null)
+    }
+  }
+  const handleDeletePlanned = async (logId: string) => {
+    setPlannedBusy(logId)
+    try {
+      const res = await fetch(`/api/nutrition/logs/${logId}`, { method: "DELETE" })
+      if (res.ok) await fetchToday()
+    } finally {
+      setPlannedBusy(null)
+    }
+  }
 
   // ── שליפת נתוני היום ────────────────────────────────────
   const fetchToday = useCallback(async () => {
@@ -1298,6 +1333,14 @@ export default function NutritionPage() {
 
   const calRemain  = targets.calories - totals.calories
   const protRemain = targets.protein  - totals.protein
+  // End-of-day projection = eaten + planned. "Room" is what's left for
+  // unplanned meals once the planned ones are eaten.
+  const planned       = todayData?.planned ?? []
+  const plannedTotals = todayData?.plannedTotals ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const roomCalories  = Math.round(calRemain - plannedTotals.calories)
+  const roomProtein   = Math.round((protRemain - plannedTotals.protein) * 10) / 10
+  const roomCarbs     = Math.round(targets.carbs - totals.carbs - plannedTotals.carbs)
+  const roomFat       = Math.round((targets.fat - totals.fat - plannedTotals.fat) * 10) / 10
   // Total sugar (natural + added) vs. a calorie-scaled reference — guidance,
   // not a hard limit, so going over is shown in amber, never as an alarm.
   const sugarToday     = totals.sugar ?? 0
@@ -1486,13 +1529,26 @@ export default function NutritionPage() {
               {calRemain >= 0 ? `נותרו ${calRemain}` : `ביתר ${Math.abs(calRemain)}`} קק"ל
             </span>
           </div>
-          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
             <div
               className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-700"
               style={{ width: `${Math.min((totals.calories / targets.calories) * 100, 100)}%` }}
             />
+            {plannedTotals.calories > 0 && (
+              // Planned meals: a lighter, striped segment after what's eaten
+              <div
+                className="h-full bg-[repeating-linear-gradient(45deg,#fed7aa_0,#fed7aa_4px,#ffedd5_4px,#ffedd5_8px)] transition-all duration-700"
+                style={{
+                  width: `${Math.max(0, Math.min((plannedTotals.calories / targets.calories) * 100, 100 - (totals.calories / targets.calories) * 100))}%`,
+                }}
+                title="מתוכנן"
+              />
+            )}
           </div>
-          <p className="text-[10px] text-gray-300 mt-1">יעד: {targets.calories} קק"ל</p>
+          <p className="text-[10px] text-gray-300 mt-1">
+            יעד: {targets.calories} קק"ל
+            {plannedTotals.calories > 0 && ` · מפוספס = מתוכנן (${plannedTotals.calories} קק"ל)`}
+          </p>
         </div>
 
         {/* טבעות מאקרו */}
@@ -1557,6 +1613,77 @@ export default function NutritionPage() {
           </p>
         </div>
       </div>
+
+      {/* ── תחזית סוף היום: נאכל + מתוכנן ───────────────── */}
+      {planned.length > 0 && (
+        <div className={cn(CARD, "p-5 space-y-3")} dir="rtl">
+          <p className="text-sm font-semibold text-gray-900">תחזית לסוף היום</p>
+          <div className="text-xs text-gray-600 space-y-1">
+            <div className="flex justify-between">
+              <span>נאכל עד עכשיו</span>
+              <span>{totals.calories} קק&quot;ל · {Math.round(totals.protein)} גר&apos; חלבון</span>
+            </div>
+            <div className="flex justify-between">
+              <span>+ מתוכנן</span>
+              <span>{plannedTotals.calories} קק&quot;ל · {Math.round(plannedTotals.protein)} גר&apos; חלבון</span>
+            </div>
+            <div className="flex justify-between font-semibold text-gray-900 border-t border-gray-100 pt-1">
+              <span>= סוף היום</span>
+              <span>
+                {totals.calories + plannedTotals.calories} / {targets.calories} קק&quot;ל ·{" "}
+                {Math.round(totals.protein + plannedTotals.protein)} / {targets.protein} גר&apos;
+              </span>
+            </div>
+          </div>
+          <p
+            className={cn(
+              "text-xs rounded-xl px-3 py-2",
+              roomCalories < -100 ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-[#007AFF]",
+            )}
+          >
+            {roomCalories >= 100
+              ? `נשאר מקום לעוד ~${roomCalories} קק"ל${roomProtein > 5 ? `, מתוכם ~${Math.round(roomProtein)} גר' חלבון` : ""} — למשל ארוחת ביניים או שייק.`
+              : roomCalories >= -100
+                ? `התוכנית סוגרת את היום בדיוק סביב היעד${roomProtein > 10 ? ` — רק חסרים עוד ~${Math.round(roomProtein)} גר' חלבון` : ""}.`
+                : `לפי התוכנית תסיים ~${Math.abs(roomCalories)} קק"ל מעל היעד — אפשר להקטין מנה או לוותר על חטיף.`}
+          </p>
+          <div className="space-y-1.5">
+            {planned.map((m) => (
+              <div key={m.logId} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                <span className="text-xs text-gray-400 shrink-0">
+                  {MEALS.find((x) => x.type === m.mealType)?.emoji ?? "🍽️"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-gray-700 truncate">{m.name}</p>
+                  <p className="text-[10px] text-gray-400">
+                    {m.totals.calories} קק&quot;ל · {Math.round(m.totals.protein)} גר&apos; חלבון · מתוכנן
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleConfirmPlanned(m.logId)}
+                  disabled={plannedBusy === m.logId}
+                  className="shrink-0 flex items-center gap-1 rounded-full bg-[#34C759] text-white text-[11px] font-semibold px-2.5 py-1 disabled:opacity-50"
+                  aria-label="סמן כנאכל"
+                >
+                  {plannedBusy === m.logId ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                  אכלתי
+                </button>
+                <button
+                  onClick={() => handleDeletePlanned(m.logId)}
+                  disabled={plannedBusy === m.logId}
+                  className="shrink-0 p-1 text-gray-300 hover:text-[#FF3B30]"
+                  aria-label="מחק מהתוכנית"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-300">
+            ארוחה מתוכננת לא נספרת בסיכומים ובדוחות עד שתסמן ✓. תוכנית שלא אושרה פוקעת בסוף היום.
+          </p>
+        </div>
+      )}
 
       {/* ╔══════════════════════════════════════════════════╗
           ║          קלט NLP — רישום מזון חופשי              ║
@@ -1723,7 +1850,7 @@ export default function NutritionPage() {
           {quickAddOpen && (
             <QuickAddModal
               mealType={selectedMeal}
-              remaining={{ calories: calRemain, protein: protRemain }}
+              remaining={{ calories: roomCalories, protein: roomProtein }}
               onClose={() => setQuickAddOpen(false)}
               onLogged={fetchToday}
             />
@@ -2164,11 +2291,13 @@ export default function NutritionPage() {
 
       {/* ── הצעת ארוחה ───────────────────────────────────── */}
       <MealSuggester
+        // What's left AFTER today's planned meals — so a suggestion fills
+        // the real gap instead of double-booking the planned dinner.
         remaining={{
-          calories: Math.max(0, targets.calories - totals.calories),
-          protein:  Math.max(0, Math.round((targets.protein - totals.protein) * 10) / 10),
-          carbs:    Math.max(0, targets.carbs - totals.carbs),
-          fats:     Math.max(0, Math.round((targets.fat - totals.fat) * 10) / 10),
+          calories: Math.max(0, roomCalories),
+          protein:  Math.max(0, roomProtein),
+          carbs:    Math.max(0, roomCarbs),
+          fats:     Math.max(0, roomFat),
         }}
         dietaryPreference={dietaryPreference}
         onUseSuggestion={handleUseSuggestion}

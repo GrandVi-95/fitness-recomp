@@ -397,6 +397,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "סוג ארוחה לא תקין" }, { status: 400 })
     }
     const mealType = rawMealType as MealType
+    // "planned" = a forecast (e.g. tonight's dinner): stored, but excluded from
+    // every intake total until the user confirms it as eaten.
+    if (body.status !== undefined && body.status !== "eaten" && body.status !== "planned") {
+      return NextResponse.json({ error: "סטטוס לא תקין" }, { status: 400 })
+    }
+    const status: "eaten" | "planned" = body.status === "planned" ? "planned" : "eaten"
 
     // Direct log path — skip AI re-analysis and write pre-computed values from the editable review card
     if (Array.isArray(directItems) && directItems.length > 0) {
@@ -443,6 +449,7 @@ export async function POST(request: Request) {
           mealType,
           rawInput: sanitized.map((it) => it.name).join(", "),
           date:     new Date(),
+          status,
           insight:  directInsight,
           foodItems: { create: sanitized },
         },
@@ -600,6 +607,7 @@ export async function POST(request: Request) {
         mealType,
         rawInput: text,
         date: new Date(),
+        status,
         insight: insight || null,
         foodItems: {
           create: items.map((item) => {

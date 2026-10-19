@@ -258,11 +258,16 @@ model NutritionLog {
   // Only populated when an LLM parsed the meal (free-text NLP) — quick-log paths
   // (voice batch, coffee, label scanner) skip the AI call and leave this null.
   insight   String?
+  // "eaten" (default) | "planned". Planned meals are a forecast only: they
+  // never count toward intake totals, reports, streaks or check-in adherence,
+  // and an unconfirmed plan simply expires with its day.
+  status    String   @default("eaten")
 
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodItems NutritionFoodItem[]
 
   @@index([userId, date])
+  @@index([userId, status, date])
 }
 
 model NutritionFoodItem {

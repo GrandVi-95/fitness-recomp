@@ -88,6 +88,9 @@ export default function QuickAddModal({ mealType, remaining, onClose, onLogged }
   const [error, setError]       = useState<string | null>(null)
   const [saving, setSaving]     = useState(false)
   const [copied, setCopied]     = useState(false)
+  // "planned" = a forecast (e.g. tonight's dinner): shown on the day's
+  // projection but never counted as eaten until confirmed.
+  const [status, setStatus]     = useState<"eaten" | "planned">("eaten")
 
   const update = (id: number, patch: Partial<Entry>) =>
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
@@ -151,7 +154,7 @@ export default function QuickAddModal({ mealType, remaining, onClose, onLogged }
         const res = await fetch("/api/nutrition/log", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mealType: e.mealType, directItems: [item] }),
+          body: JSON.stringify({ mealType: e.mealType, directItems: [item], status }),
         })
         if (!res.ok) {
           failed.push(e)
@@ -214,6 +217,31 @@ export default function QuickAddModal({ mealType, remaining, onClose, onLogged }
             <X size={15} />
           </button>
         </div>
+
+        {/* ── Eaten now vs planned for later ───────────────── */}
+        <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1">
+          {([
+            ["eaten", "אכלתי"],
+            ["planned", "מתוכנן להמשך היום"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setStatus(value)}
+              aria-pressed={status === value}
+              className={cn(
+                "flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors",
+                status === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {status === "planned" && (
+          <p className="text-[11px] text-gray-500 -mt-1.5">
+            ארוחה מתוכננת לא נספרת כנאכלה — היא מופיעה בתחזית סוף היום, ותסמן ✓ כשתאכל אותה.
+          </p>
+        )}
 
         {/* ── Paste from ChatGPT ───────────────────────────── */}
         {pasteOpen ? (
@@ -351,7 +379,7 @@ export default function QuickAddModal({ mealType, remaining, onClose, onLogged }
         {/* ── Fit against today ─────────────────────────────── */}
         {totals.calories > 0 && (
           <p className="text-[11px] text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
-            אחרי הרישום יישארו היום{" "}
+            {status === "planned" ? "לפי התוכנית יישארו היום" : "אחרי הרישום יישארו היום"}{" "}
             <span className={cn("font-semibold", remaining.calories - totals.calories < 0 ? "text-[#FF9500]" : "text-gray-900")}>
               {Math.round(remaining.calories - totals.calories)} קק&quot;ל
             </span>{" "}
@@ -374,7 +402,11 @@ export default function QuickAddModal({ mealType, remaining, onClose, onLogged }
           className="w-full flex items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white bg-[#007AFF] transition active:scale-95 disabled:opacity-40"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-          {saving ? "שומר…" : entries.length > 1 ? `רשום ${entries.length} ארוחות` : "רשום ארוחה"}
+          {saving
+            ? "שומר…"
+            : status === "planned"
+              ? entries.length > 1 ? `תכנן ${entries.length} ארוחות` : "הוסף לתוכנית"
+              : entries.length > 1 ? `רשום ${entries.length} ארוחות` : "רשום ארוחה"}
         </button>
 
         {/* ── Prompt helper for ChatGPT ─────────────────────── */}

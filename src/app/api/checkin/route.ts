@@ -68,7 +68,7 @@ async function computeSignals(settings: Awaited<ReturnType<typeof loadSettings>>
       },
     }),
     db.nutritionLog.findMany({
-      where: { userId: DEMO_USER_ID, date: { gte: adherenceStart, lt: tomorrowStart } },
+      where: { userId: DEMO_USER_ID, status: "eaten", date: { gte: adherenceStart, lt: tomorrowStart } },
       select: { date: true, foodItems: { select: { calories: true } } },
     }),
     db.dayPlan.findMany({
