@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.18.0",
+    description:
+      "Feat: Quick Add — log a meal by name and macros, or paste a ChatGPT answer (structured MACROS line, free text, Hebrew/English, tables) to fill the form automatically. Blank sugar/fiber/saturated fat stay unknown, an Atwater check flags inconsistent numbers, and a meal can be saved as a favorite.",
+  },
+  {
     version: "v1.17.0",
     description:
       "Review fixes: goal-aware coaching (lean gain / recomp / fat loss) with weekly-balanced training/rest days, strength-based check-ins with adherence and data-quality gates, DST-correct Israel dates, signed expiring sessions, encrypted AI keys, preserved workout history, idempotent set logging, validated AI nutrition output, corrected food data and fat-free-mass labels.",
@@ -296,4 +301,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.17.0"
+export const APP_VERSION = "v1.18.0"

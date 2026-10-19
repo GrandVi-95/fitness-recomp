@@ -4,6 +4,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react
 import MealSuggester from "@/components/dashboard/MealSuggester"
 import RecipePanel   from "@/components/dashboard/RecipePanel"
 import ShakeModal    from "@/components/dashboard/ShakeModal"
+import QuickAddModal from "@/components/dashboard/QuickAddModal"
 import {
   MILK_PRESETS,
   DEFAULT_MILK_PRESET_ID,
@@ -582,6 +583,8 @@ export default function NutritionPage() {
 
   // Smart Protein Shake Builder
   const [shakeModalOpen, setShakeModalOpen] = useState(false)
+  // Quick add: a meal by name + macros (typed, or pasted from ChatGPT)
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
 
   // Voice recording state
   const [voiceState,   setVoiceState]   = useState<"idle" | "recording" | "processing">("idle")
@@ -1314,6 +1317,14 @@ export default function NutritionPage() {
         {/* ── Coffee quick-log cluster ─────────────────────── */}
         <div className="relative flex items-center gap-1.5 mt-1">
           <button
+            onClick={() => setQuickAddOpen(true)}
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-100 text-[#007AFF] hover:bg-gray-200 active:scale-95 transition-all duration-200"
+            title="הוספה מהירה — שם ומאקרו (גם הדבקה מ-ChatGPT)"
+            aria-label="הוספה מהירה"
+          >
+            <Plus size={17} />
+          </button>
+          <button
             onClick={() => setShakeModalOpen(true)}
             className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-100 text-violet-500 hover:bg-gray-200 active:scale-95 transition-all duration-200"
             title="שייק מהיר"
@@ -1706,6 +1717,15 @@ export default function NutritionPage() {
               onClose={() => setLabelModalOpen(false)}
               onDropzoneClick={() => labelInputRef.current?.click()}
               onDropFile={handleLabelDropFile}
+            />
+          )}
+
+          {quickAddOpen && (
+            <QuickAddModal
+              mealType={selectedMeal}
+              remaining={{ calories: calRemain, protein: protRemain }}
+              onClose={() => setQuickAddOpen(false)}
+              onLogged={fetchToday}
             />
           )}
 
