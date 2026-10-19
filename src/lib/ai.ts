@@ -11,7 +11,20 @@ import { decryptSecret } from "@/lib/secrets"
 import { takeRateLimit, AI_RATE_LIMIT } from "@/lib/rateLimit"
 import { validateFoodItem, ValidationError, type ValidFoodItem } from "@/lib/validate"
 
-export const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"]
+// Primary + fallbacks (Google's recommended current Flash models). The 2.5
+// models were removed: Google now limits them to legacy users and they 404.
+export const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
+
+/** Every model was busy/unavailable — a temporary condition, not a bad request. */
+export class AIUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "AIUnavailableError"
+  }
+}
+
+export const AI_UNAVAILABLE_MESSAGE =
+  "שירות ה-AI עמוס כרגע — נסה שוב בעוד דקה, או רשום עם \"הוספה מהירה\" (+) לפי שם ומאקרו."
 const MAX_RETRIES     = 3
 const RETRY_DELAY_MS  = 1500
 
@@ -292,5 +305,5 @@ export async function callGemini(
     }
   }
 
-  throw new Error(`All Gemini models failed. Last: ${lastError}`)
+  throw new AIUnavailableError(`All Gemini models failed. Last: ${lastError}`)
 }

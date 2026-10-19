@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.19.1",
+    description:
+      "Fix: AI logging failed whenever the primary Gemini model was busy, because the fallback models (2.5 Flash/Pro) were retired by Google and returned 404. Fallbacks are now gemini-3.8-flash and gemini-3.5-flash-lite, and a busy AI shows a clear 'try again / use Quick Add' message instead of a generic error.",
+  },
+  {
     version: "v1.19.0",
     description:
       "Feat: Planned meals — add tonight's dinner as 'planned' in Quick Add to see an end-of-day projection (eaten + planned vs target) and how much room is left. Planned meals never count as eaten until confirmed with ✓, expire with the day, and the Smart Meal suggester now fills only the gap left after the plan.",
@@ -306,4 +311,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.19.0"
+export const APP_VERSION = "v1.19.1"

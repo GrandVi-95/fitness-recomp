@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import {
-  callGemini,
+import { callGemini,
   buildInlineDataPart,
   checkAiRateLimit,
   requestErrorResponse,
   resolveGeminiKey,
   sanitizeAndParseJson,
-  IMAGE_BODY_MAX_BYTES,
-} from "@/lib/ai"
+  IMAGE_BODY_MAX_BYTES, AIUnavailableError, AI_UNAVAILABLE_MESSAGE } from "@/lib/ai"
 import { num, readJsonBody, ValidationError } from "@/lib/validate"
 
 const DEMO_USER_ID = "demo-user"
@@ -203,6 +201,9 @@ export async function POST(request: Request) {
     return NextResponse.json(result)
   } catch (err) {
     console.error("[POST /api/ai/scan-label]", err instanceof Error ? err.message : "unknown error")
+    if (err instanceof AIUnavailableError) {
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 })
+    }
     return NextResponse.json({ error: "שגיאה בסריקת התווית" }, { status: 500 })
   }
 }

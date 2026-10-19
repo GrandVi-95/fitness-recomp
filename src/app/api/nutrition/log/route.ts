@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import {
-  callGemini as callGeminiShared,
+import { callGemini as callGeminiShared,
   checkAiRateLimit,
   fetchWithTimeout,
   isAbortError,
@@ -15,8 +14,7 @@ import {
   validateAiItems,
   AI_REQUEST_TIMEOUT_MS,
   AI_TOTAL_DEADLINE_MS,
-  MAX_FOOD_TEXT_CHARS,
-} from "@/lib/ai"
+  MAX_FOOD_TEXT_CHARS, AIUnavailableError, AI_UNAVAILABLE_MESSAGE } from "@/lib/ai"
 import { readJsonBody, ValidationError, type ValidFoodItem } from "@/lib/validate"
 import { getTrendWeight, snapshotDayPlan } from "@/lib/targets-server"
 
@@ -644,6 +642,9 @@ export async function POST(request: Request) {
     })
   } catch (err) {
     console.error("[POST /api/nutrition/log]", err instanceof Error ? err.message : "unknown error")
+    if (err instanceof AIUnavailableError) {
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 })
+    }
     return NextResponse.json({ error: "שגיאה בעיבוד הבקשה" }, { status: 500 })
   }
 }

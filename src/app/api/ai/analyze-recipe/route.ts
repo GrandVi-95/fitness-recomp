@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import {
-  callGemini,
+import { callGemini,
   checkAiRateLimit,
   requestErrorResponse,
   resolveGeminiKey,
   sanitizeAndParseJson,
   MAX_FOOD_TEXT_CHARS,
-  TEXT_BODY_MAX_BYTES,
-} from "@/lib/ai"
+  TEXT_BODY_MAX_BYTES, AIUnavailableError, AI_UNAVAILABLE_MESSAGE } from "@/lib/ai"
 import { num, readJsonBody, ValidationError } from "@/lib/validate"
 
 const DEMO_USER_ID = "demo-user"
@@ -123,6 +121,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (err) {
     console.error("[POST /api/ai/analyze-recipe]", err instanceof Error ? err.message : "unknown error")
+    if (err instanceof AIUnavailableError) {
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 })
+    }
     return NextResponse.json({ error: "שגיאה בניתוח המתכון — נסה שוב" }, { status: 500 })
   }
 }

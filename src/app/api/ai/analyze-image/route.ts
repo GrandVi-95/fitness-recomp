@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import {
-  callGemini,
+import { callGemini,
   checkAiRateLimit,
   requestErrorResponse,
   resolveGeminiKey,
   roundFoodItem,
   sanitizeAndParseJson,
   validateAiItems,
-  IMAGE_BODY_MAX_BYTES,
-} from "@/lib/ai"
+  IMAGE_BODY_MAX_BYTES, AIUnavailableError, AI_UNAVAILABLE_MESSAGE } from "@/lib/ai"
 import { readJsonBody, ValidationError } from "@/lib/validate"
 
 const DEMO_USER_ID = "demo-user"
@@ -149,6 +147,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (err) {
     console.error("[POST /api/ai/analyze-image]", err instanceof Error ? err.message : "unknown error")
+    if (err instanceof AIUnavailableError) {
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 })
+    }
     return NextResponse.json({ error: "שגיאה בניתוח התמונה — נסה שוב" }, { status: 500 })
   }
 }

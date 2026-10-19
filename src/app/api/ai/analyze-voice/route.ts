@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import {
-  callGemini,
+import { callGemini,
   checkAiRateLimit,
   lowProteinMealThresholdG,
   requestErrorResponse,
@@ -9,8 +8,7 @@ import {
   roundFoodItem,
   sanitizeAndParseJson,
   validateAiItems,
-  AUDIO_BODY_MAX_BYTES,
-} from "@/lib/ai"
+  AUDIO_BODY_MAX_BYTES, AIUnavailableError, AI_UNAVAILABLE_MESSAGE } from "@/lib/ai"
 import { readJsonBody, ValidationError, type ValidFoodItem } from "@/lib/validate"
 import { getTrendWeight } from "@/lib/targets-server"
 
@@ -179,6 +177,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ meals })
   } catch (err) {
     console.error("[POST /api/ai/analyze-voice]", err instanceof Error ? err.message : "unknown error")
+    if (err instanceof AIUnavailableError) {
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 })
+    }
     return NextResponse.json({ error: "שגיאה בניתוח ההקלטה — נסה שוב" }, { status: 500 })
   }
 }
