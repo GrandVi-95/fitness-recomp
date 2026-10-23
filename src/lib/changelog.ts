@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.20.0",
+    description:
+      "Feat: Known-product chips — add a saved product (scanned label, recipe or protein powder) to a free-text or photo meal with its exact values, by portion, grams or % of the package. The app suggests saved products it recognises in your text or photo, removes them from what the AI estimates, and logs everything as one meal.",
+  },
+  {
     version: "v1.19.1",
     description:
       "Fix: AI logging failed whenever the primary Gemini model was busy, because the fallback models (2.5 Flash/Pro) were retired by Google and returned 404. Fallbacks are now gemini-3.8-flash and gemini-3.5-flash-lite, and a busy AI shows a clear 'try again / use Quick Add' message instead of a generic error.",
@@ -311,4 +316,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.19.1"
+export const APP_VERSION = "v1.20.0"

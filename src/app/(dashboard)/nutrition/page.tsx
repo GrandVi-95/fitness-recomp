@@ -5,6 +5,15 @@ import MealSuggester from "@/components/dashboard/MealSuggester"
 import RecipePanel   from "@/components/dashboard/RecipePanel"
 import ShakeModal    from "@/components/dashboard/ShakeModal"
 import QuickAddModal from "@/components/dashboard/QuickAddModal"
+import KnownProductPicker from "@/components/dashboard/KnownProductPicker"
+import {
+  fromPowder,
+  fromRecipe,
+  stripProductWords,
+  suggestProducts,
+  type KnownChip,
+  type SavedProduct,
+} from "@/lib/knownProducts"
 import {
   MILK_PRESETS,
   DEFAULT_MILK_PRESET_ID,
@@ -561,6 +570,11 @@ export default function NutritionPage() {
   const [loading, setLoading] = useState(true)
 
   const [nlpText, setNlpText] = useState("")
+  // Known-product chips: saved products (exact label values) mixed into a
+  // free-text / photo meal — only the rest of the meal is AI-estimated.
+  const [knownChips, setKnownChips]       = useState<KnownChip[]>([])
+  const [savedProducts, setSavedProducts] = useState<SavedProduct[] | null>(null)
+  const [pickerFor, setPickerFor]         = useState<string | null>(null) // product key, "" = open list
   const [selectedMeal, setSelectedMeal] = useState<MealType>("snack")
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
@@ -770,18 +784,66 @@ export default function NutritionPage() {
     localStorage.setItem("coffee-milk-volume", String(vol))
   }
 
+  // ── מוצרים שמורים (לצ'יפים של ערכים מדויקים) ─────────────
+  const loadSavedProducts = useCallback(async () => {
+    try {
+      const [r, p] = await Promise.all([
+        fetch("/api/recipes").then((x) => (x.ok ? x.json() : { recipes: [] })),
+        fetch("/api/proteins").then((x) => (x.ok ? x.json() : { proteins: [] })),
+      ])
+      setSavedProducts([
+        ...(r.recipes ?? []).map(fromRecipe),
+        ...(p.proteins ?? []).map(fromPowder),
+      ])
+    } catch {
+      setSavedProducts([])
+    }
+  }, [])
+  useEffect(() => { void loadSavedProducts() }, [loadSavedProducts])
+
+  const productSuggestions = savedProducts
+    ? suggestProducts(nlpText, savedProducts, new Set(knownChips.map((c) => c.productKey)))
+    : []
+
+  const handleAddChip = (chip: KnownChip, product: SavedProduct) => {
+    setKnownChips((prev) => [...prev, chip])
+    // The saved product replaces its free-text mention, so the AI doesn't
+    // estimate it a second time.
+    setNlpText((t) => stripProductWords(t, product))
+    setPickerFor(null)
+  }
+
   // ── שליחת קלט NLP ───────────────────────────────────────
   const handleParse = async () => {
-    if (!nlpText.trim() || parsing) return
+    if ((!nlpText.trim() && knownChips.length === 0) || parsing) return
     setParsing(true)
     setParseError(null)
     setLastAdded(null)
+
+    const chipItems = knownChips.map((c) => ({
+      name:     c.name,
+      quantity: c.amount,
+      unit:     c.label.replace(/^[\d.,]+\s*/, "") || c.mode,
+      calories: c.calories,
+      protein:  c.protein,
+      carbs:    c.carbs,
+      fat:      c.fat,
+      sugar:    c.sugar,
+      fiber:        null,
+      saturatedFat: null,
+    }))
 
     try {
       const res = await fetch("/api/nutrition/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: nlpText, mealType: selectedMeal }),
+        // Chips only → exact direct log (no AI). Text (+ chips) → the AI
+        // estimates the text and the chips are added with exact values.
+        body: JSON.stringify(
+          nlpText.trim()
+            ? { text: nlpText, mealType: selectedMeal, knownItems: chipItems }
+            : { directItems: chipItems, mealType: selectedMeal },
+        ),
       })
       const data = await res.json()
 
@@ -792,6 +854,7 @@ export default function NutritionPage() {
 
       setLastAdded({ items: data.items, totals: data.totals, insight: data.insight })
       setNlpText("")
+      setKnownChips([])
       await fetchToday()
     } catch {
       setParseError("שגיאת חיבור — נסה שוב")
@@ -905,7 +968,7 @@ export default function NutritionPage() {
       const res  = await fetch("/api/ai/analyze-image", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ imageBase64 }),
+        body:    JSON.stringify({ imageBase64, knownNames: knownChips.map((c) => c.name) }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -1717,6 +1780,45 @@ export default function NutritionPage() {
           ))}
         </div>
 
+        {/* צ'יפים: מוצרים שמורים בערכים מדויקים */}
+        {knownChips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5" dir="rtl">
+            {knownChips.map((c, i) => (
+              <span
+                key={`${c.productKey}-${i}`}
+                className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-100 text-[11px] text-gray-700 rounded-full ps-2.5 pe-1 py-1"
+                title="ערכים מדויקים מהתווית השמורה"
+              >
+                📦 <span className="font-medium max-w-[9rem] truncate">{c.name}</span>
+                <span className="text-gray-400">· {c.label} · {c.calories} קק&quot;ל · {c.protein} גר&apos; ח&apos;</span>
+                <button
+                  onClick={() => setKnownChips((prev) => prev.filter((_, j) => j !== i))}
+                  className="p-0.5 text-gray-400 hover:text-[#FF3B30]"
+                  aria-label={`הסר ${c.name}`}
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* הצעה: זוהה מוצר שמור בטקסט / בתמונה */}
+        {productSuggestions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px]" dir="rtl">
+            <span className="text-gray-500">יש לך את זה שמור:</span>
+            {productSuggestions.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPickerFor(p.key)}
+                className="rounded-full bg-amber-50 border border-amber-200 text-amber-700 px-2.5 py-1 hover:bg-amber-100"
+              >
+                📦 השתמש ב-{p.name.length > 22 ? `${p.name.slice(0, 22)}…` : p.name} (מדויק)
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* שדה קלט */}
         <div className="flex gap-2 items-end">
           <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-[#007AFF] transition-colors">
@@ -1732,7 +1834,7 @@ export default function NutritionPage() {
                   handleParse()
                 }
               }}
-              placeholder="מה אכלת?"
+              placeholder={knownChips.length ? "ומה עוד? (השאר ריק אם זה הכול)" : "מה אכלת?"}
               disabled={parsing}
               className="w-full bg-transparent text-sm text-gray-900 focus:outline-none placeholder:text-gray-300 disabled:opacity-50 resize-none"
               dir="rtl"
@@ -1740,7 +1842,7 @@ export default function NutritionPage() {
           </div>
           <button
             onClick={handleParse}
-            disabled={!nlpText.trim() || parsing}
+            disabled={(!nlpText.trim() && knownChips.length === 0) || parsing}
             className="bg-[#007AFF] hover:bg-[#007AFF]/90 disabled:opacity-40 rounded-xl px-4 h-14 flex items-center justify-center transition-colors shrink-0"
             aria-label="שלח"
           >
@@ -1768,6 +1870,13 @@ export default function NutritionPage() {
             className="hidden"
             onChange={handleLabelScan}
           />
+          <button
+            onClick={() => { setPickerFor(""); if (!savedProducts) void loadSavedProducts() }}
+            disabled={parsing}
+            className="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 border border-gray-200 hover:border-[#007AFF]/40 rounded-xl py-2 text-xs font-medium text-gray-500 hover:text-[#007AFF] transition-colors"
+          >
+            📦 מהמוצרים שלי — הוסף מוצר שמור בערכים מדויקים
+          </button>
           <div className="flex gap-2">
             {/* Camera button */}
             <button
@@ -1844,6 +1953,15 @@ export default function NutritionPage() {
               onClose={() => setLabelModalOpen(false)}
               onDropzoneClick={() => labelInputRef.current?.click()}
               onDropFile={handleLabelDropFile}
+            />
+          )}
+
+          {pickerFor !== null && (
+            <KnownProductPicker
+              products={savedProducts}
+              initialProductKey={pickerFor || undefined}
+              onClose={() => setPickerFor(null)}
+              onAdd={handleAddChip}
             />
           )}
 

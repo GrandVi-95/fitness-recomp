@@ -49,11 +49,28 @@ function parseCalorieRange(raw: unknown, totalCalories: number): { low: number; 
   return { low: Math.round(low), high: Math.round(high) }
 }
 
+// Products the user already added as exact "known" chips — the photo may
+// show them, but they must not be estimated (and counted) a second time.
+function knownItemsNote(raw: unknown): string {
+  if (!Array.isArray(raw)) return ""
+  const names = raw
+    .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+    .slice(0, 10)
+    .map((n) => n.trim().slice(0, 100))
+  return names.length
+    ? `
+
+The following items are already logged with exact label values — if they appear in the photo, do NOT include them in "items": ${names.join(", ")}`
+    : ""
+}
+
 export async function POST(request: NextRequest) {
   try {
     let imageBase64: unknown
+    let knownNamesRaw: unknown
     try {
-      ({ imageBase64 } = await readJsonBody<{ imageBase64?: unknown }>(request, IMAGE_BODY_MAX_BYTES))
+      ({ imageBase64, knownNames: knownNamesRaw } =
+        await readJsonBody<{ imageBase64?: unknown; knownNames?: unknown }>(request, IMAGE_BODY_MAX_BYTES))
     } catch (err) {
       const res = requestErrorResponse(err)
       if (res) return res
@@ -101,7 +118,7 @@ export async function POST(request: NextRequest) {
       role: "user",
       parts: [
         { inlineData: { mimeType, data: base64Data } },
-        { text: ANALYZE_PROMPT },
+        { text: ANALYZE_PROMPT + knownItemsNote(knownNamesRaw) },
       ],
     }], { generationConfig: { responseMimeType: "application/json" } })
 

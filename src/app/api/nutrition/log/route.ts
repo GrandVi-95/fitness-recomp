@@ -175,8 +175,13 @@ const VACATION_SYSTEM_PROMPT = `אתה עוזר לתיעוד תזונה רגוע
   "insight": "משפט קליל אחד או השמט לגמרי"
 }`
 
-function buildUserMessage(text: string, foodList: object[]): string {
-  return `טקסט המשתמש: "${text}"
+function buildUserMessage(text: string, foodList: object[], knownNames: string[] = []): string {
+  const known = knownNames.length
+    ? `
+
+הפריטים הבאים כבר נרשמו בערכים מדויקים מתווית שמורה — אל תכלול אותם ב-items גם אם הם מוזכרים בטקסט: ${knownNames.join(", ")}`
+    : ""
+  return `טקסט המשתמש: "${text}"${known}
 
 מסד נתוני המזון הזמין:
 ${JSON.stringify(foodList, null, 2)}`
@@ -190,6 +195,37 @@ const PROVIDER_NAMES: Record<string, string> = {
   anthropic: "Anthropic",
   openai:    "OpenAI",
   gemini:    "Gemini",
+}
+
+// ── Client-supplied items (direct logs, known-product chips) ────────────────
+// Values are pre-computed on the client (label scan, saved product, manual
+// entry): clamp to plausible ranges and pass unknown sub-nutrients as null.
+function sanitizeDirectItems(rawItems: unknown[]) {
+  return rawItems
+    .map((raw: unknown) => {
+      const item = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+      const carbs = clampMacro(item.carbs, 1000)
+      const fat   = clampMacro(item.fat,   500)
+      return {
+        name:     typeof item.name === "string" ? item.name.trim().slice(0, 200) : "",
+        quantity: typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
+          ? Math.min(item.quantity, 10000)
+          : 1,
+        unit:     typeof item.unit === "string" && item.unit.trim()
+          ? item.unit.trim().slice(0, 20)
+          : "serving",
+        calories: clampMacro(item.calories, 5000),
+        protein:  clampMacro(item.protein,  500),
+        carbs,
+        fat,
+        // Pass through what the client knows; unknown stays null.
+        // Not capped at carbs — labels often list carbs excluding fibre.
+        fiber:        clampSub(item.fiber,        Infinity),
+        sugar:        clampSub(item.sugar,        carbs),
+        saturatedFat: clampSub(item.saturatedFat, fat),
+      }
+    })
+    .filter((item) => item.name.length > 0)
 }
 
 // ── Provider dispatch ────────────────────────────────────────────────────────
@@ -401,6 +437,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "סטטוס לא תקין" }, { status: 400 })
     }
     const status: "eaten" | "planned" = body.status === "planned" ? "planned" : "eaten"
+    // Known-product chips sent alongside free text: logged with their exact
+    // saved values, and excluded from what the AI estimates.
+    if (body.knownItems !== undefined && !Array.isArray(body.knownItems)) {
+      return NextResponse.json({ error: "פריטים ידועים לא תקינים" }, { status: 400 })
+    }
+    const knownItems = sanitizeDirectItems(((body.knownItems ?? []) as unknown[]).slice(0, MAX_DIRECT_ITEMS))
 
     // Direct log path — skip AI re-analysis and write pre-computed values from the editable review card
     if (Array.isArray(directItems) && directItems.length > 0) {
@@ -413,31 +455,7 @@ export async function POST(request: Request) {
       const directInsight = typeof rawInsight === "string" && rawInsight.trim()
         ? rawInsight.trim().slice(0, 300)
         : null
-      const sanitized = directItems
-        .map((raw: unknown) => {
-          const item = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
-          const carbs = clampMacro(item.carbs, 1000)
-          const fat   = clampMacro(item.fat,   500)
-          return {
-            name:     typeof item.name === "string" ? item.name.trim().slice(0, 200) : "",
-            quantity: typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
-              ? Math.min(item.quantity, 10000)
-              : 1,
-            unit:     typeof item.unit === "string" && item.unit.trim()
-              ? item.unit.trim().slice(0, 20)
-              : "serving",
-            calories: clampMacro(item.calories, 5000),
-            protein:  clampMacro(item.protein,  500),
-            carbs,
-            fat,
-            // Pass through what the client knows; unknown stays null.
-            // Not capped at carbs — labels often list carbs excluding fibre.
-            fiber:        clampSub(item.fiber,        Infinity),
-            sugar:        clampSub(item.sugar,        carbs),
-            saturatedFat: clampSub(item.saturatedFat, fat),
-          }
-        })
-        .filter((item) => item.name.length > 0)
+      const sanitized = sanitizeDirectItems(directItems)
       if (sanitized.length === 0) {
         return NextResponse.json({ error: "פריטים לא תקינים — חסר שם מזון" }, { status: 400 })
       }
@@ -531,7 +549,7 @@ export async function POST(request: Request) {
     })
 
     const proteinFloorG = lowProteinMealThresholdG(weightKg)
-    const userMessage = buildUserMessage(text, foodList)
+    const userMessage = buildUserMessage(text, foodList, knownItems.map((k) => k.name))
     const systemPrompt = settings?.vacationMode
       ? VACATION_SYSTEM_PROMPT
       : buildSystemPrompt(mealType, proteinFloorG)
@@ -603,12 +621,12 @@ export async function POST(request: Request) {
       data: {
         userId: DEMO_USER_ID,
         mealType,
-        rawInput: text,
+        rawInput: knownItems.length ? `${text} + ${knownItems.map((k) => k.name).join(", ")}` : text,
         date: new Date(),
         status,
         insight: insight || null,
         foodItems: {
-          create: items.map((item) => {
+          create: [...knownItems, ...items.map((item) => {
             const r = roundFoodItem(item)
             return {
               foodId:       item.foodId ?? undefined,
@@ -623,7 +641,7 @@ export async function POST(request: Request) {
               sugar:        r.sugar,
               saturatedFat: r.saturatedFat,
             }
-          }),
+          })],
         },
       },
       include: { foodItems: true },
