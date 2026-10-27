@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.21.0",
+    description:
+      "Feat: How-to pictures — every gym and home exercise now shows a start → finish pictogram on the workout screen, with the target muscle in orange and the key form cues (in Hebrew) drawn inside the picture. Supersets show both exercises; the card can be collapsed and stays collapsed.",
+  },
+  {
     version: "v1.20.0",
     description:
       "Feat: Known-product chips — add a saved product (scanned label, recipe or protein powder) to a free-text or photo meal with its exact values, by portion, grams or % of the package. The app suggests saved products it recognises in your text or photo, removes them from what the AI estimates, and logs everything as one meal.",
@@ -316,4 +321,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.20.0"
+export const APP_VERSION = "v1.21.0"

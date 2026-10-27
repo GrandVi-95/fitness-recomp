@@ -34,6 +34,7 @@ import {
 } from "@/store/gymStore"
 import RestTimerOverlay from "@/components/gym/RestTimerOverlay"
 import FinishModal from "@/components/gym/FinishModal"
+import ExerciseDemoCard from "@/components/gym/ExerciseDemoCard"
 import { cn } from "@/lib/utils"
 import { groupIntoItems, itemStartIndices } from "@/lib/superset"
 
@@ -935,6 +936,8 @@ function ActiveSession() {
           </div>
         )}
       </div>
+
+      <ExerciseDemoCard names={isSuperSet ? activeExercises.map((e) => e.name) : [currentEx.name]} />
 
       {/* ╔══════════════════════════════════════════════════════╗
           ║  כרטיס ביצועים קודמים — הכי חשוב                    ║
