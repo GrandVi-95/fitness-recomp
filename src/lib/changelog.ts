@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.21.1",
+    description:
+      "Fix: Text on the how-to pictures rendered mirrored or misplaced in the RTL app (muscle tag pushed out of its pill, captions reordered, especially on iPhone). Pictures now lay out text left-to-right internally so every Hebrew label reads correctly in all browsers.",
+  },
+  {
     version: "v1.21.0",
     description:
       "Feat: How-to pictures — every gym and home exercise now shows a start → finish pictogram on the workout screen, with the target muscle in orange and the key form cues (in Hebrew) drawn inside the picture. Supersets show both exercises; the card can be collapsed and stays collapsed.",
@@ -321,4 +326,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.21.0"
+export const APP_VERSION = "v1.21.1"

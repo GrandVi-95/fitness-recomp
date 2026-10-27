@@ -320,7 +320,9 @@ export default function ExerciseFigure({ demo, title, className }: { demo: Exerc
   const height = TOP + PANEL_H + 20
   const tagW = demo.muscleLabel.length * 6 + 26
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className={className} role="img" aria-label={`איך מבצעים: ${title}`} fill="none">
+    // direction: ltr pins text-anchor to the coordinate layout; inheriting the
+    // app's RTL flips "start"/"end" and pushes labels out of their pills.
+    <svg style={{ direction: "ltr" }} viewBox={`0 0 ${width} ${height}`} className={className} role="img" aria-label={`איך מבצעים: ${title}`} fill="none">
       <g transform={`translate(${width - tagW} 2)`}>
         <rect width={tagW} height={16} rx={8} fill={ACCENT} fillOpacity={0.14} />
         <circle cx={tagW - 9} cy={8} r={3.2} fill={ACCENT} />
@@ -332,11 +334,11 @@ export default function ExerciseFigure({ demo, title, className }: { demo: Exerc
         <Panel demo={demo} pose={first} x={(width - PANEL_W) / 2} caption="החזקה" />
       ) : (
         <>
-          <Panel demo={demo} pose={first} x={0} caption="1 · התחלה" />
+          <Panel demo={demo} pose={first} x={0} caption="התחלה" />
           <g stroke={ACCENT} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
             <path d={`M${PANEL_W + 4} ${TOP + 90}h12M${PANEL_W + 12} ${TOP + 85}l4 5l-4 5`} />
           </g>
-          <Panel demo={demo} pose={second} x={PANEL_W + GAP} caption="2 · סיום" />
+          <Panel demo={demo} pose={second} x={PANEL_W + GAP} caption="סיום" />
         </>
       )}
     </svg>

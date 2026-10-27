@@ -402,7 +402,7 @@ export const GYM_DEMOS: Record<string, ExerciseDemo> = {
 
   "Pallof Press": {
     muscles: ["abs"],
-    muscleLabel: "בטן (נגד סיבוב)",
+    muscleLabel: "בטן – נגד סיבוב",
     scene: [
       { k: "line", pts: [[8, 30], [8, 100]] },
       { k: "circle", c: [13, 64], r: 3.5 },
