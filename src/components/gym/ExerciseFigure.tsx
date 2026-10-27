@@ -322,7 +322,9 @@ export default function ExerciseFigure({ demo, title, className }: { demo: Exerc
   return (
     // direction: ltr pins text-anchor to the coordinate layout; inheriting the
     // app's RTL flips "start"/"end" and pushes labels out of their pills.
-    <svg style={{ direction: "ltr" }} viewBox={`0 0 ${width} ${height}`} className={className} role="img" aria-label={`איך מבצעים: ${title}`} fill="none">
+    // letterSpacing: 0 — WebKit lays out spaced SVG text glyph by glyph and
+    // skips bidi, so the body's tracking-tight drew Hebrew reversed on iOS.
+    <svg style={{ direction: "ltr", letterSpacing: 0 }} viewBox={`0 0 ${width} ${height}`} className={className} role="img" aria-label={`איך מבצעים: ${title}`} fill="none">
       <g transform={`translate(${width - tagW} 2)`}>
         <rect width={tagW} height={16} rx={8} fill={ACCENT} fillOpacity={0.14} />
         <circle cx={tagW - 9} cy={8} r={3.2} fill={ACCENT} />

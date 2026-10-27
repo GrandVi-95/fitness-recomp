@@ -5,6 +5,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.21.2",
+    description:
+      "Fix: Hebrew on the how-to pictures was still drawn letter-reversed on iPhone. The app-wide tight letter-spacing made Safari lay out the picture text letter by letter and skip right-to-left ordering; the pictures now reset letter-spacing.",
+  },
+  {
     version: "v1.21.1",
     description:
       "Fix: Text on the how-to pictures rendered mirrored or misplaced in the RTL app (muscle tag pushed out of its pill, captions reordered, especially on iPhone). Pictures now lay out text left-to-right internally so every Hebrew label reads correctly in all browsers.",
@@ -326,4 +331,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.21.1"
+export const APP_VERSION = "v1.21.2"
