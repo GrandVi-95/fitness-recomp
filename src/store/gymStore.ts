@@ -105,6 +105,9 @@ interface GymState {
   // ── Exercise list ──────────────────────────────────────────
   exercises: SessionExercise[]
   currentExIdx: number
+  // Items postponed this session (e.g. machine taken), by their first
+  // exerciseId, in the order they were postponed. Cleared on arrival.
+  postponed: string[]
 
   // ── Per-exercise set logs ──────────────────────────────────
   loggedSets: Record<string, LoggedSet[]>  // exerciseId → sets
@@ -152,6 +155,9 @@ interface GymState {
   // Moves the whole item (single exercise, or super-set pair) starting at
   // `startIndex` one slot earlier/later, keeping super-set pairs adjacent.
   moveItemAt: (startIndex: number, direction: -1 | 1) => void
+  // "Machine taken": bring up the next not-yet-postponed item now; the current
+  // item (and any earlier postponed ones) follow right after it, in order.
+  postponeCurrent: () => void
   nextExercise: () => void
   prevExercise: () => void
   startRest: (durationSecs: number, info: LastLoggedSetInfo) => void
@@ -265,6 +271,7 @@ export const useGymStore = create<GymState>()(
       status: "idle",
       exercises: [],
       currentExIdx: 0,
+      postponed: [],
       loggedSets: {},
       inputWeightKg: {},
       inputReps: {},
@@ -310,6 +317,7 @@ export const useGymStore = create<GymState>()(
           status: "active",
           exercises,
           currentExIdx: 0,
+      postponed: [],
           loggedSets: {},
           inputWeightKg,
           inputReps,
@@ -466,13 +474,52 @@ export const useGymStore = create<GymState>()(
           }
         }),
 
+      postponeCurrent: () =>
+        set((state) => {
+          const items = groupIntoItems(state.exercises)
+          const starts = itemStartIndices(state.exercises)
+          const pos = starts.indexOf(state.currentExIdx)
+          if (pos === -1 || pos >= items.length - 1) return {}
+
+          const keyOf = (it: (typeof items)[number]) =>
+            it.type === "superset" ? it.exercises[0].exerciseId : it.exercise.exerciseId
+          const current = items[pos]
+          const rest = items.slice(pos + 1)
+          // First upcoming item that wasn't itself postponed; if every
+          // remaining item was postponed, just take the next one.
+          let j = rest.findIndex((it) => !state.postponed.includes(keyOf(it)))
+          if (j === -1) j = 0
+
+          // before + [next fresh item] + [earlier postponed items] + [current] + rest
+          const newItems = [
+            ...items.slice(0, pos),
+            rest[j],
+            ...rest.slice(0, j),
+            current,
+            ...rest.slice(j + 1),
+          ]
+          const newExercises = newItems.flatMap((it) =>
+            it.type === "superset" ? it.exercises : [it.exercise]
+          )
+          const currentKey = keyOf(current)
+          return {
+            exercises: newExercises,
+            currentExIdx: itemStartIndices(newExercises)[pos],
+            postponed: [...state.postponed.filter((k) => k !== currentKey), currentKey],
+            restActive: false,
+          }
+        }),
+
       nextExercise: () =>
         set((state) => {
           const starts = itemStartIndices(state.exercises)
           const pos = starts.indexOf(state.currentExIdx)
           const nextStart = pos >= 0 ? starts[pos + 1] : undefined
+          const arrived = nextStart != null ? state.exercises[nextStart]?.exerciseId : undefined
           return {
             currentExIdx: nextStart ?? state.currentExIdx,
+            // Reaching a postponed item = it's back in play.
+            postponed: arrived ? state.postponed.filter((k) => k !== arrived) : state.postponed,
             restActive: false,
           }
         }),
@@ -536,6 +583,7 @@ export const useGymStore = create<GymState>()(
           status: "idle",
           exercises: [],
           currentExIdx: 0,
+      postponed: [],
           loggedSets: {},
           inputWeightKg: {},
           inputReps: {},

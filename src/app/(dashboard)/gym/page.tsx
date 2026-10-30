@@ -642,6 +642,7 @@ function ActiveSession() {
   const setDuration        = useGymStore((s) => s.setDuration)
   const moveItemAt         = useGymStore((s) => s.moveItemAt)
   const nextExercise       = useGymStore((s) => s.nextExercise)
+  const postponeCurrent    = useGymStore((s) => s.postponeCurrent)
   const prevExercise       = useGymStore((s) => s.prevExercise)
   const startRest          = useGymStore((s) => s.startRest)
   const markFinished       = useGymStore((s) => s.markFinished)
@@ -886,11 +887,11 @@ function ActiveSession() {
             <ArrowUp size={13} strokeWidth={2.5} />
           </button>
           <button
-            onClick={() => moveItemAt(currentExIdx, 1)}
+            onClick={postponeCurrent}
             disabled={currentItemPos === totalItems - 1}
             className="w-7 h-7 rounded-lg bg-white border border-gray-200 hover:border-gray-300 shadow-[0_2px_8px_rgb(0,0,0,0.04)] flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:pointer-events-none transition-colors"
-            aria-label="הזז פריט זה למטה"
-            title="הזז למטה — למשל אם המכונה תפוסה"
+            aria-label="דחה תרגיל זה — עבור לתרגיל הבא ותחזור אליו אחריו"
+            title="דחה — עבור לתרגיל הבא ותחזור לזה אחריו (למשל אם המכונה תפוסה)"
           >
             <ArrowDown size={13} strokeWidth={2.5} />
           </button>
@@ -1442,6 +1443,18 @@ function ActiveSession() {
         </button>
 
         <div className="flex-1" />
+
+        {/* Machine taken? Postpone: the next exercise comes up now and this
+            one moves right after it (sets already logged are kept). */}
+        {!allSetsComplete && currentItemPos < totalItems - 1 && (
+          <button
+            onClick={postponeCurrent}
+            className="flex items-center gap-1.5 bg-white border border-gray-200 hover:border-gray-300 rounded-2xl px-4 py-3 text-sm font-medium text-gray-600 transition-colors"
+            title="המכונה תפוסה? עבור לתרגיל הבא ותחזור לזה אחריו"
+          >
+            ⏭ דחה תרגיל
+          </button>
+        )}
 
         {allSetsComplete &&
           (currentItemPos < totalItems - 1 ? (
