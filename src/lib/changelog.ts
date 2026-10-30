@@ -5,7 +5,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "v1.20.1",
+    version: "v1.21.3",
     description:
       "Fix: Postponing an exercise (machine taken) only moved the progress bar while the same exercise stayed on screen. New 'דחה תרגיל' button (and the down arrow) now brings up the next exercise; postponed exercises queue up and return in order right after it, and postponing twice skips ahead instead of bouncing between two busy machines.",
   },
@@ -336,4 +336,4 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ]
 
-export const APP_VERSION = "v1.21.2"
+export const APP_VERSION = "v1.21.3"
